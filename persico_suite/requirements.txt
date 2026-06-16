@@ -1,4 +1,0 @@
-flask
-openpyxl
-# xlrd==1.2.0   # opcional — acelera lectura de archivos .xls del Banco de México
-#               # instalar con: pip install xlrd==1.2.0 --break-system-packages
