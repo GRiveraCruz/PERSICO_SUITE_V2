@@ -1,0 +1,226 @@
+[
+  {
+    "employee": "HERNANDEZ SERRANO DELFINO",
+    "rate": 11.080988,
+    "department": "ASSEMBLY",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-16T17:47:40.809574"
+  },
+  {
+    "employee": "TORIBIO HERNANDEZ OMAR KALEB",
+    "rate": 20.501139,
+    "department": "ASSEMBLY",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-16T17:47:40.809574"
+  },
+  {
+    "employee": "PEREZ MARQUEZ HECTOR FEDERICO",
+    "rate": 9.858273,
+    "department": "ASSEMBLY",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-16T17:47:40.809574"
+  },
+  {
+    "employee": "NOTARIO ANGEL DANIEL",
+    "rate": 9.858273,
+    "department": "ASSEMBLY",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-16T17:47:40.809574"
+  },
+  {
+    "employee": "SALCEDO SALINAS ROBERTO",
+    "rate": 9.992474,
+    "department": "ASSEMBLY",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-16T17:47:40.809574"
+  },
+  {
+    "employee": "ARENAS ROJAS MARIANO",
+    "rate": 7.427353,
+    "department": "MANUFACTURING - PAINT",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-16T17:47:40.809574"
+  },
+  {
+    "employee": "MORALES MORALES DANIEL",
+    "rate": 8.637972,
+    "department": "MANUFACTURING - WELD",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-16T17:47:40.809574"
+  },
+  {
+    "employee": "MERINO ESPINOZA SAMUEL",
+    "rate": 11.10914,
+    "department": "ASSEMBLY",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-16T17:47:40.809574"
+  },
+  {
+    "employee": "FLORES LOPEZ ALDO OMAR",
+    "rate": 9.041638,
+    "department": "ELECTRIC ENG - PLC",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-16T17:47:40.809574"
+  },
+  {
+    "employee": "PEDRAZA DURAN VLADIMIR",
+    "rate": 9.041638,
+    "department": "ELECTRIC ENG - PLC",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-16T17:47:40.809574"
+  },
+  {
+    "employee": "CASTREJON ARTEAGA MIGUEL ANGEL",
+    "rate": 9.041638,
+    "department": "ELECTRIC ENG - DESIGN",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-16T17:47:40.809574"
+  },
+  {
+    "employee": "HEREDIA ZUBIETA MARIO ANDRES",
+    "rate": 8.234371,
+    "department": "MECHANIC ENG",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-16T17:47:40.809574"
+  },
+  {
+    "employee": "MEDEL MORALES JORGE LENIN",
+    "rate": 4.907685,
+    "department": "ASSEMBLY",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-16T17:47:40.809574"
+  },
+  {
+    "employee": "ROMERO PASTOR JOSE ANTONIO",
+    "rate": 8.153647,
+    "department": "ASSEMBLY",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-16T17:47:40.809574"
+  },
+  {
+    "employee": "JIMENEZ PEREZ LUIS ENRIQUE",
+    "rate": 14.294997,
+    "department": "MECHANIC ENG",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-16T17:47:40.809574"
+  },
+  {
+    "employee": "VALENCIA MINTO JOSE LUIS",
+    "rate": 8.629644,
+    "department": "MANUFACTURING - CNC",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-16T17:47:40.809574"
+  },
+  {
+    "employee": "LOPEZ CHAZARI ARIAN",
+    "rate": 7.815712,
+    "department": "ELECTRIC ENG - DESIGN",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-16T17:47:40.809574"
+  },
+  {
+    "employee": "LUIS RODRIGUEZ MOISES",
+    "rate": 8.242678,
+    "department": "ELECTRIC ENG - DESIGN",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-16T17:47:40.809574"
+  },
+  {
+    "employee": "REYES TRUJILLO CARLOS ADOLFO",
+    "rate": 5.80752,
+    "department": "MECHANIC ENG",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-16T17:47:40.809574"
+  },
+  {
+    "employee": "PEREZ PEREZ LUIS ANTONIO",
+    "rate": 5.80752,
+    "department": "MECHANIC ENG",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-16T17:47:40.809574"
+  },
+  {
+    "employee": "TORRES JIMENEZ JOSUE",
+    "rate": 10.232538,
+    "department": "MECHANIC ENG",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-16T17:47:40.809574"
+  },
+  {
+    "employee": "OLGUIN SOLANO JOSE MANUEL",
+    "rate": 7.412898,
+    "department": "MECHANIC ENG",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-16T17:47:40.809574"
+  },
+  {
+    "employee": "RAMIREZ HERNANDEZ VICTOR ENRIQUE",
+    "rate": 7.010096,
+    "department": "ELECTRIC ENG - PLC",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-16T17:47:40.809574"
+  },
+  {
+    "employee": "PEREZ BONILLA JOSE CARLOS",
+    "rate": 8.218508,
+    "department": "ASSEMBLY",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-16T17:47:40.809574"
+  },
+  {
+    "employee": "GUEVARA AGUIRRE EDUARDO",
+    "rate": 4.141706,
+    "department": "ASSEMBLY",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-16T17:47:40.809574"
+  },
+  {
+    "employee": "DIAZ SANDOVAL ANGEL",
+    "rate": 4.141706,
+    "department": "ASSEMBLY",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-16T17:47:40.809574"
+  },
+  {
+    "employee": "CORONA ROJAS ANGELA",
+    "rate": 4.141706,
+    "department": "WAREHOUSE",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-16T17:47:40.809574"
+  },
+  {
+    "employee": "CARRILLO MUÑOZ ALDO",
+    "rate": 4.586438,
+    "department": "ASSEMBLY",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-16T17:47:40.809574"
+  }
+]
