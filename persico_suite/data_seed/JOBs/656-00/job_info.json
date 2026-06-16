@@ -1,0 +1,21 @@
+{
+  "job_number": "656-00",
+  "main_index": 656,
+  "subindex": "00",
+  "subindex_label": "Máquina / equipo principal",
+  "customer": "Persico USA",
+  "customer_full": "Persico USA, 50450 Wing Dr, Shelby Township, MI, 48305",
+  "pm": "Guillermo Rivera - Persico",
+  "description": "Edge folding assembly Intercompany Service.",
+  "product_group": "1.6 Service/P.MEX",
+  "product_subgroup": "Service",
+  "revenue": 12165.0,
+  "estimated_cost": 10650.0,
+  "po_number": "55730",
+  "ship_date": "2026-02-07",
+  "approval_fc": "Yes",
+  "status": "Open",
+  "notes": "",
+  "created_at": "2026-01-07",
+  "imported": true
+}

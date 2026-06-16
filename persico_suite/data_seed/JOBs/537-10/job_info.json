@@ -1,0 +1,21 @@
+{
+  "job_number": "537-10",
+  "main_index": 537,
+  "subindex": "10",
+  "subindex_label": "Cambio de ingeniería (10)",
+  "customer": "GRUPO ANTOLIN TLAXCALA S DE RL DE CV",
+  "customer_full": "GRUPO ANTOLIN TLAXCALA S DE RL DE CV, BIRGEN DE LA CARIDAD S/N LOTE 19, DIUDAD INDUSTRIAL XICOHTENCATL II, HUAMANTLA, TLAXCALA, CP 90500 MEXICO, GAP140813N38",
+  "pm": "Oswaldo Aguinaga - Persico",
+  "description": "INTERCOMPANY SUPPORT FOR VW336 AT GRUPO ANTOLIN",
+  "product_group": "1.6 Service/P.MEX",
+  "product_subgroup": "Service",
+  "revenue": 0.0,
+  "estimated_cost": 0.0,
+  "po_number": "ND",
+  "ship_date": "2026-05-05",
+  "approval_fc": "Yes",
+  "status": "Open",
+  "notes": "",
+  "created_at": "2026-04-30",
+  "imported": true
+}

@@ -1,0 +1,21 @@
+{
+  "job_number": "673-61",
+  "main_index": 673,
+  "subindex": "61",
+  "subindex_label": "Servicio pagado por cliente (61)",
+  "customer": "PERSICO SPA",
+  "customer_full": "PERSICO SPA-PERSICO SPA VIA MARCONI 7-9 24027 NEMBRO BG ITALY VAT NUMBER IT 01508540166",
+  "pm": "Guillermo Rivera - Persico",
+  "description": "Training service in persico Italy.",
+  "product_group": "1.6 Service/P.MEX",
+  "product_subgroup": "Service",
+  "revenue": 0.0,
+  "estimated_cost": 0.0,
+  "po_number": "TBD",
+  "ship_date": "2026-08-08",
+  "approval_fc": "Yes",
+  "status": "Open",
+  "notes": "",
+  "created_at": "2026-05-21",
+  "imported": true
+}
