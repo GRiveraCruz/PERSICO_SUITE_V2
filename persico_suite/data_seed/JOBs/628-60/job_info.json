@@ -1,0 +1,21 @@
+{
+  "job_number": "628-60",
+  "main_index": 628,
+  "subindex": "60",
+  "subindex_label": "Refacción pagada por cliente (60)",
+  "customer": "INTEVA",
+  "customer_full": "INTEVA-INTEVA PRODUCTS, LLC Matamoros Operations 3 (IMO 3) Avenida Michigan S/N Colonia Industrial del Norte Matamoros TAM 87316 Mexico",
+  "pm": "Pablo Rodrigo Gutierrez - Persico",
+  "description": "SPARE PARTS TOOL SR25",
+  "product_group": "1.7 Spare Parts/P.MEX",
+  "product_subgroup": "Spare Parts",
+  "revenue": 5000.0,
+  "estimated_cost": 2500.0,
+  "po_number": "tbd",
+  "ship_date": "2026-04-28",
+  "approval_fc": "Yes",
+  "status": "Open",
+  "notes": "",
+  "created_at": "2026-04-28",
+  "imported": true
+}

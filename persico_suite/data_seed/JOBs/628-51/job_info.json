@@ -1,0 +1,21 @@
+{
+  "job_number": "628-51",
+  "main_index": 628,
+  "subindex": "51",
+  "subindex_label": "Refacción pagada por cliente (51)",
+  "customer": "INTEVA",
+  "customer_full": "INTEVA-INTEVA PRODUCTS, LLC Matamoros Operations 1 (IMO 1) Avenida Michigan S/N Colonia Industrial del Norte Matamoros TAM 87316 Mexico",
+  "pm": "Pablo Rodrigo Gutierrez - Persico",
+  "description": "ECR 628-18/19 Add new SR2000 scanner.",
+  "product_group": "1.5 WELDING /P.MEX",
+  "product_subgroup": "Sonic Welding",
+  "revenue": 16400.0,
+  "estimated_cost": 12000.0,
+  "po_number": "THQ034930",
+  "ship_date": "2026-04-08",
+  "approval_fc": "Yes",
+  "status": "Open",
+  "notes": "",
+  "created_at": "2026-03-11",
+  "imported": true
+}

@@ -1,0 +1,21 @@
+{
+  "job_number": "667-61",
+  "main_index": 667,
+  "subindex": "61",
+  "subindex_label": "Servicio pagado por cliente (61)",
+  "customer": "Inteva Bluffton",
+  "customer_full": "Inteva Bluffton, IN Plant",
+  "pm": "Pablo Rodrigo Gutierrez - Persico",
+  "description": "Cross programming of the BT1 Hard IP tools on the T1-2 Common Base",
+  "product_group": "1.6 Service/P.MEX",
+  "product_subgroup": "Service",
+  "revenue": 26000.0,
+  "estimated_cost": 5000.0,
+  "po_number": "THQ035155",
+  "ship_date": "2026-04-24",
+  "approval_fc": "Yes",
+  "status": "Open",
+  "notes": "",
+  "created_at": "2026-04-24",
+  "imported": true
+}

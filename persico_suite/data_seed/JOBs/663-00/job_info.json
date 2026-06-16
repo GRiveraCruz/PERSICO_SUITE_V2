@@ -1,0 +1,21 @@
+{
+  "job_number": "663-00",
+  "main_index": 663,
+  "subindex": "00",
+  "subindex_label": "Máquina / equipo principal",
+  "customer": "PERSICO SPA",
+  "customer_full": "PERSICO SPA-ROTO MOLD-PERSICO SPA VIA MARCONI 7-9 24027 NEMBRO BG ITALY",
+  "pm": "Omar Moreno - Persico",
+  "description": "Fan (Ventilatore 15kW TPI) purchase for Persico USA",
+  "product_group": "3.2 B7- INTERIORS /P.SPA",
+  "product_subgroup": "Lamination Tools",
+  "revenue": 1853.25,
+  "estimated_cost": 0.0,
+  "po_number": "PO-00103602",
+  "ship_date": "2026-04-02",
+  "approval_fc": "InProgress",
+  "status": "Open",
+  "notes": "",
+  "created_at": "2026-03-12",
+  "imported": true
+}

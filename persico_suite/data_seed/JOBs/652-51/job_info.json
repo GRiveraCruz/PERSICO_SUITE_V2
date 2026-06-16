@@ -1,0 +1,21 @@
+{
+  "job_number": "652-51",
+  "main_index": 652,
+  "subindex": "51",
+  "subindex_label": "Refacción pagada por cliente (51)",
+  "customer": "Inteva Bluffton",
+  "customer_full": "Inteva Bluffton, IN Plant",
+  "pm": "Luz Munoz - Persico",
+  "description": "652-00 ECR Chevy tool ECR",
+  "product_group": "1.4 ROBOTIC /P.MEX",
+  "product_subgroup": "Robotic Cells",
+  "revenue": 0.0,
+  "estimated_cost": 0.0,
+  "po_number": "BLF003987",
+  "ship_date": "2026-06-30",
+  "approval_fc": "Yes",
+  "status": "Open",
+  "notes": "",
+  "created_at": "2026-01-16",
+  "imported": true
+}

@@ -1,0 +1,3043 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Persico Mex · Suite</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --red:#C8102E;--red-h:#e8001f;--gold:#F0A500;
+  --bg:#0f0f0f;--sb:#141414;--panel:#161616;--card:#1a1a1a;
+  --border:rgba(255,255,255,.08);--border2:rgba(255,255,255,.14);
+  --text:#e8e8e8;--muted:#666;--muted2:#999;--inp:#0a0a0a;
+  --r:5px;--tr:.16s ease;
+  --green:#27ae60;--amber:#f39c12;--blue:#2980b9;
+}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;display:flex;flex-direction:column;font-size:13px}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-thumb{background:#333;border-radius:2px}
+
+/* ── TOP NAV ── */
+.topnav{height:48px;background:#000;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:0;flex-shrink:0;padding:0 8px}
+.logo-area{padding:0 16px;display:flex;align-items:center;gap:10px;border-right:1px solid var(--border);height:100%}
+.logo-area .brand{font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:2.5px;color:#fff}
+.logo-area .bar{width:2px;height:18px;background:var(--red);display:inline-block}
+.nav-tabs{display:flex;height:100%;margin-left:4px}
+.nav-tab{padding:0 20px;display:flex;align-items:center;gap:8px;font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all var(--tr);background:none;border-left:none;border-right:none;border-top:none}
+.nav-tab:hover{color:var(--text)}
+.nav-tab.on{color:#fff;border-bottom-color:var(--red)}
+.nav-tab .ni{font-size:14px}
+.nav-status{margin-left:auto;display:flex;align-items:center;gap:16px;padding-right:8px}
+.conn-group{display:flex;align-items:center;gap:5px;font-size:10px}
+.conn-dot{width:6px;height:6px;border-radius:50%;background:#eb5757;transition:background .4s}
+.conn-dot.ok{background:var(--green)}
+.conn-lbl{color:var(--muted)}
+
+/* ── LAYOUT ── */
+.app-body{flex:1;display:flex;overflow:hidden}
+.module{flex:1;display:none;overflow:hidden;flex-direction:row}
+.module.on{display:flex}
+
+/* ── SIDEBAR ── */
+.sidebar{width:240px;min-width:240px;background:var(--sb);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.sb-head{padding:16px 20px 12px;border-bottom:1px solid var(--border)}
+.sb-head .mod-title{font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:2px;color:#fff}
+.sb-head .mod-sub{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-top:3px}
+.sb-head .bar{width:24px;height:2px;background:var(--red);margin-top:8px}
+.sb-path{padding:8px 20px;border-bottom:1px solid var(--border);font-family:'DM Mono',monospace;font-size:9px;color:var(--muted);line-height:1.5;word-break:break-all}
+.sb-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px 20px;border-bottom:1px solid var(--border)}
+.stat{background:rgba(200,16,46,.07);border:1px solid rgba(200,16,46,.2);border-radius:var(--r);padding:9px 11px}
+.stat .n{font-family:'Bebas Neue',sans-serif;font-size:22px;color:#fff;line-height:1}
+.stat .l{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-top:2px}
+.sb-filters{padding:14px 20px;flex:1;overflow-y:auto}
+.ft{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px}
+.fg{margin-bottom:10px}
+.fg label{display:block;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}
+.fg input,.fg select{width:100%;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:7px 10px;font-family:'DM Sans',sans-serif;font-size:12px;outline:none;transition:border-color var(--tr)}
+.fg input:focus,.fg select:focus{border-color:var(--red)}
+.sb-btns{padding:0 20px 16px;display:flex;flex-direction:column;gap:6px}
+.btn-new{width:100%;background:var(--red);border:none;border-radius:var(--r);color:#fff;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;letter-spacing:.6px;padding:10px 0;cursor:pointer;transition:background var(--tr);text-transform:uppercase}
+.btn-new:hover{background:var(--red-h)}
+.btn-sec{width:100%;background:transparent;border:1px solid var(--border);border-radius:var(--r);color:var(--muted);font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;letter-spacing:.5px;padding:8px 0;cursor:pointer;transition:all var(--tr);text-transform:uppercase}
+.btn-sec:hover{border-color:var(--red);color:#fff}
+
+/* ── MAIN CONTENT ── */
+.main-content{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.bar-top{padding:12px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;background:var(--sb);flex-shrink:0}
+.bar-top h1{font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:2.5px;color:#fff;flex:1}
+.sw{position:relative;width:250px}
+.sw input{width:100%;background:var(--inp);border:1px solid var(--border);border-radius:20px;color:var(--text);padding:7px 14px 7px 30px;font-family:'DM Sans',sans-serif;font-size:12px;outline:none;transition:border-color var(--tr)}
+.sw input:focus{border-color:var(--red)}
+.sw input::placeholder{color:var(--muted)}
+.sw .si{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:13px}
+.btn-reload{background:none;border:1px solid var(--border);border-radius:var(--r);color:var(--muted);padding:6px 10px;font-size:11px;cursor:pointer;transition:all var(--tr)}
+.btn-reload:hover{border-color:var(--red);color:#fff}
+.btn-export{background:none;border:1px solid rgba(39,174,96,.3);border-radius:var(--r);color:var(--green);padding:6px 12px;font-size:11px;cursor:pointer;transition:all var(--tr);font-weight:600}
+.btn-export:hover{background:rgba(39,174,96,.1)}
+
+/* ── TABLE ── */
+.tw{flex:1;overflow:auto}
+table{width:100%;border-collapse:collapse}
+thead tr{background:#111;position:sticky;top:0;z-index:10}
+thead th{padding:10px 14px;text-align:left;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);border-bottom:2px solid var(--red);white-space:nowrap;cursor:pointer;user-select:none;transition:color var(--tr)}
+thead th:hover{color:var(--text)}
+thead th.sa::after{content:' ▲';color:var(--gold)}
+thead th.sd::after{content:' ▼';color:var(--gold)}
+tbody tr{border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer;transition:background var(--tr)}
+tbody tr:nth-child(odd){background:rgba(255,255,255,.022)}
+tbody tr:hover{background:rgba(200,16,46,.09)!important}
+tbody tr.sel{background:rgba(200,16,46,.16)!important}
+tbody tr.no-meta td{color:var(--muted)}
+td{padding:8px 14px;font-size:12px;color:var(--text);vertical-align:middle;white-space:nowrap}
+.tjob{font-family:'DM Mono',monospace;font-size:12px;color:var(--red);font-weight:600;letter-spacing:.5px}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;letter-spacing:.3px}
+.b-open{background:rgba(41,128,185,.15);color:#5dade2;border:1px solid rgba(41,128,185,.25)}
+.b-wip{background:rgba(243,156,18,.12);color:#f39c12;border:1px solid rgba(243,156,18,.25)}
+.b-done{background:rgba(39,174,96,.15);color:#58d68d;border:1px solid rgba(39,174,96,.25)}
+.b-toappr{background:rgba(200,16,46,.12);color:#e8566a;border:1px solid rgba(200,16,46,.25)}
+.b-inprog{background:rgba(142,68,173,.12);color:#c39bd3;border:1px solid rgba(142,68,173,.25)}
+.b-yes{background:rgba(39,174,96,.15);color:#58d68d;border:1px solid rgba(39,174,96,.25)}
+.b-nometa{background:rgba(255,255,255,.06);color:var(--muted);border:1px solid var(--border);font-style:italic}
+
+/* ── OVERLAY & SLIDE PANEL ── */
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;opacity:0;pointer-events:none;transition:opacity var(--tr);backdrop-filter:blur(2px)}
+.ov.on{opacity:1;pointer-events:all}
+.panel{position:fixed;top:48px;right:0;width:490px;height:calc(100% - 48px);background:var(--panel);border-left:1px solid var(--border);z-index:101;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .28s cubic-bezier(.4,0,.2,1);overflow:hidden}
+.panel.on{transform:translateX(0)}
+.ph{padding:16px 22px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;gap:12px;flex-shrink:0}
+.px{margin-left:auto;background:none;border:1px solid var(--border);border-radius:50%;width:28px;height:28px;color:var(--muted);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:all var(--tr);flex-shrink:0}
+.px:hover{border-color:var(--red);color:#fff}
+.ptabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0}
+.ptab{flex:1;background:none;border:none;padding:11px 0;font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all var(--tr)}
+.ptab.on{color:var(--red);border-bottom-color:var(--red)}
+.ptab:hover:not(.on){color:var(--text)}
+.pb{flex:1;overflow-y:auto;padding:18px 22px}
+.tc2{display:none}.tc2.on{display:block}
+.sl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.8px;color:var(--red);padding-bottom:7px;border-bottom:1px solid var(--border);margin-bottom:14px;margin-top:6px}
+.fr{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.fr.f1{grid-template-columns:1fr}
+.fi{display:flex;flex-direction:column;gap:4px}
+.fi label{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted)}
+.fi input,.fi textarea,.fi select{background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:8px 11px;font-family:'DM Sans',sans-serif;font-size:12px;outline:none;transition:border-color var(--tr);width:100%}
+.fi input:focus,.fi textarea:focus,.fi select:focus{border-color:var(--red)}
+.fi textarea{resize:vertical;min-height:60px}
+.fi input[type=number]{font-family:'DM Mono',monospace;font-size:14px;font-weight:600}
+.hint{font-size:10px;color:var(--muted);margin-top:2px}
+.hint.ok{color:var(--green)}.hint.bad{color:#eb5757}
+.money-wrap{position:relative}.money-wrap input{padding-left:26px}
+.money-sym{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:12px;font-family:'DM Mono',monospace}
+.gm-preview{margin-top:6px;font-size:11px;color:var(--muted)}
+.gm-preview.pos{color:var(--green)}.gm-preview.neg{color:#eb5757}
+.job-preview{background:rgba(200,16,46,.07);border:1px solid rgba(200,16,46,.2);border-radius:var(--r);padding:11px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px}
+.job-preview .jn{font-family:'DM Mono',monospace;font-size:20px;color:var(--red);font-weight:600}
+.sguide{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin-bottom:14px;font-size:11px;background:rgba(255,255,255,.03);padding:11px;border-radius:var(--r);border:1px solid var(--border)}
+.sguide .sc{font-family:'DM Mono',monospace;color:var(--red);font-weight:600;white-space:nowrap}
+.sguide .sd{color:var(--muted2)}
+.pf{padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:9px;flex-shrink:0}
+.btn{flex:1;padding:10px 0;border-radius:var(--r);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;letter-spacing:.4px;cursor:pointer;border:none;text-transform:uppercase;transition:all var(--tr)}
+.btn-p{background:var(--red);color:#fff}.btn-p:hover{background:var(--red-h)}
+.btn-s{background:transparent;color:var(--muted);border:1px solid var(--border)}.btn-s:hover{border-color:var(--red);color:#fff}
+.btn-d{background:transparent;color:#eb5757;border:1px solid rgba(235,87,87,.3)}.btn-d:hover{background:rgba(235,87,87,.1)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.cr{display:flex;align-items:center;gap:9px;padding:9px 12px;background:rgba(200,16,46,.05);border:1px solid var(--border);border-radius:var(--r);margin-bottom:12px}
+.cr label{font-size:12px;cursor:pointer}
+.cr input[type=checkbox]{width:15px;height:15px;cursor:pointer;accent-color:var(--red)}
+
+/* ── DOCS panel ── */
+.dz{border:2px dashed var(--border);border-radius:var(--r);padding:24px 18px;text-align:center;cursor:pointer;transition:all var(--tr);margin-bottom:14px;position:relative}
+.dz:hover,.dz.dg{border-color:var(--red);background:rgba(200,16,46,.05)}
+.dz input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.dz-icon{font-size:26px;margin-bottom:6px}
+.dz-t{font-size:12px;color:var(--muted)}.dz-t span{color:var(--red);font-weight:600}
+.pp{background:#111;border:1px solid var(--border);border-radius:var(--r);padding:9px 12px;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.pp-ic{color:var(--gold);font-size:13px}
+.pp-tx{font-family:'DM Mono',monospace;font-size:9px;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fl{display:flex;flex-direction:column;gap:6px}
+.fitem{display:flex;align-items:center;gap:9px;padding:9px 11px;background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:var(--r);transition:background var(--tr)}
+.fitem:hover{background:rgba(200,16,46,.07)}
+.fi-ic{font-size:17px;flex-shrink:0}
+.fi-inf{flex:1;min-width:0}
+.fi-nm{font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fi-mt{font-size:10px;color:var(--muted);margin-top:2px}
+.fi-del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;padding:3px 6px;flex-shrink:0;transition:color var(--tr);border-radius:3px}
+.fi-del:hover{color:#eb5757;background:rgba(235,87,87,.1)}
+
+/* ── Hourly Rate bar ── */
+.temp{font-family:'DM Mono',monospace;font-size:13px;font-weight:600;text-align:right}
+.temp.high{color:#e74c3c}.temp.mid{color:var(--amber)}.temp.low{color:var(--green)}
+.rate-bar{height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin-top:2px}
+.rate-fill{height:100%;border-radius:3px;transition:width .4s ease}
+.ph-rate{font-family:'Bebas Neue',sans-serif;font-size:30px;color:var(--gold);line-height:1}
+.rate-preview{margin-top:6px;padding:9px 12px;background:rgba(240,165,0,.06);border:1px solid rgba(240,165,0,.2);border-radius:var(--r);font-size:11px;color:var(--gold)}
+.hist-item{display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:var(--r);margin-bottom:6px}
+.hist-yr{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);min-width:34px}
+.hist-rate{font-family:'DM Mono',monospace;font-size:13px;font-weight:600;color:var(--gold)}
+.hist-diff{font-size:10px;margin-left:auto}
+.hist-diff.up{color:#e74c3c}.hist-diff.dn{color:var(--green)}.hist-diff.same{color:var(--muted)}
+.sb-year{padding:12px 20px;border-bottom:1px solid var(--border)}
+.sb-year label{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1.2px;display:block;margin-bottom:6px}
+.year-row{display:flex;gap:6px;align-items:center}
+.year-row select{flex:1;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:7px 10px;font-family:'DM Mono',sans-serif;font-size:13px;font-weight:600;outline:none;transition:border-color var(--tr)}
+.year-row select:focus{border-color:var(--red)}
+.btn-yr{background:none;border:1px solid var(--border);border-radius:var(--r);color:var(--muted);padding:6px 9px;font-size:11px;cursor:pointer;transition:all var(--tr);white-space:nowrap}
+.btn-yr:hover{border-color:var(--red);color:#fff}
+
+/* ── Quote status chips ── */
+.chip{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;margin-bottom:16px}
+.chip .d{width:6px;height:6px;border-radius:50%}
+.ch-n{background:rgba(139,163,187,.1);color:#777;border:1px solid var(--border)}
+.ch-n .d{background:var(--muted)}
+.ch-m{background:rgba(244,162,97,.12);color:#f4a261;border:1px solid rgba(244,162,97,.28)}
+.ch-m .d{background:#f4a261}
+.ch-c{background:rgba(242,201,76,.12);color:#f2c94c;border:1px solid rgba(242,201,76,.28)}
+.ch-c .d{background:#f2c94c}
+.ch-a{background:rgba(111,207,151,.15);color:#6fcf97;border:1px solid rgba(111,207,151,.28)}
+.ch-a .d{background:#6fcf97}
+.qg{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px}
+.qi label{display:block;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px;text-align:center}
+.qi input{width:100%;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:7px 4px;font-family:'DM Mono',monospace;font-size:13px;text-align:center;outline:none;transition:border-color var(--tr)}
+.qi input:focus{border-color:var(--red)}
+
+/* ── Modal ── */
+.mo{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:200;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity var(--tr);backdrop-filter:blur(3px)}
+.mo.on{opacity:1;pointer-events:all}
+.md{background:var(--panel);border:1px solid var(--border2);border-radius:10px;width:540px;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;transform:translateY(14px);transition:transform var(--tr)}
+.mo.on .md{transform:translateY(0)}
+.mh{padding:18px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px}
+.mh h2{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:2px;flex:1;color:#fff}
+.mb2{flex:1;overflow-y:auto;padding:20px 24px}
+.mf{padding:14px 24px;border-top:1px solid var(--border);display:flex;gap:9px;justify-content:flex-end}
+.mf .btn{flex:none;padding:10px 22px}
+.dz-imp{border:2px dashed var(--border);border-radius:var(--r);padding:22px 18px;text-align:center;cursor:pointer;transition:all var(--tr);margin-bottom:12px;position:relative}
+.dz-imp:hover,.dz-imp.dg{border-color:var(--red);background:rgba(200,16,46,.05)}
+.dz-imp input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.r-chips{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px}
+.r-chip{padding:10px 12px;border-radius:var(--r);text-align:center}
+.r-chip .n{font-family:'Bebas Neue',sans-serif;font-size:22px;line-height:1}
+.r-chip .l{font-size:9px;text-transform:uppercase;letter-spacing:1px;margin-top:2px;opacity:.7}
+
+/* ── Toasts ── */
+.tw2{position:fixed;bottom:20px;right:20px;z-index:300;display:flex;flex-direction:column;gap:6px;pointer-events:none}
+.toast{background:#1e1e1e;border:1px solid var(--border2);border-radius:var(--r);padding:10px 15px;font-size:12px;display:flex;align-items:center;gap:9px;animation:tsi .22s ease;pointer-events:all;max-width:340px;box-shadow:0 8px 32px rgba(0,0,0,.5)}
+.toast.ok{border-left:3px solid var(--green)}.toast.er{border-left:3px solid #eb5757}.toast.if{border-left:3px solid var(--red)}
+@keyframes tsi{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:translateX(0)}}
+.es{padding:44px 0;text-align:center;color:var(--muted)}
+.es .ei{font-size:38px;margin-bottom:10px;opacity:.3}
+.spinner{width:17px;height:17px;border:2px solid var(--border);border-top-color:var(--red);border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Quote table rows */
+tbody tr.q-sm{background:rgba(244,162,97,.08)!important}
+tbody tr.q-sc{background:rgba(242,201,76,.08)!important}
+tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
+</style>
+</head>
+<body>
+
+<!-- TOP NAV -->
+<nav class="topnav">
+  <div class="logo-area">
+    <div class="brand">PERSICO MEX</div>
+    <div class="bar"></div>
+  </div>
+  <div class="nav-tabs">
+    <button class="nav-tab on" onclick="switchModule('jobs',this)"><span class="ni">🗂</span> Job Register</button>
+    <button class="nav-tab" onclick="switchModule('rates',this)"><span class="ni">💰</span> Hourly Rates</button>
+    <button class="nav-tab" onclick="switchModule('quotes',this)"><span class="ni">📋</span> Quote Register</button>
+    <button class="nav-tab" onclick="switchModule('po',this)"><span class="ni">🛒</span> Purchase Orders</button>
+    <button class="nav-tab" onclick="switchModule('wh',this)"><span class="ni">⏱</span> Work Hours</button>
+    <button class="nav-tab" onclick="switchModule('ivp',this)"><span class="ni">🧾</span> Invoiced POs</button>
+    <button class="nav-tab" onclick="switchModule('report',this)"><span class="ni">📊</span> Job Report</button>
+    <button class="nav-tab" onclick="switchModule('fx',this)"><span class="ni">💱</span> Tipo de Cambio</button>
+  </div>
+  <div class="nav-status">
+    <div class="conn-group"><div class="conn-dot" id="dot-jobs"></div><span class="conn-lbl" id="lbl-jobs">Jobs</span></div>
+    <div class="conn-group"><div class="conn-dot" id="dot-rates"></div><span class="conn-lbl" id="lbl-rates">Rates</span></div>
+    <div class="conn-group"><div class="conn-dot" id="dot-quotes"></div><span class="conn-lbl" id="lbl-quotes">Quotes</span></div>
+    <div class="conn-group"><div class="conn-dot" id="dot-po"></div><span class="conn-lbl" id="lbl-po">IPOs</span></div>
+    <div class="conn-group"><div class="conn-dot" id="dot-wh"></div><span class="conn-lbl" id="lbl-wh">WHs</span></div>
+    <div class="conn-group"><div class="conn-dot" id="dot-ivp"></div><span class="conn-lbl" id="lbl-ivp">IVPs</span></div>
+    <div class="conn-group"><div class="conn-dot" id="dot-report" style="background:var(--muted)"></div><span class="conn-lbl" id="lbl-report">Report</span></div>
+    <div class="conn-group"><div class="conn-dot" id="dot-fx"></div><span class="conn-lbl" id="lbl-fx">FX</span></div>
+  </div>
+</nav>
+
+<div class="app-body">
+
+<!-- ══════════════════════════════════════════════════
+     MODULE: JOB REGISTER
+══════════════════════════════════════════════════ -->
+<div class="module on" id="mod-jobs">
+  <aside class="sidebar">
+    <div class="sb-head">
+      <div class="mod-title">Job Register</div>
+      <div class="mod-sub">Cost Controlling</div>
+      <div class="bar"></div>
+    </div>
+    <div class="sb-path" id="j-path">Cargando…</div>
+    <div class="sb-stats">
+      <div class="stat"><div class="n" id="js-tot">—</div><div class="l">Total Jobs</div></div>
+      <div class="stat"><div class="n" id="js-open">—</div><div class="l">Open</div></div>
+      <div class="stat"><div class="n" id="js-wip">—</div><div class="l">WIP</div></div>
+      <div class="stat"><div class="n" id="js-done">—</div><div class="l">Done</div></div>
+    </div>
+    <div class="sb-filters">
+      <div class="ft">Filtros</div>
+      <div class="fg"><label>PM</label><select id="jf-pm"><option value="">Todos</option></select></div>
+      <div class="fg"><label>Cliente</label><input type="text" id="jf-cust" placeholder="Buscar cliente…"></div>
+      <div class="fg"><label>Grupo de Producto</label><select id="jf-pg"><option value="">Todos</option></select></div>
+      <div class="fg"><label>Estado</label>
+        <select id="jf-st">
+          <option value="">Todos</option><option value="Open">Open</option>
+          <option value="WIP">WIP</option><option value="Done">Done</option><option value="Cancelled">Cancelled</option>
+        </select></div>
+      <div class="fg"><label>Tipo de subíndice</label>
+        <select id="jf-sub">
+          <option value="">Todos</option>
+          <option value="00">00 – Máquina principal</option><option value="01">01 – Instalación</option>
+          <option value="02-50">02–50 Ing. changes</option><option value="51-60">51–60 Spare parts</option>
+          <option value="61-97">61–97 Services</option><option value="99">99 – Garantía</option>
+        </select></div>
+    </div>
+    <div class="sb-btns">
+      <button class="btn-new" onclick="jobOpenNew()">+ Nuevo Job</button>
+      <button class="btn-sec" onclick="jobOpenImport()">↑ Importar Excel</button>
+    </div>
+  </aside>
+  <div class="main-content">
+    <div class="bar-top">
+      <h1>Job Register</h1>
+      <div class="sw"><span class="si">⌕</span><input type="text" id="j-gs" placeholder="Job #, cliente, descripción…" oninput="jobRender()"></div>
+      <button class="btn-reload" onclick="loadJobs()">↺ Recargar</button>
+      <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted)">
+        <div class="conn-dot" id="j-dot"></div><span id="j-lbl">Conectando…</span>
+      </div>
+    </div>
+    <div class="tw">
+      <table>
+        <thead><tr>
+          <th data-mod="jobs" data-k="job_number">Job #</th>
+          <th data-mod="jobs" data-k="customer">Cliente</th>
+          <th data-mod="jobs" data-k="description">Descripción</th>
+          <th data-mod="jobs" data-k="pm">PM</th>
+          <th data-mod="jobs" data-k="product_group">Grupo</th>
+          <th data-mod="jobs" data-k="revenue">Revenue (USD)</th>
+          <th data-mod="jobs" data-k="approval_fc">FC</th>
+          <th data-mod="jobs" data-k="status">Estado</th>
+          <th data-mod="jobs" data-k="ship_date">Ship Date</th>
+        </tr></thead>
+        <tbody id="j-tb"><tr><td colspan="9"><div class="es"><div class="spinner"></div></div></td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     MODULE: HOURLY RATES
+══════════════════════════════════════════════════ -->
+<div class="module" id="mod-rates">
+  <aside class="sidebar">
+    <div class="sb-head">
+      <div class="mod-title">Hourly Rates</div>
+      <div class="mod-sub">Cost Controlling</div>
+      <div class="bar"></div>
+    </div>
+    <div class="sb-path" id="r-path">Cargando…</div>
+    <div class="sb-year">
+      <label>Año activo</label>
+      <div class="year-row">
+        <select id="r-year-sel" onchange="rateSwitchYear()"></select>
+        <button class="btn-yr" onclick="rateOpenCopyYear()">+ Año</button>
+      </div>
+    </div>
+    <div class="sb-stats">
+      <div class="stat"><div class="n" id="rs-emp">—</div><div class="l">Empleados</div></div>
+      <div class="stat"><div class="n" id="rs-avg">—</div><div class="l">Avg $/hr</div></div>
+      <div class="stat"><div class="n" id="rs-max">—</div><div class="l">Máx</div></div>
+      <div class="stat"><div class="n" id="rs-min">—</div><div class="l">Mín</div></div>
+    </div>
+    <div class="sb-filters">
+      <div class="ft">Filtros</div>
+      <div class="fg"><label>Buscar empleado</label><input type="text" id="rf-name" placeholder="Nombre…" oninput="rateRender()"></div>
+      <div class="fg"><label>Departamento</label><select id="rf-dept" onchange="rateRender()"><option value="">Todos</option></select></div>
+      <div class="fg"><label>Rango de tarifa</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+          <input type="number" id="rf-min" placeholder="Mín $" oninput="rateRender()" style="background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:6px 8px;font-size:12px;outline:none">
+          <input type="number" id="rf-max" placeholder="Máx $" oninput="rateRender()" style="background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:6px 8px;font-size:12px;outline:none">
+        </div></div>
+    </div>
+    <div class="sb-btns">
+      <button class="btn-new" onclick="rateOpenNew()">+ Nuevo Empleado</button>
+      <button class="btn-sec" onclick="rateOpenImport()">↑ Importar Excel</button>
+      <button class="btn-sec btn-export" onclick="rateExportCSV()">↓ Exportar CSV</button>
+    </div>
+  </aside>
+  <div class="main-content">
+    <div class="bar-top">
+      <h1>Hourly Rate Register — <span id="r-tb-year" style="color:var(--gold)">—</span></h1>
+      <div class="sw"><span class="si">⌕</span><input type="text" id="r-gs" placeholder="Buscar…" oninput="rateRender()"></div>
+      <button class="btn-reload" onclick="loadRates()">↺ Recargar</button>
+    </div>
+    <div class="tw">
+      <table>
+        <thead><tr>
+          <th data-mod="rates" data-k="id">#</th>
+          <th data-mod="rates" data-k="employee">Empleado</th>
+          <th data-mod="rates" data-k="department">Departamento</th>
+          <th data-mod="rates" data-k="rate" style="text-align:right">Tarifa / hr</th>
+          <th>Distribución</th>
+          <th data-mod="rates" data-k="notes">Notas</th>
+        </tr></thead>
+        <tbody id="r-tb"><tr><td colspan="6"><div class="es"><div class="spinner"></div></div></td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     MODULE: QUOTE REGISTER
+══════════════════════════════════════════════════ -->
+<div class="module" id="mod-quotes">
+  <aside class="sidebar">
+    <div class="sb-head">
+      <div class="mod-title">Quote Register</div>
+      <div class="mod-sub">GERC · Sales MX</div>
+      <div class="bar"></div>
+    </div>
+    <div class="sb-stats">
+      <div class="stat"><div class="n" id="qs-tot">—</div><div class="l">Total</div></div>
+      <div class="stat"><div class="n" id="qs-aw">—</div><div class="l">Awarded</div></div>
+      <div class="stat"><div class="n" id="qs-dn">—</div><div class="l">Done</div></div>
+      <div class="stat"><div class="n" id="qs-op">—</div><div class="l">Open</div></div>
+    </div>
+    <div class="sb-filters">
+      <div class="ft">Filtros</div>
+      <div class="fg"><label>Cliente</label><input type="text" id="qf-cust" placeholder="Buscar cliente…"></div>
+      <div class="fg"><label>Estado</label>
+        <select id="qf-st">
+          <option value="">Todos</option><option value="open">En proceso</option>
+          <option value="mgmt">→ Dirección</option><option value="client">→ Cliente</option>
+          <option value="awarded">Awarded</option><option value="done">Done ✓</option>
+        </select></div>
+      <div class="fg"><label>Tipo</label>
+        <select id="qf-tp">
+          <option value="">Todos</option><option value="machine">Machine</option>
+          <option value="tool">Tool / Tolling</option><option value="machTool">Machine &amp; Tool</option>
+          <option value="robotic">Robotic Cell</option><option value="service">Service</option>
+        </select></div>
+      <div class="fg"><label>Año</label>
+        <select id="qf-yr"><option value="">Todos</option><option value="2026" selected>2026</option><option value="2025">2025</option></select></div>
+    </div>
+    <div class="sb-btns">
+      <button class="btn-new" onclick="quoteOpenNew()">+ Nueva Cotización</button>
+    </div>
+  </aside>
+  <div class="main-content">
+    <div class="bar-top">
+      <h1>Quotation Register</h1>
+      <div class="sw"><span class="si">⌕</span><input type="text" id="q-gs" placeholder="Q-Number, cliente, descripción…" oninput="quoteRender()"></div>
+      <button class="btn-reload" onclick="loadQuotes()">↺ Recargar</button>
+      <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted)">
+        <div class="conn-dot" id="q-dot"></div><span id="q-lbl">Conectando…</span>
+      </div>
+    </div>
+    <div class="tw">
+      <table>
+        <thead><tr>
+          <th data-mod="quotes" data-k="qnum">Q-Number</th>
+          <th data-mod="quotes" data-k="customer">Cliente</th>
+          <th data-mod="quotes" data-k="desc">Descripción</th>
+          <th>Tipo</th>
+          <th data-mod="quotes" data-k="rfq">RFQ Ref.</th>
+          <th data-mod="quotes" data-k="received">Recepción</th>
+          <th>Done</th>
+          <th data-mod="quotes" data-k="sentMgmt">→ Dirección</th>
+          <th data-mod="quotes" data-k="sentClient">→ Cliente</th>
+          <th>Awarded</th>
+        </tr></thead>
+        <tbody id="q-tb"><tr><td colspan="10"><div class="es"><div class="spinner"></div></div></td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     MODULE: PURCHASE ORDERS
+══════════════════════════════════════════════════ -->
+<div class="module" id="mod-po">
+  <aside class="sidebar">
+    <div class="sb-head">
+      <div class="mod-title">Purchase Orders</div>
+      <div class="mod-sub">Cost Controlling · IPOs</div>
+      <div class="bar"></div>
+    </div>
+    <div class="sb-path" id="po-path">Cargando…</div>
+    <div class="sb-year">
+      <label>Año activo</label>
+      <div class="year-row">
+        <select id="po-year-sel" onchange="poSwitchYear()"></select>
+      </div>
+    </div>
+    <div class="sb-stats">
+      <div class="stat"><div class="n" id="pos-tot">—</div><div class="l">Total OCs</div></div>
+      <div class="stat"><div class="n" id="pos-rec">—</div><div class="l">Recepcionadas</div></div>
+      <div class="stat"><div class="n" id="pos-emit">—</div><div class="l">Emitidas</div></div>
+      <div class="stat"><div class="n" id="pos-can">—</div><div class="l">Canceladas</div></div>
+    </div>
+    <div class="sb-filters">
+      <div class="ft">Filtros</div>
+      <div class="fg"><label>Proveedor</label><input type="text" id="pof-nombre" placeholder="Buscar proveedor…" oninput="poRender()"></div>
+      <div class="fg"><label>Destino (Job)</label><input type="text" id="pof-dest" placeholder="Ej. 625-09, SHOP FLOOR…" oninput="poRender()"></div>
+      <div class="fg"><label>Estatus</label>
+        <select id="pof-est" onchange="poRender()">
+          <option value="">Todos</option>
+          <option value="Recepcionada">Recepcionada</option>
+          <option value="Emitida">Emitida</option>
+          <option value="Cancelada">Cancelada</option>
+          <option value="Rec.Parc.">Rec. Parcial</option>
+          <option value="Comprada">Comprada</option>
+        </select></div>
+      <div class="fg"><label>Moneda</label>
+        <select id="pof-moneda" onchange="poRender()">
+          <option value="">Todas</option>
+          <option value="MXN">MXN (TC = 1)</option>
+          <option value="USD">USD (TC > 1)</option>
+        </select></div>
+      <div class="fg"><label>Subtotal mín. (orig.)</label>
+        <input type="number" id="pof-min" placeholder="0" oninput="poRender()" style="background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:6px 8px;font-size:12px;outline:none;width:100%"></div>
+    </div>
+    <div class="sb-btns">
+      <button class="btn-new" onclick="poOpenImport()">↑ Cargar Excel</button>
+      <button class="btn-sec btn-export" onclick="poExportCSV()">↓ Exportar CSV</button>
+    </div>
+  </aside>
+  <div class="main-content">
+    <div class="bar-top">
+      <h1>Purchase Orders — <span id="po-tb-year" style="color:var(--gold)">—</span></h1>
+      <div style="display:flex;align-items:center;gap:10px;margin-left:auto">
+        <span style="font-size:11px;color:var(--muted)">Total USD:</span>
+        <span id="po-total-mxn" style="font-family:'DM Mono',monospace;font-size:13px;font-weight:600;color:var(--gold)">—</span>
+      </div>
+      <div class="sw" style="margin-left:12px"><span class="si">⌕</span><input type="text" id="po-gs" placeholder="Clave, proveedor, destino…" oninput="poRender()"></div>
+      <button class="btn-reload" onclick="loadPO()">↺ Recargar</button>
+      <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted)">
+        <div class="conn-dot" id="po-dot"></div><span id="po-lbl">Conectando…</span>
+      </div>
+    </div>
+    <div class="tw">
+      <table>
+        <thead><tr>
+          <th data-mod="po" data-k="clave">Clave OC</th>
+          <th data-mod="po" data-k="fecha_doc">Fecha Doc.</th>
+          <th data-mod="po" data-k="entregar_a">Destino</th>
+          <th data-mod="po" data-k="nombre">Proveedor</th>
+          <th data-mod="po" data-k="subtotal" style="text-align:right">Subtotal (orig.)</th>
+          <th data-mod="po" data-k="subtotal_usd" style="text-align:right">USD</th>
+          <th data-mod="po" data-k="fx_rate_used" style="text-align:right">T.C. usado</th>
+          <th data-mod="po" data-k="estatus">Estatus</th>
+          <th data-mod="po" data-k="fecha_recepcion">Fecha Recep.</th>
+        </tr></thead>
+        <tbody id="po-tb"><tr><td colspan="9"><div class="es"><div class="spinner"></div></div></td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     MODULE: WORK HOURS
+══════════════════════════════════════════════════ -->
+<div class="module" id="mod-wh">
+  <aside class="sidebar">
+    <div class="sb-head">
+      <div class="mod-title">Work Hours</div>
+      <div class="mod-sub">Cost Controlling · WHs</div>
+      <div class="bar"></div>
+    </div>
+    <div class="sb-path" id="wh-path">Cargando…</div>
+    <div class="sb-year">
+      <label>Año activo</label>
+      <div class="year-row"><select id="wh-year-sel" onchange="whSwitchYear()"></select></div>
+    </div>
+    <div class="sb-stats">
+      <div class="stat"><div class="n" id="whs-tot">—</div><div class="l">Registros</div></div>
+      <div class="stat"><div class="n" id="whs-hrs">—</div><div class="l">Total Horas</div></div>
+      <div class="stat"><div class="n" id="whs-emp">—</div><div class="l">Empleados</div></div>
+      <div class="stat"><div class="n" id="whs-codes">—</div><div class="l">Work Codes</div></div>
+    </div>
+    <div class="sb-filters">
+      <div class="ft">Filtros</div>
+      <div class="fg"><label>Empleado</label><input type="text" id="whf-emp" placeholder="Nombre o ID…" oninput="whRender()"></div>
+      <div class="fg"><label>Work Code / Job</label><input type="text" id="whf-code" placeholder="Ej. 625-09, INTEVA…" oninput="whRender()"></div>
+      <div class="fg"><label>Descripción</label><input type="text" id="whf-desc" placeholder="Buscar descripción…" oninput="whRender()"></div>
+      <div class="fg"><label>Fecha inicial</label><input type="date" id="whf-from" onchange="whRender()"></div>
+      <div class="fg"><label>Fecha final</label><input type="date" id="whf-to" onchange="whRender()"></div>
+    </div>
+    <div class="sb-btns">
+      <button class="btn-new" onclick="whOpenImport()">↑ Cargar Excel</button>
+      <button class="btn-sec btn-export" onclick="whExportCSV()">↓ Exportar CSV</button>
+    </div>
+  </aside>
+  <div class="main-content">
+    <div class="bar-top">
+      <h1>Work Hours — <span id="wh-tb-year" style="color:var(--gold)">—</span></h1>
+      <div style="display:flex;align-items:center;gap:10px;margin-left:auto">
+        <span style="font-size:11px;color:var(--muted)">Horas filtradas:</span>
+        <span id="wh-total-hrs" style="font-family:'DM Mono',monospace;font-size:13px;font-weight:600;color:var(--gold)">—</span>
+        <span style="font-size:11px;color:var(--muted);margin-left:8px">Costo:</span>
+        <span id="wh-total-cost" style="font-family:'DM Mono',monospace;font-size:13px;font-weight:600;color:var(--green)">—</span>
+      </div>
+      <div class="sw" style="margin-left:12px"><span class="si">⌕</span><input type="text" id="wh-gs" placeholder="Empleado, code, descripción…" oninput="whRender()"></div>
+      <button class="btn-reload" onclick="loadWH()">↺ Recargar</button>
+      <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted)">
+        <div class="conn-dot" id="wh-dot"></div><span id="wh-lbl">Conectando…</span>
+      </div>
+    </div>
+    <div class="tw">
+      <table>
+        <thead><tr>
+          <th data-mod="wh" data-k="id">#</th>
+          <th data-mod="wh" data-k="employee">Empleado</th>
+          <th data-mod="wh" data-k="date_worked">Fecha</th>
+          <th data-mod="wh" data-k="work_code">Work Code</th>
+          <th data-mod="wh" data-k="hours" style="text-align:right">Horas</th>
+          <th data-mod="wh" data-k="cost" style="text-align:right">Costo (USD)</th>
+          <th data-mod="wh" data-k="description">Descripción</th>
+        </tr></thead>
+        <tbody id="wh-tb"><tr><td colspan="7"><div class="es"><div class="spinner"></div></div></td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     MODULE: INVOICED POs
+══════════════════════════════════════════════════ -->
+<div class="module" id="mod-ivp">
+  <aside class="sidebar">
+    <div class="sb-head">
+      <div class="mod-title">Invoiced POs</div>
+      <div class="mod-sub">Cost Controlling · IVPs</div>
+      <div class="bar"></div>
+    </div>
+    <div class="sb-path" id="ivp-path">Cargando…</div>
+    <div class="sb-year">
+      <label>Año activo</label>
+      <div class="year-row"><select id="ivp-year-sel" onchange="ivpSwitchYear()"></select></div>
+    </div>
+    <div class="sb-stats">
+      <div class="stat"><div class="n" id="ivps-tot">—</div><div class="l">Total IVPs</div></div>
+      <div class="stat"><div class="n" id="ivps-emit">—</div><div class="l">Emitidas</div></div>
+      <div class="stat"><div class="n" id="ivps-usd">—</div><div class="l">En USD</div></div>
+      <div class="stat"><div class="n" id="ivps-dev">—</div><div class="l">Devueltas</div></div>
+    </div>
+    <div class="sb-filters">
+      <div class="ft">Filtros</div>
+      <div class="fg"><label>Proveedor</label><input type="text" id="ivpf-nombre" placeholder="Buscar proveedor…" oninput="ivpRender()"></div>
+      <div class="fg"><label>Destino (Job)</label><input type="text" id="ivpf-dest" placeholder="Ej. 625-09, SHOP FLOOR…" oninput="ivpRender()"></div>
+      <div class="fg"><label>Estatus</label>
+        <select id="ivpf-est" onchange="ivpRender()">
+          <option value="">Todos</option>
+          <option value="Emitida">Emitida</option>
+          <option value="Devuelta">Devuelta</option>
+        </select></div>
+      <div class="fg"><label>Moneda</label>
+        <select id="ivpf-mon" onchange="ivpRender()">
+          <option value="">Todas</option>
+          <option value="MXN">MXN</option>
+          <option value="USD">USD</option>
+        </select></div>
+      <div class="fg"><label>Fecha pago desde</label><input type="date" id="ivpf-from" onchange="ivpRender()"></div>
+      <div class="fg"><label>Fecha pago hasta</label><input type="date" id="ivpf-to" onchange="ivpRender()"></div>
+    </div>
+    <div class="sb-btns">
+      <button class="btn-new" onclick="ivpOpenImport()">↑ Cargar Excel</button>
+      <button class="btn-sec btn-export" onclick="ivpExportCSV()">↓ Exportar CSV</button>
+    </div>
+  </aside>
+  <div class="main-content">
+    <div class="bar-top">
+      <h1>Invoiced POs — <span id="ivp-tb-year" style="color:var(--gold)">—</span></h1>
+      <div style="display:flex;align-items:center;gap:10px;margin-left:auto">
+        <span style="font-size:11px;color:var(--muted)">Total filtrado:</span>
+        <span id="ivp-total" style="font-family:'DM Mono',monospace;font-size:13px;font-weight:600;color:var(--gold)">—</span>
+      </div>
+      <div class="sw" style="margin-left:12px"><span class="si">⌕</span><input type="text" id="ivp-gs" placeholder="Clave, proveedor, destino…" oninput="ivpRender()"></div>
+      <button class="btn-reload" onclick="loadIVP()">↺ Recargar</button>
+      <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted)">
+        <div class="conn-dot" id="ivp-dot"></div><span id="ivp-lbl">Conectando…</span>
+      </div>
+    </div>
+    <div class="tw">
+      <table>
+        <thead><tr>
+          <th data-mod="ivp" data-k="clave">Clave IVP</th>
+          <th data-mod="ivp" data-k="entregar_a">Destino</th>
+          <th data-mod="ivp" data-k="nombre">Proveedor</th>
+          <th data-mod="ivp" data-k="subtotal" style="text-align:right">Subtotal</th>
+          <th data-mod="ivp" data-k="moneda">Moneda</th>
+          <th data-mod="ivp" data-k="estatus">Estatus</th>
+          <th data-mod="ivp" data-k="fecha_recepcion">Fecha Recep.</th>
+          <th data-mod="ivp" data-k="fecha_pago">Fecha Pago</th>
+          <th data-mod="ivp" data-k="doc_anterior">Doc. Anterior</th>
+        </tr></thead>
+        <tbody id="ivp-tb"><tr><td colspan="9"><div class="es"><div class="spinner"></div></div></td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     MODULE: JOB REPORT
+══════════════════════════════════════════════════ -->
+<div class="module" id="mod-report">
+  <!-- LEFT SIDEBAR: controls -->
+  <aside class="sidebar" style="width:270px;min-width:270px">
+    <div class="sb-head">
+      <div class="mod-title">Job Report</div>
+      <div class="mod-sub">Cost · Margin · Hours · POs</div>
+      <div class="bar"></div>
+    </div>
+    <div style="padding:16px 20px;border-bottom:1px solid var(--border)">
+      <div class="fg">
+        <label>Job Number</label>
+        <div style="display:flex;gap:6px;align-items:center">
+          <select id="rpt-job-sel" style="flex:1;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--gold);padding:8px 10px;font-family:'DM Mono',monospace;font-size:13px;font-weight:600;outline:none;transition:border-color var(--tr)" onchange="rptOnJobSelect()">
+            <option value="">— Seleccionar Job —</option>
+          </select>
+        </div>
+        <div style="margin-top:6px;display:flex;gap:6px">
+          <input type="text" id="rpt-job-input" placeholder="o escribe el #…" style="flex:1;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:7px 10px;font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border-color var(--tr)" oninput="rptOnManualInput()">
+        </div>
+      </div>
+      <div style="margin-top:4px;padding:8px 10px;background:rgba(200,16,46,.06);border:1px solid rgba(200,16,46,.15);border-radius:var(--r);font-size:11px;color:var(--muted2);min-height:32px" id="rpt-customer-display">
+        <span style="color:var(--muted)">Cliente: —</span>
+      </div>
+    </div>
+    <div style="padding:14px 20px;border-bottom:1px solid var(--border)">
+      <div class="ft">Fuentes de datos</div>
+      <div class="fg"><label>Año Hourly Rates</label>
+        <select id="rpt-rate-year" style="width:100%;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:7px 10px;font-size:12px;outline:none"></select></div>
+      <div class="fg"><label>Año Work Hours</label>
+        <select id="rpt-wh-year" style="width:100%;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:7px 10px;font-size:12px;outline:none"></select></div>
+      <div class="fg"><label>Año Purchase Orders</label>
+        <select id="rpt-po-year" style="width:100%;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:7px 10px;font-size:12px;outline:none"></select></div>
+    </div>
+    <div style="padding:14px 20px;flex:1"></div>
+    <div class="sb-btns">
+      <button class="btn-new" id="btn-rpt-gen" onclick="rptGenerate()" disabled>⚙ Generar Reporte</button>
+      <button class="btn-sec btn-export" id="btn-rpt-xlsx" onclick="rptExportXLSX()" disabled>↓ Exportar .xlsx</button>
+    </div>
+  </aside>
+
+  <!-- MAIN: report view -->
+  <div class="main-content" style="overflow-y:auto">
+    <div class="bar-top">
+      <h1>Job Cost Report</h1>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+        <div class="conn-dot" id="rpt-dot" style="background:var(--muted)"></div>
+        <span style="font-size:10px;color:var(--muted)" id="rpt-status">Sin datos</span>
+      </div>
+    </div>
+
+    <!-- Empty / loading state -->
+    <div id="rpt-empty" style="display:flex;align-items:center;justify-content:center;height:100%">
+      <div class="es">
+        <div class="ei">📊</div>
+        Selecciona un Job y presiona <b style="color:var(--red)">Generar Reporte</b>
+      </div>
+    </div>
+
+    <!-- Report content -->
+    <div id="rpt-content" style="display:none;padding:24px;max-width:1100px">
+
+      <!-- ── Summary cards ── -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
+        <div id="rpt-card-rev"  class="rpt-card rpt-card-blue"></div>
+        <div id="rpt-card-wh"   class="rpt-card rpt-card-dark"></div>
+        <div id="rpt-card-pur"  class="rpt-card rpt-card-dark"></div>
+        <div id="rpt-card-gm"   class="rpt-card rpt-card-gm"></div>
+      </div>
+
+      <!-- ── Cost breakdown bar ── -->
+      <div style="margin-bottom:20px">
+        <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px">Cost Breakdown vs Revenue</div>
+        <div style="background:var(--border);border-radius:4px;height:22px;overflow:hidden;position:relative">
+          <div id="rpt-bar-wh"  style="position:absolute;left:0;top:0;height:100%;background:var(--blue);transition:width .5s ease"></div>
+          <div id="rpt-bar-pur" style="position:absolute;top:0;height:100%;background:var(--amber);transition:width .5s ease"></div>
+        </div>
+        <div style="display:flex;gap:16px;margin-top:5px;font-size:10px;color:var(--muted)">
+          <div><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--blue);margin-right:4px"></span>Work Hours</div>
+          <div><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--amber);margin-right:4px"></span>Purchasings</div>
+          <div><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--border);margin-right:4px"></span>Gross Margin</div>
+        </div>
+      </div>
+
+      <!-- ── Two-column detail tables ── -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+
+        <!-- Workers table -->
+        <div>
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.8px;color:var(--red);padding-bottom:7px;border-bottom:1px solid var(--border);margin-bottom:10px">
+            ⏱ Work Hours by Employee
+          </div>
+          <div style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse">
+              <thead><tr>
+                <th style="padding:7px 10px;text-align:left;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:2px solid var(--red)">Empleado</th>
+                <th style="padding:7px 10px;text-align:right;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:2px solid var(--red)">Horas</th>
+                <th style="padding:7px 10px;text-align:right;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:2px solid var(--red)">$/hr</th>
+                <th style="padding:7px 10px;text-align:right;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:2px solid var(--red)">Monto</th>
+              </tr></thead>
+              <tbody id="rpt-workers-tb"></tbody>
+              <tfoot id="rpt-workers-foot"></tfoot>
+            </table>
+          </div>
+        </div>
+
+        <!-- PO table -->
+        <div>
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.8px;color:var(--red);padding-bottom:7px;border-bottom:1px solid var(--border);margin-bottom:10px">
+            🛒 Purchase Orders
+          </div>
+          <div style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse">
+              <thead><tr>
+                <th style="padding:7px 10px;text-align:left;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:2px solid var(--red)">Clave</th>
+                <th style="padding:7px 10px;text-align:left;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:2px solid var(--red)">Proveedor</th>
+                <th style="padding:7px 10px;text-align:right;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:2px solid var(--red)">Subtotal</th>
+                <th style="padding:7px 10px;text-align:center;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:2px solid var(--red)">Mon.</th>
+              </tr></thead>
+              <tbody id="rpt-po-tb"></tbody>
+              <tfoot id="rpt-po-foot"></tfoot>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Warning if no data ── -->
+      <div id="rpt-warn" style="display:none;margin-top:16px;padding:12px 16px;background:rgba(243,156,18,.08);border:1px solid rgba(243,156,18,.25);border-radius:var(--r);font-size:12px;color:var(--amber)"></div>
+
+    </div><!-- end rpt-content -->
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     MODULE: FX / TIPO DE CAMBIO
+══════════════════════════════════════════════════ -->
+<div class="module" id="mod-fx">
+  <aside class="sidebar">
+    <div class="sb-head">
+      <div class="mod-title">Tipo de Cambio</div>
+      <div class="mod-sub">MXN/USD · Banco de México</div>
+      <div class="bar"></div>
+    </div>
+    <div class="sb-path" id="fx-path">Cargando…</div>
+    <div class="sb-year">
+      <label>Año activo</label>
+      <div class="year-row"><select id="fx-year-sel" onchange="fxSwitchYear()"></select></div>
+    </div>
+    <div class="sb-stats">
+      <div class="stat"><div class="n" id="fxs-tot">—</div><div class="l">Días con dato</div></div>
+      <div class="stat"><div class="n" id="fxs-avg">—</div><div class="l">Promedio</div></div>
+      <div class="stat"><div class="n" id="fxs-min">—</div><div class="l">Mínimo</div></div>
+      <div class="stat"><div class="n" id="fxs-max">—</div><div class="l">Máximo</div></div>
+    </div>
+    <div class="sb-filters">
+      <div class="ft">Filtros</div>
+      <div class="fg"><label>Fecha desde</label><input type="date" id="fxf-from" onchange="fxRender()"></div>
+      <div class="fg"><label>Fecha hasta</label><input type="date" id="fxf-to" onchange="fxRender()"></div>
+      <div class="fg"><label>Buscar fecha</label><input type="text" id="fxf-gs" placeholder="Ej. 2026-03…" oninput="fxRender()"></div>
+    </div>
+    <div class="sb-btns">
+      <button class="btn-new" onclick="fxOpenImport()">↑ Cargar Excel (.xls)</button>
+    </div>
+  </aside>
+  <div class="main-content">
+    <div class="bar-top">
+      <h1>Tipo de Cambio MXN/USD — <span id="fx-tb-year" style="color:var(--gold)">—</span></h1>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+        <span style="font-size:11px;color:var(--muted)">Hoy:</span>
+        <span id="fx-today-rate" style="font-family:'DM Mono',monospace;font-size:14px;font-weight:600;color:var(--gold)">—</span>
+      </div>
+      <div class="sw" style="margin-left:12px"><span class="si">⌕</span><input type="text" id="fx-gs2" placeholder="Fecha…" oninput="fxRender()"></div>
+      <button class="btn-reload" onclick="loadFX()">↺ Recargar</button>
+      <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted)">
+        <div class="conn-dot" id="fx-dot"></div><span id="fx-lbl">Conectando…</span>
+      </div>
+    </div>
+    <div class="tw">
+      <table>
+        <thead><tr>
+          <th data-mod="fx" data-k="date">Fecha</th>
+          <th data-mod="fx" data-k="rate" style="text-align:right">Tipo de Cambio (MXN/USD)</th>
+          <th>Día semana</th>
+          <th data-mod="fx" data-k="rate" style="text-align:right">Variación vs anterior</th>
+        </tr></thead>
+        <tbody id="fx-tb"><tr><td colspan="4"><div class="es"><div class="spinner"></div></div></td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+</div><!-- end app-body -->
+
+<!-- ════════════════════════ SHARED OVERLAY ════════════════════════ -->
+<div class="ov" id="ov" onclick="closePanel()"></div>
+
+<!-- ════════════════════════ JOB PANEL ════════════════════════ -->
+<aside class="panel" id="j-panel">
+  <div class="ph">
+    <div>
+      <div style="font-family:'DM Mono',monospace;font-size:24px;color:var(--red);font-weight:600" id="jp-job">—</div>
+      <div style="font-size:10px;color:var(--muted);margin-top:3px" id="jp-sub">—</div>
+      <div style="font-size:13px;font-weight:600;color:#fff;margin-top:2px" id="jp-cust">—</div>
+    </div>
+    <button class="px" onclick="closePanel()">✕</button>
+  </div>
+  <div class="ptabs">
+    <button class="ptab on" onclick="jStab('det',this)">Detalles</button>
+    <button class="ptab" onclick="jStab('doc',this)">Documentación</button>
+  </div>
+  <div class="pb">
+    <div class="tc2 on" id="jtab-det">
+      <div class="sl">Información General</div>
+      <div class="fr">
+        <div class="fi"><label>Cliente</label><input type="text" id="je-cust"></div>
+        <div class="fi"><label>PM Asignado</label><input type="text" id="je-pm"></div>
+      </div>
+      <div class="fr f1"><div class="fi"><label>Descripción</label><textarea id="je-desc" rows="3"></textarea></div></div>
+      <div class="fr">
+        <div class="fi"><label>Grupo de Producto</label>
+          <select id="je-pg">
+            <option value="">— Seleccionar —</option>
+            <option>1.1 B1-COMPRESSION /P.MEX</option><option>1.2 B7-INTERIORS /P.MEX</option>
+            <option>1.3 SECONDARIES/P.MEX</option><option>1.4 ROBOTIC /P.MEX</option>
+            <option>1.5 WELDING /P.MEX</option><option>1.6 Service/P.MEX</option><option>1.7 Spare Parts/P.MEX</option>
+          </select></div>
+        <div class="fi"><label>Subgrupo</label><input type="text" id="je-psg"></div>
+      </div>
+      <div class="sl">Financiero</div>
+      <div class="fr">
+        <div class="fi"><label>Revenue (USD)</label><div class="money-wrap"><span class="money-sym">$</span><input type="number" id="je-rev" min="0" step="0.01" oninput="jCalcGM()"></div></div>
+        <div class="fi"><label>Costo Estimado (USD)</label><div class="money-wrap"><span class="money-sym">$</span><input type="number" id="je-cost" min="0" step="0.01" oninput="jCalcGM()"></div></div>
+      </div>
+      <div id="j-gm" class="gm-preview">GM: —</div>
+      <div class="fr">
+        <div class="fi"><label>PO Number</label><input type="text" id="je-po"></div>
+        <div class="fi"><label>Ship Date</label><input type="date" id="je-ship"></div>
+      </div>
+      <div class="sl">Estado</div>
+      <div class="fr">
+        <div class="fi"><label>Aprobación FC</label>
+          <select id="je-fc"><option value="ToApprove">ToApprove</option><option value="InProgress">InProgress</option><option value="Yes">Yes</option><option value="No">No</option></select></div>
+        <div class="fi"><label>Estado del Job</label>
+          <select id="je-st"><option value="Open">Open</option><option value="WIP">WIP</option><option value="Done">Done</option><option value="Cancelled">Cancelled</option></select></div>
+      </div>
+      <div class="fr f1"><div class="fi"><label>Notas</label><textarea id="je-notes" rows="3"></textarea></div></div>
+    </div>
+    <div class="tc2" id="jtab-doc">
+      <div class="pp"><span class="pp-ic">📁</span><span class="pp-tx" id="j-dp">—</span></div>
+      <div class="dz" id="j-dz" ondragover="ev=>{ev.preventDefault();document.getElementById('j-dz').classList.add('dg')}" ondragleave="document.getElementById('j-dz').classList.remove('dg')" ondrop="jDropFiles(event)">
+        <input type="file" multiple onchange="jUploadFiles(this.files)">
+        <div class="dz-icon">📎</div>
+        <div class="dz-t">Arrastra archivos o <span>haz clic</span> para seleccionar</div>
+      </div>
+      <div class="fl" id="j-fl"><div class="es" style="padding:20px 0"><span class="ei">📂</span><br>Sin documentos</div></div>
+    </div>
+  </div>
+  <div class="pf">
+    <button class="btn btn-d" onclick="jobDelete()">Eliminar</button>
+    <button class="btn btn-s" onclick="closePanel()">Cancelar</button>
+    <button class="btn btn-p" onclick="jobSave()">Guardar cambios</button>
+  </div>
+</aside>
+
+<!-- ════════════════════════ RATE PANEL ════════════════════════ -->
+<aside class="panel" id="r-panel">
+  <div class="ph">
+    <div>
+      <div class="ph-rate" id="rp-rate">$—</div>
+      <div style="font-size:11px;color:var(--muted)">USD / hora</div>
+      <div style="font-size:13px;font-weight:600;color:#fff;margin-top:3px" id="rp-name">—</div>
+    </div>
+    <button class="px" onclick="closePanel()">✕</button>
+  </div>
+  <div class="pb">
+    <div class="sl">Información del Empleado</div>
+    <div class="fr f1"><div class="fi"><label>Nombre / ID</label><input type="text" id="re-name" placeholder="Ej. 15HECTOR PEREZ"></div></div>
+    <div class="fr">
+      <div class="fi"><label>Tarifa por hora (USD)</label><div class="money-wrap"><span class="money-sym">$</span><input type="number" id="re-rate" min="0" step="0.01" oninput="rateUpdatePreview()"></div></div>
+      <div class="fi"><label>Departamento</label><input type="text" id="re-dept" placeholder="Ej. CNC, Ensamble…"></div>
+    </div>
+    <div id="r-preview" class="rate-preview" style="display:none"></div>
+    <div class="fr f1"><div class="fi"><label>Notas</label><textarea id="re-notes" rows="3"></textarea></div></div>
+    <div class="sl" style="margin-top:16px">Historial por año</div>
+    <div id="r-hist"><div class="es" style="padding:14px 0"><div class="spinner"></div></div></div>
+  </div>
+  <div class="pf">
+    <button class="btn btn-d" onclick="rateDelete()">Eliminar</button>
+    <button class="btn btn-s" onclick="closePanel()">Cancelar</button>
+    <button class="btn btn-p" onclick="rateSave()">Guardar</button>
+  </div>
+</aside>
+
+<!-- ════════════════════════ QUOTE PANEL ════════════════════════ -->
+<aside class="panel" id="q-panel">
+  <div class="ph">
+    <div><div style="font-family:'Bebas Neue',sans-serif;font-size:26px;color:var(--red)" id="qp-q">—</div><div style="font-size:13px;font-weight:600;margin-top:3px" id="qp-c">—</div></div>
+    <button class="px" onclick="closePanel()">✕</button>
+  </div>
+  <div class="ptabs">
+    <button class="ptab on" onclick="qStab('det',this)">Detalles</button>
+    <button class="ptab" onclick="qStab('doc',this)">Documentación</button>
+  </div>
+  <div class="pb">
+    <div class="tc2 on" id="qtab-det">
+      <div id="qpchip" class="chip ch-n"><span class="d"></span><span id="qpcl">Sin estado</span></div>
+      <div class="sl">Información General</div>
+      <div class="fr"><div class="fi"><label>Cliente</label><input type="text" id="qe-cust"></div><div class="fi"><label>RFQ Ref.</label><input type="text" id="qe-rfq"></div></div>
+      <div class="fr f1"><div class="fi"><label>Descripción</label><textarea id="qe-desc" rows="3"></textarea></div></div>
+      <div class="fr"><div class="fi"><label>Fecha de recepción</label><input type="date" id="qe-recv"></div></div>
+      <div class="sl">Alcance a cotizar</div>
+      <div class="qg">
+        <div class="qi"><label>Machine</label><input type="number" id="qe-mc" min="0" placeholder="0"></div>
+        <div class="qi"><label>Tool</label><input type="number" id="qe-tl" min="0" placeholder="0"></div>
+        <div class="qi"><label>M+Tool</label><input type="number" id="qe-mt" min="0" placeholder="0"></div>
+        <div class="qi"><label>Robotic</label><input type="number" id="qe-rb" min="0" placeholder="0"></div>
+        <div class="qi"><label>Service</label><input type="number" id="qe-sv" min="0" placeholder="0"></div>
+      </div>
+      <div class="sl">Seguimiento</div>
+      <div class="cr"><input type="checkbox" id="qe-dn"><label for="qe-dn">Cotización concluida (Done ✓)</label></div>
+      <div class="fr"><div class="fi"><label>Enviado a dirección</label><input type="date" id="qe-sm"></div><div class="fi"><label>Enviado a cliente</label><input type="date" id="qe-sc"></div></div>
+      <div class="cr"><input type="checkbox" id="qe-aw"><label for="qe-aw">AWARDED — Proyecto ganado</label></div>
+      <div class="sl">Notas</div>
+      <div class="fr f1"><div class="fi"><textarea id="qe-nt" rows="3" placeholder="Observaciones…"></textarea></div></div>
+    </div>
+    <div class="tc2" id="qtab-doc">
+      <div class="pp"><span class="pp-ic">📁</span><span class="pp-tx" id="q-dp">—</span></div>
+      <div class="dz" id="q-dz" ondragover="ev=>{ev.preventDefault();document.getElementById('q-dz').classList.add('dg')}" ondragleave="document.getElementById('q-dz').classList.remove('dg')" ondrop="qDropFiles(event)">
+        <input type="file" multiple onchange="qUploadFiles(this.files)">
+        <div class="dz-icon">⬆</div>
+        <div class="dz-t">Arrastra archivos o <span>haz clic</span> para seleccionar</div>
+      </div>
+      <div class="fl" id="q-fl"><div class="es"><div class="ei">📂</div><p>Sin documentos.</p></div></div>
+    </div>
+  </div>
+  <div class="pf">
+    <button class="btn btn-d" onclick="quoteDelete()">Eliminar</button>
+    <button class="btn btn-s" onclick="closePanel()">Cancelar</button>
+    <button class="btn btn-p" onclick="quoteSave()">Guardar</button>
+  </div>
+</aside>
+
+<!-- ════ MODALS ════ -->
+<!-- Job New -->
+<div class="mo" id="mo-jnew">
+  <div class="md">
+    <div class="mh"><h2>Nuevo Job</h2><button class="px" onclick="closeMo('mo-jnew')">✕</button></div>
+    <div class="mb2">
+      <div class="sl">Número de Job</div>
+      <div class="sguide">
+        <span class="sc">00</span><span class="sd">Máquina o equipo principal</span>
+        <span class="sc">01</span><span class="sd">Instalación y puesta en marcha</span>
+        <span class="sc">02–50</span><span class="sd">Cambios de ingeniería</span>
+        <span class="sc">51–60</span><span class="sd">Refacciones pagadas por el cliente</span>
+        <span class="sc">61–97</span><span class="sd">Servicios pagados por el cliente</span>
+        <span class="sc">99</span><span class="sd">Servicios de garantía</span>
+      </div>
+      <div class="fr">
+        <div class="fi"><label>Índice Principal (automático)</label><input type="text" id="jn-main" readonly style="color:var(--red);font-family:'DM Mono',monospace;font-weight:600;font-size:16px"></div>
+        <div class="fi"><label>Subíndice</label><input type="number" id="jn-sub" min="0" max="99" placeholder="ej. 00, 61, 01…" oninput="jobUpdatePreview()" style="font-family:'DM Mono',monospace;font-size:16px"><div class="hint" id="jn-hint"></div></div>
+      </div>
+      <div class="job-preview"><div><div class="jn" id="jn-num">—</div><div style="font-size:10px;color:var(--muted2);margin-top:3px" id="jn-lbl">Ingresa un subíndice</div></div></div>
+      <div class="sl">Información General</div>
+      <div class="fr">
+        <div class="fi"><label>Cliente</label><input type="text" id="jn-cust"></div>
+        <div class="fi"><label>PM Asignado</label>
+          <select id="jn-pm">
+            <option value="">— Seleccionar —</option>
+            <option>Ana Mariel Rocha - Persico</option><option>Eduardo Bernal - Persico</option>
+            <option>Guillermo Rivera - Persico</option><option>Hector Viveros - Persico</option>
+            <option>Luis Jimenez - Persico</option><option>Luz Munoz - Persico</option>
+            <option>Omar Moreno - Persico</option><option>Oswaldo Aguinaga - Persico</option>
+            <option>Pablo Rodrigo Gutierrez - Persico</option><option>Ramiro Bravo - Persico</option>
+          </select></div>
+      </div>
+      <div class="fr f1"><div class="fi"><label>Descripción</label><textarea id="jn-desc" rows="2"></textarea></div></div>
+      <div class="fr">
+        <div class="fi"><label>Grupo de Producto</label>
+          <select id="jn-pg">
+            <option value="">— Seleccionar —</option>
+            <option>1.1 B1-COMPRESSION /P.MEX</option><option>1.2 B7-INTERIORS /P.MEX</option>
+            <option>1.3 SECONDARIES/P.MEX</option><option>1.4 ROBOTIC /P.MEX</option>
+            <option>1.5 WELDING /P.MEX</option><option>1.6 Service/P.MEX</option><option>1.7 Spare Parts/P.MEX</option>
+          </select></div>
+        <div class="fi"><label>Subgrupo</label><input type="text" id="jn-psg"></div>
+      </div>
+      <div class="fr">
+        <div class="fi"><label>Revenue (USD)</label><div class="money-wrap"><span class="money-sym">$</span><input type="number" id="jn-rev" min="0" step="0.01" placeholder="0.00"></div></div>
+        <div class="fi"><label>Costo Estimado (USD)</label><div class="money-wrap"><span class="money-sym">$</span><input type="number" id="jn-cost" min="0" step="0.01" placeholder="0.00"></div></div>
+      </div>
+      <div class="fr">
+        <div class="fi"><label>PO Number</label><input type="text" id="jn-po"></div>
+        <div class="fi"><label>Ship Date</label><input type="date" id="jn-ship"></div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-s" onclick="closeMo('mo-jnew')">Cancelar</button>
+      <button class="btn btn-p" id="btn-jcreate" onclick="jobCreate()">Crear Job →</button>
+    </div>
+  </div>
+</div>
+
+<!-- Job Import -->
+<div class="mo" id="mo-jimp">
+  <div class="md" style="width:580px">
+    <div class="mh"><h2>Importar Jobs desde Excel</h2><button class="px" onclick="closeMo('mo-jimp')">✕</button></div>
+    <div class="mb2">
+      <p style="font-size:12px;color:var(--muted2);margin-bottom:14px;line-height:1.6">Sube el <b style="color:var(--text)">JOB_LIST_*.xlsx</b> exportado de SharePoint. Jobs existentes se omiten sin sobreescribir.</p>
+      <div class="fr">
+        <div class="fi"><label>Filtrar por año de creación</label>
+          <select id="jimp-year">
+            <option value="">Todos</option><option value="2026" selected>Solo 2026</option><option value="2025">Solo 2025</option><option value="2024">Solo 2024</option>
+          </select></div>
+        <div class="fi"><label>Archivo Excel (.xlsx)</label>
+          <div class="dz-imp" id="jdz-imp" ondragover="ev=>{ev.preventDefault();document.getElementById('jdz-imp').classList.add('dg')}" ondragleave="document.getElementById('jdz-imp').classList.remove('dg')" ondrop="jDropImport(event)">
+            <input type="file" accept=".xlsx,.xls" id="jimp-file" onchange="onJimpFile(this)">
+            <div style="font-size:12px;color:var(--muted)">📂 <span id="jimp-fname" style="color:var(--red)">Seleccionar o arrastrar</span></div>
+          </div></div>
+      </div>
+      <div id="jimp-results" style="display:none;margin-top:14px">
+        <div class="sl">Resultado</div>
+        <div id="jimp-summary" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px"></div>
+        <div id="jimp-detail" style="max-height:200px;overflow-y:auto"></div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-s" onclick="closeMo('mo-jimp')">Cerrar</button>
+      <button class="btn btn-p" id="btn-jimp-run" onclick="jobRunImport()" disabled>Importar →</button>
+    </div>
+  </div>
+</div>
+
+<!-- Rate New Employee -->
+<div class="mo" id="mo-rnew">
+  <div class="md" style="width:420px">
+    <div class="mh"><h2>Nuevo Empleado</h2><button class="px" onclick="closeMo('mo-rnew')">✕</button></div>
+    <div class="mb2">
+      <div class="fr f1"><div class="fi"><label>Nombre / ID</label><input type="text" id="rn-name" placeholder="Ej. 61 JUAN PEREZ"></div></div>
+      <div class="fr">
+        <div class="fi"><label>Tarifa por hora (USD)</label><div class="money-wrap"><span class="money-sym">$</span><input type="number" id="rn-rate" min="0" step="0.01" placeholder="0.00"></div></div>
+        <div class="fi"><label>Departamento</label><input type="text" id="rn-dept" placeholder="Ej. CNC"></div>
+      </div>
+      <div class="fr f1"><div class="fi"><label>Notas</label><textarea id="rn-notes" rows="2"></textarea></div></div>
+      <p style="font-size:11px;color:var(--muted);margin-top:8px">Año activo: <b id="rn-year" style="color:var(--gold)">—</b></p>
+    </div>
+    <div class="mf">
+      <button class="btn btn-s" onclick="closeMo('mo-rnew')">Cancelar</button>
+      <button class="btn btn-p" id="btn-rcreate" onclick="rateCreate()">Agregar →</button>
+    </div>
+  </div>
+</div>
+
+<!-- Rate Import -->
+<div class="mo" id="mo-rimp">
+  <div class="md">
+    <div class="mh"><h2>Importar desde Excel</h2><button class="px" onclick="closeMo('mo-rimp')">✕</button></div>
+    <div class="mb2">
+      <p style="font-size:12px;color:var(--muted2);margin-bottom:14px;line-height:1.6">Sube el <b style="color:var(--text)">INT_MP_HOURLY_RATE_YYYY.xlsx</b> con columnas <code style="color:var(--red)">EMPLOYEE</code> y <code style="color:var(--red)">HOURLY RATE</code>.</p>
+      <div class="fr">
+        <div class="fi"><label>Año destino</label><select id="rimp-year"></select></div>
+        <div class="fi"><label>Modo</label>
+          <select id="rimp-mode">
+            <option value="replace">Reemplazar todo</option>
+            <option value="merge">Fusionar (no borra)</option>
+          </select></div>
+      </div>
+      <div class="dz-imp" id="rdz-imp" ondragover="ev=>{ev.preventDefault();document.getElementById('rdz-imp').classList.add('dg')}" ondragleave="document.getElementById('rdz-imp').classList.remove('dg')" ondrop="rDropImport(event)">
+        <input type="file" accept=".xlsx,.xls" id="rimp-file" onchange="onRimpFile(this)">
+        <div class="dz-icon">📊</div>
+        <div class="dz-t">Arrastra el Excel o <span>haz clic</span> para seleccionar</div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Archivo: <span id="rimp-fname" style="color:var(--text)">—</span></div>
+      <div id="rimp-results" style="display:none;margin-top:12px">
+        <div class="sl">Resultado</div>
+        <div class="r-chips" id="rimp-chips"></div>
+        <div id="rimp-errs"></div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-s" onclick="closeMo('mo-rimp')">Cerrar</button>
+      <button class="btn btn-p" id="btn-rimp-run" onclick="rateRunImport()" disabled>Importar →</button>
+    </div>
+  </div>
+</div>
+
+<!-- Rate Copy Year -->
+<div class="mo" id="mo-rcopy">
+  <div class="md" style="width:380px">
+    <div class="mh"><h2>Crear nuevo año</h2><button class="px" onclick="closeMo('mo-rcopy')">✕</button></div>
+    <div class="mb2">
+      <p style="font-size:12px;color:var(--muted2);margin-bottom:14px;line-height:1.6">Crea una tabla de tarifas para un año nuevo copiando las tarifas de un año existente.</p>
+      <div class="fr">
+        <div class="fi"><label>Copiar desde</label><select id="rcopy-from"></select></div>
+        <div class="fi"><label>Año nuevo</label><input type="number" id="rcopy-to" min="2020" max="2099" placeholder="Ej. 2027" style="font-family:'DM Mono',monospace;font-size:16px"></div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-s" onclick="closeMo('mo-rcopy')">Cancelar</button>
+      <button class="btn btn-p" onclick="rateCopyYear()">Crear →</button>
+    </div>
+  </div>
+</div>
+
+<!-- PO Import -->
+<div class="mo" id="mo-po-imp">
+  <div class="md" style="width:560px">
+    <div class="mh"><h2>Cargar Purchase Orders</h2><button class="px" onclick="closeMo('mo-po-imp')">✕</button></div>
+    <div class="mb2">
+      <p style="font-size:12px;color:var(--muted2);margin-bottom:14px;line-height:1.6">
+        Sube el archivo <b style="color:var(--text)">PURCHASE_ORDERS_YYYY.xlsx</b> con las columnas estándar del sistema.<br>
+        Columnas requeridas: <code style="color:var(--red)">Clave</code> · <code style="color:var(--red)">Nombre</code> · <code style="color:var(--red)">Subtotal</code> · <code style="color:var(--red)">Estatus</code>
+      </p>
+      <div class="fr">
+        <div class="fi"><label>Año destino</label><select id="po-imp-year"></select></div>
+        <div class="fi"><label>Modo de importación</label>
+          <select id="po-imp-mode">
+            <option value="replace">Reemplazar todo</option>
+            <option value="merge">Fusionar (no borra)</option>
+          </select>
+          <div style="font-size:10px;color:var(--muted);margin-top:3px">Reemplazar: limpia la tabla. Fusionar: agrega/actualiza por Clave.</div>
+        </div>
+      </div>
+      <div class="dz-imp" id="po-dz-imp"
+           ondragover="ev=>{ev.preventDefault();document.getElementById('po-dz-imp').classList.add('dg')}"
+           ondragleave="document.getElementById('po-dz-imp').classList.remove('dg')"
+           ondrop="poDropImport(event)">
+        <input type="file" accept=".xlsx,.xls" id="po-imp-file" onchange="onPoImpFile(this)">
+        <div class="dz-icon">📊</div>
+        <div class="dz-t">Arrastra el Excel o <span>haz clic</span> para seleccionar</div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Archivo: <span id="po-imp-fname" style="color:var(--text)">—</span></div>
+      <div id="po-imp-results" style="display:none;margin-top:12px">
+        <div class="sl">Resultado</div>
+        <div class="r-chips" id="po-imp-chips"></div>
+        <div id="po-imp-errs"></div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-s" onclick="closeMo('mo-po-imp')">Cerrar</button>
+      <button class="btn btn-p" id="btn-po-imp-run" onclick="poRunImport()" disabled>Importar →</button>
+    </div>
+  </div>
+</div>
+
+<!-- Quote New -->
+<div class="mo" id="mo-qnew">
+  <div class="md">
+    <div class="mh"><h2>Nueva Cotización</h2><button class="px" onclick="closeMo('mo-qnew')">✕</button></div>
+    <div class="mb2">
+      <div class="fr">
+        <div class="fi"><label>Cliente *</label><input type="text" id="qn-c" placeholder="Nombre del cliente"></div>
+        <div class="fi"><label>RFQ Ref.</label><input type="text" id="qn-r" placeholder="Número o referencia"></div>
+      </div>
+      <div class="fr f1"><div class="fi"><label>Descripción *</label><textarea id="qn-d" rows="3" placeholder="Descripción del alcance…"></textarea></div></div>
+      <div class="fr"><div class="fi"><label>Fecha de recepción</label><input type="date" id="qn-recv"></div></div>
+      <div class="sl">Alcance a cotizar</div>
+      <div class="qg">
+        <div class="qi"><label>Machine</label><input type="number" id="qn-mc" min="0" placeholder="0"></div>
+        <div class="qi"><label>Tool</label><input type="number" id="qn-tl" min="0" placeholder="0"></div>
+        <div class="qi"><label>M+Tool</label><input type="number" id="qn-mt" min="0" placeholder="0"></div>
+        <div class="qi"><label>Robotic</label><input type="number" id="qn-rb" min="0" placeholder="0"></div>
+        <div class="qi"><label>Service</label><input type="number" id="qn-sv" min="0" placeholder="0"></div>
+      </div>
+      <div class="fr f1"><div class="fi"><label>Notas iniciales</label><textarea id="qn-nt" rows="2"></textarea></div></div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-s" onclick="closeMo('mo-qnew')">Cancelar</button>
+      <button class="btn btn-p" id="btn-qcreate" onclick="quoteCreate()">Crear cotización</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- WH Import Modal -->
+<div class="mo" id="mo-wh-imp">
+  <div class="md" style="width:580px">
+    <div class="mh"><h2>Cargar Work Hours</h2><button class="px" onclick="closeMo('mo-wh-imp')">✕</button></div>
+    <div class="mb2">
+      <p style="font-size:12px;color:var(--muted2);margin-bottom:14px;line-height:1.6">
+        Sube el archivo <b style="color:var(--text)">Work_Hours_List_*.xlsx</b>.<br>
+        Columnas requeridas: <code style="color:var(--red)">Employee</code> · <code style="color:var(--red)">Date Worked</code> · <code style="color:var(--red)">Hours</code>
+      </p>
+      <div class="fr">
+        <div class="fi"><label>Año destino</label><select id="wh-imp-year"></select></div>
+        <div class="fi"><label>Modo</label>
+          <select id="wh-imp-mode">
+            <option value="replace">Reemplazar todo</option>
+            <option value="merge">Fusionar (no borra)</option>
+          </select></div>
+      </div>
+      <div class="sl">Filtro de fechas a importar</div>
+      <div class="fr">
+        <div class="fi"><label>Fecha inicial</label><input type="date" id="wh-imp-from"></div>
+        <div class="fi"><label>Fecha final</label><input type="date" id="wh-imp-to"></div>
+      </div>
+      <p style="font-size:10px;color:var(--muted);margin-bottom:14px">Deja en blanco para importar todas las fechas del archivo.</p>
+      <div class="dz-imp" id="wh-dz-imp"
+           ondragover="ev=>{ev.preventDefault();document.getElementById('wh-dz-imp').classList.add('dg')}"
+           ondragleave="document.getElementById('wh-dz-imp').classList.remove('dg')"
+           ondrop="whDropImport(event)">
+        <input type="file" accept=".xlsx,.xls" id="wh-imp-file" onchange="onWhImpFile(this)">
+        <div class="dz-icon">⏱</div>
+        <div class="dz-t">Arrastra el Excel o <span>haz clic</span> para seleccionar</div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Archivo: <span id="wh-imp-fname" style="color:var(--text)">—</span></div>
+      <div id="wh-imp-results" style="display:none;margin-top:12px">
+        <div class="sl">Resultado</div>
+        <div class="r-chips" id="wh-imp-chips"></div>
+        <div id="wh-imp-errs"></div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-s" onclick="closeMo('mo-wh-imp')">Cerrar</button>
+      <button class="btn btn-p" id="btn-wh-imp-run" onclick="whRunImport()" disabled>Importar →</button>
+    </div>
+  </div>
+</div>
+
+<!-- IVP Import Modal -->
+<div class="mo" id="mo-ivp-imp">
+  <div class="md" style="width:560px">
+    <div class="mh"><h2>Cargar Invoiced POs</h2><button class="px" onclick="closeMo('mo-ivp-imp')">✕</button></div>
+    <div class="mb2">
+      <p style="font-size:12px;color:var(--muted2);margin-bottom:14px;line-height:1.6">
+        Sube el archivo <b style="color:var(--text)">INVOICED_POs_YYYY.xlsx</b>.<br>
+        Columnas: <code style="color:var(--red)">Clave</code> · <code style="color:var(--red)">Nombre</code> · <code style="color:var(--red)">Subtotal</code> · <code style="color:var(--red)">Estatus</code> · <code style="color:var(--red)">Fecha de pago</code>
+      </p>
+      <div class="fr">
+        <div class="fi"><label>Año destino</label><select id="ivp-imp-year"></select></div>
+        <div class="fi"><label>Modo</label>
+          <select id="ivp-imp-mode">
+            <option value="replace">Reemplazar todo</option>
+            <option value="merge">Fusionar por Clave</option>
+          </select></div>
+      </div>
+      <div class="dz-imp" id="ivp-dz-imp"
+           ondragover="ev=>{ev.preventDefault();document.getElementById('ivp-dz-imp').classList.add('dg')}"
+           ondragleave="document.getElementById('ivp-dz-imp').classList.remove('dg')"
+           ondrop="ivpDropImport(event)">
+        <input type="file" accept=".xlsx,.xls" id="ivp-imp-file" onchange="onIvpImpFile(this)">
+        <div class="dz-icon">🧾</div>
+        <div class="dz-t">Arrastra el Excel o <span>haz clic</span> para seleccionar</div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Archivo: <span id="ivp-imp-fname" style="color:var(--text)">—</span></div>
+      <div id="ivp-imp-results" style="display:none;margin-top:12px">
+        <div class="sl">Resultado</div>
+        <div class="r-chips" id="ivp-imp-chips"></div>
+        <div id="ivp-imp-errs"></div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-s" onclick="closeMo('mo-ivp-imp')">Cerrar</button>
+      <button class="btn btn-p" id="btn-ivp-imp-run" onclick="ivpRunImport()" disabled>Importar →</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- FX Import Modal -->
+<div class="mo" id="mo-fx-imp">
+  <div class="md" style="width:540px">
+    <div class="mh"><h2>Cargar Tipo de Cambio</h2><button class="px" onclick="closeMo('mo-fx-imp')">✕</button></div>
+    <div class="mb2">
+      <p style="font-size:12px;color:var(--muted2);margin-bottom:14px;line-height:1.7">
+        Sube el archivo <b style="color:var(--text)">tipoCambio.xls</b> del Banco de México.<br>
+        Columna usada: <code style="color:var(--red)">Para solventar obligaciones</code> (col D).<br>
+        Los días N/E (no hábiles) se omiten; el sistema buscará el día hábil anterior al convertir precios.<br>
+        <span style="color:var(--amber);font-size:11px">⚠ Para archivos .xls se requiere <code>xlrd==1.2.0</code> — el <b>INICIAR.bat</b> lo instala automáticamente.</span>
+      </p>
+      <div class="fr">
+        <div class="fi"><label>Modo</label>
+          <select id="fx-imp-mode">
+            <option value="merge" selected>Fusionar (acumular años)</option>
+            <option value="replace">Reemplazar año completo</option>
+          </select>
+          <div style="font-size:10px;color:var(--muted);margin-top:3px">Fusionar agrega fechas nuevas sin borrar las existentes.</div>
+        </div>
+      </div>
+      <div class="dz-imp" id="fx-dz-imp"
+           ondragover="ev=>{ev.preventDefault();document.getElementById('fx-dz-imp').classList.add('dg')}"
+           ondragleave="document.getElementById('fx-dz-imp').classList.remove('dg')"
+           ondrop="fxDropImport(event)">
+        <input type="file" accept=".xls,.xlsx" id="fx-imp-file" onchange="onFxImpFile(this)">
+        <div class="dz-icon">💱</div>
+        <div class="dz-t">Arrastra el archivo <span>.xls / .xlsx</span> o haz clic para seleccionar</div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Archivo: <span id="fx-imp-fname" style="color:var(--text)">—</span></div>
+      <div id="fx-imp-results" style="display:none;margin-top:12px">
+        <div class="sl">Resultado</div>
+        <div class="r-chips" id="fx-imp-chips"></div>
+        <div id="fx-imp-detail" style="font-size:11px;color:var(--muted2);margin-top:8px"></div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-s" onclick="closeMo('mo-fx-imp')">Cerrar</button>
+      <button class="btn btn-p" id="btn-fx-imp-run" onclick="fxRunImport()" disabled>Importar →</button>
+    </div>
+  </div>
+</div>
+
+<div class="tw2" id="toasts"></div>
+
+<script>
+// ════════════════════════════════════════════════════════
+//  SHARED UTILS
+// ════════════════════════════════════════════════════════
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function fmt(n){return Number(n).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0})}
+function fmtSz(b){if(!b)return'';if(b<1024)return b+'B';if(b<1048576)return(b/1024).toFixed(1)+'KB';return(b/1048576).toFixed(1)+'MB'}
+function fileIco(n){const e=(n.split('.').pop()||'').toLowerCase();return{pdf:'📄',xlsx:'📊',xls:'📊',docx:'📝',doc:'📝',pptx:'📑',ppt:'📑',dwg:'📐',jpg:'🖼',jpeg:'🖼',png:'🖼',zip:'🗜',rar:'🗜',txt:'📃',msg:'📧'}[e]||'📎'}
+function toast(msg,type='if',dur=3500){const c=document.getElementById('toasts');const t=document.createElement('div');t.className='toast '+type;t.innerHTML='<span>'+(type==='ok'?'✓':type==='er'?'✕':'ℹ')+'</span><span>'+esc(msg)+'</span>';c.appendChild(t);setTimeout(()=>t.remove(),dur)}
+async function apiCall(method,path,body){const opts={method,headers:{'Content-Type':'application/json'}};if(body)opts.body=JSON.stringify(body);const r=await fetch('/api'+path,opts);return r.json()}
+function closeMo(id){document.getElementById(id).classList.remove('on')}
+let _currentPanel=null;
+
+function closePanel(){
+  document.getElementById('ov').classList.remove('on');
+  ['j-panel','r-panel','q-panel'].forEach(id=>document.getElementById(id).classList.remove('on'));
+  _currentPanel=null;
+  if(jobCurrentJob){jobCurrentJob=null;jobRender();}
+  if(rateCurrentRec){rateCurrentRec=null;rateRender();}
+  if(quoteCurrentRow!==null){quoteCurrentRow=null;quoteRender();}
+}
+
+function openPanel(id){
+  document.getElementById('ov').classList.add('on');
+  document.getElementById(id).classList.add('on');
+  _currentPanel=id;
+}
+
+// Module switching
+function switchModule(mod,btn){
+  document.querySelectorAll('.nav-tab').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  document.querySelectorAll('.module').forEach(m=>m.classList.remove('on'));
+  document.getElementById('mod-'+mod).classList.add('on');
+  closePanel();
+}
+
+// Sort state per module
+const sortState={jobs:{key:'job_number',dir:1},rates:{key:'employee',dir:1},quotes:{key:'qnum',dir:1}};
+
+document.querySelectorAll('thead th[data-mod]').forEach(th=>{
+  th.addEventListener('click',()=>{
+    const mod=th.dataset.mod,k=th.dataset.k;
+    if(sortState[mod].key===k) sortState[mod].dir*=-1; else{sortState[mod].key=k;sortState[mod].dir=1;}
+    document.querySelectorAll(`thead th[data-mod="${mod}"]`).forEach(t=>t.classList.remove('sa','sd'));
+    th.classList.add(sortState[mod].dir===1?'sa':'sd');
+    if(mod==='jobs')jobRender(); else if(mod==='rates')rateRender(); else quoteRender();
+  });
+});
+
+// ════════════════════════════════════════════════════════
+//  JOB REGISTER
+// ════════════════════════════════════════════════════════
+let jobs=[], jobCurrentJob=null, jobNextMain=null, jImpFile=null;
+
+function jSubLabel(sub){
+  const n=parseInt(sub||'0');
+  if(n===0)return'Máquina / equipo principal';if(n===1)return'Instalación y puesta en marcha';
+  if(n>=2&&n<=50)return'Cambio de ingeniería ('+n+')';if(n>=51&&n<=60)return'Refacción cliente ('+n+')';
+  if(n>=61&&n<=97)return'Servicio cliente ('+n+')';if(n===99)return'Garantía';return'';
+}
+function jShortPM(pm=''){if(!pm)return'—';const p=pm.split(' - ')[0].trim().split(' ');return p[0]+(p[1]?' '+p[1][0]+'.':'');}
+function jFcBadge(v,noMeta){if(noMeta)return'<span class="badge b-nometa">sin datos</span>';const m={Yes:'b-yes',ToApprove:'b-toappr',InProgress:'b-inprog',No:'b-open'};return'<span class="badge '+(m[v]||'b-open')+'">'+esc(v||'—')+'</span>'}
+function jStBadge(v,noMeta){if(noMeta)return'<span class="badge b-nometa">carpeta vacía</span>';const m={Open:'b-open',WIP:'b-wip',Done:'b-done',Cancelled:'b-toappr'};return'<span class="badge '+(m[v]||'b-open')+'">'+esc(v||'Open')+'</span>'}
+
+async function loadJobs(){
+  document.getElementById('j-tb').innerHTML='<tr><td colspan="9"><div class="es"><div class="spinner"></div></div></td></tr>';
+  try{
+    const d=await(await fetch('/api/ping')).json();
+    document.getElementById('j-dot').className='conn-dot'+(d.jobs_ok?' ok':'');
+    document.getElementById('j-lbl').textContent=d.jobs_ok?'NAS OK':'NAS sin acceso';
+    document.getElementById('lbl-jobs').textContent='Jobs';
+    document.getElementById('dot-jobs').className='conn-dot'+(d.jobs_ok?' ok':'');
+    document.getElementById('j-path').textContent=d.jobs_folder||'—';
+    jobs=await apiCall('GET','/jobs')||[];
+    jobRender(); jobUpdateStats(); jobPopFilters();
+    // Keep report job list in sync
+    if(typeof rptRefreshJobList==='function') rptRefreshJobList();
+  }catch{toast('Error al cargar jobs','er');}
+}
+
+function jobFiltered(){
+  const pm=document.getElementById('jf-pm').value;
+  const cust=document.getElementById('jf-cust').value.toLowerCase();
+  const pg=document.getElementById('jf-pg').value;
+  const st=document.getElementById('jf-st').value;
+  const sub=document.getElementById('jf-sub').value;
+  const gs=document.getElementById('j-gs').value.toLowerCase();
+  return jobs.filter(j=>{
+    if(pm&&j.pm!==pm)return false;
+    if(cust&&!(j.customer||'').toLowerCase().includes(cust))return false;
+    if(pg&&j.product_group!==pg)return false;
+    if(st&&j.status!==st)return false;
+    if(sub){const n=parseInt(j.subindex||'0');if(sub==='00'&&n!==0)return false;if(sub==='01'&&n!==1)return false;if(sub==='02-50'&&!(n>=2&&n<=50))return false;if(sub==='51-60'&&!(n>=51&&n<=60))return false;if(sub==='61-97'&&!(n>=61&&n<=97))return false;if(sub==='99'&&n!==99)return false;}
+    if(gs){const hay=((j.job_number||'')+(j.customer||'')+(j.description||'')+(j.pm||'')+(j.po_number||'')).toLowerCase();if(!hay.includes(gs))return false;}
+    return true;
+  }).sort((a,b)=>{
+    const {key,dir}=sortState.jobs;
+    if(key==='job_number'){const[am,as_]=(a.job_number||'0-0').split('-').map(Number);const[bm,bs_]=(b.job_number||'0-0').split('-').map(Number);return dir*(am!==bm?am-bm:as_-bs_);}
+    let av=a[key]||'',bv=b[key]||'';
+    if(typeof av==='number')return dir*(av-bv);
+    return dir*String(av).localeCompare(String(bv));
+  });
+}
+
+function jobRender(){
+  const rows=jobFiltered();const tb=document.getElementById('j-tb');
+  if(!rows.length){tb.innerHTML='<tr><td colspan="9"><div class="es"><span class="ei">📋</span><br>Sin resultados</div></td></tr>';return;}
+  tb.innerHTML=rows.map(j=>{
+    const noMeta=!j.created_at&&!j.customer;
+    const sel=jobCurrentJob?.job_number===j.job_number?' sel':'';
+    return`<tr class="${noMeta?'no-meta':''}${sel}" onclick="jobOpen('${j.job_number}')">
+      <td><span class="tjob">${j.job_number}</span></td>
+      <td style="font-weight:600;color:#fff">${esc(j.customer||'—')}</td>
+      <td style="max-width:210px;overflow:hidden;text-overflow:ellipsis;color:var(--muted2)">${esc(j.description||(noMeta?'Sin datos':'—'))}</td>
+      <td style="color:var(--muted2);font-size:11px">${jShortPM(j.pm)}</td>
+      <td style="color:var(--muted2);font-size:11px">${esc(j.product_group||'—')}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:11px">${j.revenue?'$'+fmt(j.revenue):'—'}</td>
+      <td>${jFcBadge(j.approval_fc,noMeta)}</td>
+      <td>${jStBadge(j.status,noMeta)}</td>
+      <td style="color:var(--muted2)">${j.ship_date||'—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+function jobUpdateStats(){
+  document.getElementById('js-tot').textContent=jobs.length;
+  document.getElementById('js-open').textContent=jobs.filter(j=>j.status==='Open'||!j.status).length;
+  document.getElementById('js-wip').textContent=jobs.filter(j=>j.status==='WIP').length;
+  document.getElementById('js-done').textContent=jobs.filter(j=>j.status==='Done').length;
+}
+
+function jobPopFilters(){
+  const pms=[...new Set(jobs.map(j=>j.pm).filter(Boolean))].sort();
+  const pgs=[...new Set(jobs.map(j=>j.product_group).filter(Boolean))].sort();
+  const pm=document.getElementById('jf-pm'),pg=document.getElementById('jf-pg');
+  const cpm=pm.value,cpg=pg.value;
+  pm.innerHTML='<option value="">Todos</option>'+pms.map(p=>'<option'+(p===cpm?' selected':'')+'>'+esc(p)+'</option>').join('');
+  pg.innerHTML='<option value="">Todos</option>'+pgs.map(p=>'<option'+(p===cpg?' selected':'')+'>'+esc(p)+'</option>').join('');
+}
+
+function jobOpen(jobNum){
+  const j=jobs.find(x=>x.job_number===jobNum);if(!j)return;
+  jobCurrentJob=j;jobRender();
+  document.getElementById('jp-job').textContent=j.job_number;
+  document.getElementById('jp-sub').textContent=j.subindex_label||jSubLabel(j.subindex||'00');
+  document.getElementById('jp-cust').textContent=j.customer||'Sin datos';
+  document.getElementById('je-cust').value=j.customer||'';
+  document.getElementById('je-pm').value=j.pm||'';
+  document.getElementById('je-desc').value=j.description||'';
+  document.getElementById('je-pg').value=j.product_group||'';
+  document.getElementById('je-psg').value=j.product_subgroup||'';
+  document.getElementById('je-rev').value=j.revenue||'';
+  document.getElementById('je-cost').value=j.estimated_cost||'';
+  document.getElementById('je-po').value=j.po_number||'';
+  document.getElementById('je-ship').value=j.ship_date||'';
+  document.getElementById('je-fc').value=j.approval_fc||'ToApprove';
+  document.getElementById('je-st').value=j.status||'Open';
+  document.getElementById('je-notes').value=j.notes||'';
+  document.getElementById('j-dp').textContent='\\\\naspersico\\COST_CONTROLLING\\10_DATABASE\\JOBs\\'+j.job_number;
+  jCalcGM();jStab('det',document.querySelector('#j-panel .ptab'));
+  openPanel('j-panel');
+}
+
+function jStab(id,btn){
+  document.querySelectorAll('#j-panel .ptab').forEach(b=>b.classList.remove('on'));
+  document.querySelectorAll('#j-panel .tc2').forEach(t=>t.classList.remove('on'));
+  document.querySelectorAll('#j-panel .ptab')[id==='det'?0:1].classList.add('on');
+  document.getElementById('jtab-'+id).classList.add('on');
+  if(id==='doc'&&jobCurrentJob)jLoadFiles(jobCurrentJob.job_number);
+}
+
+function jCalcGM(){
+  const rev=parseFloat(document.getElementById('je-rev')?.value||0);
+  const cost=parseFloat(document.getElementById('je-cost')?.value||0);
+  const el=document.getElementById('j-gm');if(!el)return;
+  if(!rev){el.textContent='GM: —';el.className='gm-preview';return;}
+  const gm=((rev-cost)/rev*100).toFixed(1);
+  el.textContent='GM: '+gm+'%  ($'+fmt(rev-cost)+' USD)';
+  el.className='gm-preview '+(parseFloat(gm)>=0?'pos':'neg');
+}
+
+async function jobSave(){
+  if(!jobCurrentJob)return;
+  const data={
+    customer:document.getElementById('je-cust').value,pm:document.getElementById('je-pm').value,
+    description:document.getElementById('je-desc').value,product_group:document.getElementById('je-pg').value,
+    product_subgroup:document.getElementById('je-psg').value,revenue:parseFloat(document.getElementById('je-rev').value)||0,
+    estimated_cost:parseFloat(document.getElementById('je-cost').value)||0,po_number:document.getElementById('je-po').value,
+    ship_date:document.getElementById('je-ship').value,approval_fc:document.getElementById('je-fc').value,
+    status:document.getElementById('je-st').value,notes:document.getElementById('je-notes').value,
+  };
+  try{
+    const r=await apiCall('PUT','/jobs/'+jobCurrentJob.job_number,data);
+    if(r.error){toast(r.error,'er');return;}
+    const idx=jobs.findIndex(j=>j.job_number===jobCurrentJob.job_number);
+    if(idx>=0)jobs[idx]=r;jobCurrentJob=r;
+    document.getElementById('jp-cust').textContent=r.customer||'';
+    jobRender();jobUpdateStats();jobPopFilters();
+    toast('Job '+r.job_number+' guardado ✓','ok');
+  }catch{toast('Error al guardar','er');}
+}
+
+async function jobDelete(){
+  if(!jobCurrentJob||!confirm('¿Eliminar datos de '+jobCurrentJob.job_number+'?\n(La carpeta NAS se conserva)'))return;
+  try{
+    const r=await apiCall('DELETE','/jobs/'+jobCurrentJob.job_number);
+    if(r.error){toast(r.error,'er');return;}
+    await loadJobs();closePanel();toast('Datos del Job eliminados','ok');
+  }catch{toast('Error al eliminar','er');}
+}
+
+async function jobOpenNew(){
+  const r=await apiCall('GET','/next-index');
+  jobNextMain=r.next;
+  document.getElementById('jn-main').value=jobNextMain;
+  document.getElementById('jn-sub').value='';
+  document.getElementById('jn-num').textContent=jobNextMain+'-??';
+  document.getElementById('jn-lbl').textContent='Ingresa un subíndice';
+  document.getElementById('jn-hint').textContent='';
+  ['jn-cust','jn-desc','jn-psg','jn-rev','jn-cost','jn-po','jn-ship'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  document.getElementById('jn-pm').value='';document.getElementById('jn-pg').value='';
+  document.getElementById('mo-jnew').classList.add('on');
+}
+
+function jobUpdatePreview(){
+  const raw=document.getElementById('jn-sub').value.trim();
+  const hint=document.getElementById('jn-hint');
+  if(!raw){document.getElementById('jn-num').textContent=jobNextMain+'-??';document.getElementById('jn-lbl').textContent='Ingresa un subíndice';hint.textContent='';hint.className='hint';return;}
+  const n=parseInt(raw);const pad=String(n).padStart(2,'0');
+  const valid=(n===0||n===1||(n>=2&&n<=50)||(n>=51&&n<=60)||(n>=61&&n<=97)||n===99);
+  document.getElementById('jn-num').textContent=jobNextMain+'-'+pad;
+  document.getElementById('jn-lbl').textContent=valid?jSubLabel(pad):'No válido';
+  hint.textContent=valid?'✓ Subíndice válido':'✗ Valores válidos: 00, 01, 02–50, 51–60, 61–97, 99';
+  hint.className='hint '+(valid?'ok':'bad');
+}
+
+async function jobCreate(){
+  const raw=document.getElementById('jn-sub').value.trim();
+  if(!raw){toast('Ingresa un subíndice','er');return;}
+  const btn=document.getElementById('btn-jcreate');btn.disabled=true;btn.textContent='Creando…';
+  try{
+    const data={
+      subindex:String(parseInt(raw)).padStart(2,'0'),
+      customer:document.getElementById('jn-cust').value,pm:document.getElementById('jn-pm').value,
+      description:document.getElementById('jn-desc').value,product_group:document.getElementById('jn-pg').value,
+      product_subgroup:document.getElementById('jn-psg').value,revenue:parseFloat(document.getElementById('jn-rev').value)||0,
+      estimated_cost:parseFloat(document.getElementById('jn-cost').value)||0,
+      po_number:document.getElementById('jn-po').value,ship_date:document.getElementById('jn-ship').value,
+    };
+    const r=await apiCall('POST','/jobs',data);
+    if(r.error){toast(r.error,'er');return;}
+    jobs.push(r);closeMo('mo-jnew');jobRender();jobUpdateStats();jobPopFilters();
+    toast('Job '+r.job_number+' creado ✓','ok');jobOpen(r.job_number);
+  }catch{toast('Error al crear','er');}
+  finally{btn.disabled=false;btn.textContent='Crear Job →';}
+}
+
+async function jLoadFiles(jobNum){
+  const fl=document.getElementById('j-fl');
+  fl.innerHTML='<div class="es" style="padding:16px 0"><div class="spinner"></div></div>';
+  try{
+    const files=await apiCall('GET','/files/'+jobNum);
+    if(!files.length){fl.innerHTML='<div class="es" style="padding:20px 0"><span class="ei">📂</span><br>Sin documentos</div>';return;}
+    fl.innerHTML=files.map(f=>'<div class="fitem"><span class="fi-ic">'+fileIco(f.name)+'</span><div class="fi-inf"><div class="fi-nm">'+esc(f.name)+'</div><div class="fi-mt">'+fmtSz(f.size)+' · '+f.modified+'</div></div><button class="fi-del" onclick="jDelFile(\''+jobNum+'\',\''+esc(f.name)+'\')">✕</button></div>').join('');
+  }catch{fl.innerHTML='<div class="es">Error al listar</div>';}
+}
+
+async function jUploadFiles(files){
+  if(!jobCurrentJob||!files.length)return;
+  const fd=new FormData();Array.from(files).forEach(f=>fd.append('files',f));
+  try{
+    const r=await fetch('/api/files/'+jobCurrentJob.job_number,{method:'POST',body:fd});
+    const d=await r.json();if(d.error){toast(d.error,'er');return;}
+    toast(d.saved.length+' archivo(s) guardados','ok');jLoadFiles(jobCurrentJob.job_number);
+  }catch{toast('Error al subir','er');}
+}
+function jDropFiles(e){e.preventDefault();document.getElementById('j-dz').classList.remove('dg');jUploadFiles(e.dataTransfer.files);}
+
+async function jDelFile(jobNum,name){
+  if(!confirm('¿Eliminar "'+name+'"?'))return;
+  try{const r=await apiCall('DELETE','/files/'+jobNum+'/'+encodeURIComponent(name));if(r.error){toast(r.error,'er');return;}toast('Archivo eliminado','ok');jLoadFiles(jobNum);}catch{toast('Error','er');}
+}
+
+// Job Import
+function jobOpenImport(){jImpFile=null;document.getElementById('jimp-fname').textContent='Seleccionar o arrastrar';document.getElementById('jimp-file').value='';document.getElementById('jimp-results').style.display='none';document.getElementById('btn-jimp-run').disabled=true;document.getElementById('mo-jimp').classList.add('on');}
+function onJimpFile(inp){if(inp.files.length){jImpFile=inp.files[0];document.getElementById('jimp-fname').textContent=jImpFile.name;document.getElementById('btn-jimp-run').disabled=false;}}
+function jDropImport(e){e.preventDefault();document.getElementById('jdz-imp').classList.remove('dg');const f=e.dataTransfer.files[0];if(f){jImpFile=f;document.getElementById('jimp-fname').textContent=f.name;document.getElementById('btn-jimp-run').disabled=false;}}
+
+async function jobRunImport(){
+  if(!jImpFile)return;
+  const btn=document.getElementById('btn-jimp-run');btn.disabled=true;btn.textContent='Importando…';
+  document.getElementById('jimp-results').style.display='none';
+  const fd=new FormData();fd.append('file',jImpFile);fd.append('year',document.getElementById('jimp-year').value);
+  try{
+    const r=await fetch('/api/import-jobs-excel',{method:'POST',body:fd});
+    const d=await r.json();if(d.error){toast(d.error,'er');return;}
+    const s=d.summary;
+    document.getElementById('jimp-summary').innerHTML=
+      '<div class="stat" style="background:rgba(39,174,96,.1);border-color:rgba(39,174,96,.3)"><div class="n" style="color:#58d68d">'+s.created+'</div><div class="l">Creados</div></div>'+
+      '<div class="stat" style="background:rgba(255,255,255,.04)"><div class="n" style="color:var(--muted)">'+s.skipped+'</div><div class="l">Omitidos</div></div>'+
+      '<div class="stat" style="background:rgba(235,87,87,.08)"><div class="n" style="color:#eb5757">'+s.errors+'</div><div class="l">Errores</div></div>';
+    const rows=[];
+    d.created.forEach(j=>rows.push('<div class="fitem" style="padding:6px 10px"><span style="color:var(--green)">✓</span><span class="tjob" style="font-size:11px">'+esc(j)+'</span><span style="color:var(--muted);font-size:10px;margin-left:auto">Creado</span></div>'));
+    d.errors.forEach(e=>rows.push('<div class="fitem" style="padding:6px 10px"><span style="color:#eb5757">✕</span><span class="tjob" style="font-size:11px">'+esc(e.job)+'</span><span style="color:#eb5757;font-size:10px;margin-left:auto">'+esc(e.error)+'</span></div>'));
+    document.getElementById('jimp-detail').innerHTML=rows.join('');
+    document.getElementById('jimp-results').style.display='block';
+    if(s.created>0){await loadJobs();toast(s.created+' Jobs importados ✓','ok',5000);}else toast('0 Jobs nuevos — '+s.skipped+' ya existían','if');
+  }catch(err){toast('Error: '+err.message,'er');}
+  finally{btn.disabled=false;btn.textContent='Importar →';}
+}
+
+['jf-pm','jf-cust','jf-pg','jf-st','jf-sub'].forEach(id=>{const el=document.getElementById(id);if(el)el.addEventListener(el.tagName==='INPUT'?'input':'change',jobRender);});
+
+// ════════════════════════════════════════════════════════
+//  HOURLY RATES
+// ════════════════════════════════════════════════════════
+let rates=[], rateActiveYear=new Date().getFullYear(), rateAvailYears=[], rateMaxRate=0, rateMinRate=0, rateCurrentRec=null, rImpFile=null;
+
+async function loadRates(){
+  document.getElementById('r-tb').innerHTML='<tr><td colspan="6"><div class="es"><div class="spinner"></div></div></td></tr>';
+  try{
+    const d=await apiCall('GET','/rates?year='+rateActiveYear);
+    rates=d.records||[];rateAvailYears=d.available_years||[];
+    rateBuildYearSel();
+    rateMaxRate=rates.length?Math.max(...rates.map(r=>r.rate)):0;
+    rateMinRate=rates.length?Math.min(...rates.map(r=>r.rate)):0;
+    rateRender();rateUpdateStats();ratePopDepts();
+    document.getElementById('r-tb-year').textContent=rateActiveYear;
+    document.getElementById('rn-year').textContent=rateActiveYear;
+    const ping=await(await fetch('/api/ping')).json();
+    document.getElementById('r-path').textContent=ping.rates_folder||'—';
+    document.getElementById('dot-rates').className='conn-dot'+(ping.rates_ok?' ok':'');
+    document.getElementById('lbl-rates').textContent='Rates';
+    // Rebuild WH cost map whenever rates change
+    whBuildRateMap();
+    if(document.getElementById('mod-wh').classList.contains('on')) whRender();
+  }catch{toast('Error al cargar tarifas','er');}
+}
+
+function rateBuildYearSel(){
+  const all=[...new Set([rateActiveYear,...rateAvailYears])].sort((a,b)=>b-a);
+  const sel=document.getElementById('r-year-sel');
+  sel.innerHTML=all.map(y=>'<option value="'+y+'"'+(y===rateActiveYear?' selected':'')+'>'+y+'</option>').join('');
+  document.getElementById('rimp-year').innerHTML=all.map(y=>'<option value="'+y+'"'+(y===rateActiveYear?' selected':'')+'>'+y+'</option>').join('');
+  document.getElementById('rcopy-from').innerHTML=rateAvailYears.map(y=>'<option value="'+y+'">'+y+'</option>').join('');
+  document.getElementById('rcopy-to').value=rateActiveYear+1;
+}
+function rateSwitchYear(){rateActiveYear=parseInt(document.getElementById('r-year-sel').value);loadRates();}
+
+function rateFiltered(){
+  const name=document.getElementById('rf-name').value.toLowerCase();
+  const dept=document.getElementById('rf-dept').value;
+  const fMin=parseFloat(document.getElementById('rf-min').value)||0;
+  const fMax=parseFloat(document.getElementById('rf-max').value)||Infinity;
+  const gs=document.getElementById('r-gs').value.toLowerCase();
+  return rates.filter(r=>{
+    if(name&&!(r.employee||'').toLowerCase().includes(name))return false;
+    if(dept&&r.department!==dept)return false;
+    if(r.rate<fMin||r.rate>fMax)return false;
+    if(gs&&!((r.employee||'')+(r.department||'')+(r.notes||'')).toLowerCase().includes(gs))return false;
+    return true;
+  }).sort((a,b)=>{
+    const {key,dir}=sortState.rates;
+    let av=a[key]??'',bv=b[key]??'';
+    if(typeof av==='number')return dir*(av-bv);
+    return dir*String(av).localeCompare(String(bv));
+  });
+}
+
+function rColorClass(rate){const pct=(rate-rateMinRate)/(rateMaxRate-rateMinRate||1);return pct>0.66?'high':pct>0.33?'mid':'low';}
+
+function rateRender(){
+  const rows=rateFiltered();const tb=document.getElementById('r-tb');
+  if(!rows.length){tb.innerHTML='<tr><td colspan="6"><div class="es"><span class="ei">👥</span><br>Sin registros</div></td></tr>';return;}
+  tb.innerHTML=rows.map((r,i)=>{
+    const pct=rateMaxRate>0?Math.round((r.rate/rateMaxRate)*100):0;
+    const sel=rateCurrentRec&&rateNorm(rateCurrentRec.employee)===rateNorm(r.employee)?' sel':'';
+    const clr=rColorClass(r.rate);
+    const clrHex=clr==='high'?'#e74c3c':clr==='mid'?'var(--amber)':'var(--green)';
+    return`<tr class="${sel}" onclick="rateOpen('${esc(r.employee)}')">
+      <td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--red)">${String(i+1).padStart(2,'0')}</td>
+      <td style="font-weight:500;color:#fff">${esc(r.employee)}</td>
+      <td style="color:var(--muted2)">${esc(r.department||'—')}</td>
+      <td style="text-align:right"><span class="temp ${clr}">$${r.rate.toFixed(2)}</span></td>
+      <td style="width:120px"><div style="font-size:9px;color:var(--muted)">${pct}%</div><div class="rate-bar"><div class="rate-fill" style="width:${pct}%;background:${clrHex}"></div></div></td>
+      <td style="color:var(--muted2);max-width:150px;overflow:hidden;text-overflow:ellipsis">${esc(r.notes||'—')}</td>
+    </tr>`;
+  }).join('');
+}
+
+function rateUpdateStats(){
+  if(!rates.length){['rs-emp','rs-avg','rs-max','rs-min'].forEach(id=>document.getElementById(id).textContent='—');return;}
+  const rs=rates.map(r=>r.rate);
+  document.getElementById('rs-emp').textContent=rates.length;
+  document.getElementById('rs-avg').textContent='$'+(rs.reduce((a,b)=>a+b,0)/rs.length).toFixed(2);
+  document.getElementById('rs-max').textContent='$'+Math.max(...rs).toFixed(2);
+  document.getElementById('rs-min').textContent='$'+Math.min(...rs).toFixed(2);
+}
+
+function ratePopDepts(){
+  const depts=[...new Set(rates.map(r=>r.department).filter(Boolean))].sort();
+  const sel=document.getElementById('rf-dept');const cur=sel.value;
+  sel.innerHTML='<option value="">Todos</option>'+depts.map(d=>'<option'+(d===cur?' selected':'')+'>'+esc(d)+'</option>').join('');
+}
+
+function rateNorm(s){return String(s||'').trim().toUpperCase().replace(/\s+/g,' ');}
+
+function rateOpen(empName){
+  const r=rates.find(x=>rateNorm(x.employee)===rateNorm(empName));if(!r)return;
+  rateCurrentRec=r;rateRender();
+  document.getElementById('rp-rate').textContent='$'+r.rate.toFixed(2);
+  document.getElementById('rp-name').textContent=r.employee;
+  document.getElementById('re-name').value=r.employee;
+  document.getElementById('re-rate').value=r.rate;
+  document.getElementById('re-dept').value=r.department||'';
+  document.getElementById('re-notes').value=r.notes||'';
+  rateUpdatePreview();rateLoadHistory(r.employee);
+  openPanel('r-panel');
+}
+
+function rateUpdatePreview(){
+  const rate=parseFloat(document.getElementById('re-rate')?.value||0);
+  const el=document.getElementById('r-preview');if(!el)return;
+  if(!rate){el.style.display='none';return;}
+  const daily=rate*8,weekly=daily*5,monthly=weekly*4.33;
+  el.style.display='block';
+  el.textContent='Diario: $'+daily.toFixed(2)+'  ·  Semanal: $'+weekly.toFixed(2)+'  ·  Mensual: $'+monthly.toFixed(2);
+}
+
+async function rateLoadHistory(empName){
+  const el=document.getElementById('r-hist');
+  el.innerHTML='<div class="es" style="padding:10px 0"><div class="spinner"></div></div>';
+  try{
+    const norm=rateNorm(empName);const entries=[];
+    for(const y of rateAvailYears){const d=await apiCall('GET','/rates?year='+y);const rec=(d.records||[]).find(r=>rateNorm(r.employee)===norm);if(rec)entries.push({year:y,rate:rec.rate});}
+    if(!entries.length){el.innerHTML='<div style="font-size:11px;color:var(--muted);padding:8px 0">Sin historial en otros años</div>';return;}
+    entries.sort((a,b)=>b.year-a.year);
+    el.innerHTML=entries.map((e,i)=>{
+      const prev=entries[i+1];let diffHtml='<span class="hist-diff same">—</span>';
+      if(prev){const diff=e.rate-prev.rate;const pct=((diff/prev.rate)*100).toFixed(1);
+        if(diff>0)diffHtml='<span class="hist-diff up">▲ $'+diff.toFixed(2)+' (+'+pct+'%)</span>';
+        else if(diff<0)diffHtml='<span class="hist-diff dn">▼ $'+Math.abs(diff).toFixed(2)+' ('+pct+'%)</span>';
+        else diffHtml='<span class="hist-diff same">Sin cambio</span>';
+      }
+      const isCur=e.year===rateActiveYear;
+      return'<div class="hist-item" style="'+(isCur?'border-color:rgba(200,16,46,.3)':'')+'"><span class="hist-yr">'+e.year+'</span><span class="hist-rate">$'+e.rate.toFixed(2)+'</span>'+diffHtml+(isCur?'<span style="font-size:9px;color:var(--red);font-weight:600;text-transform:uppercase">Activo</span>':'')+'</div>';
+    }).join('');
+  }catch{el.innerHTML='<div style="font-size:11px;color:var(--muted)">Error al cargar historial</div>';}
+}
+
+async function rateSave(){
+  if(!rateCurrentRec)return;
+  const data={year:rateActiveYear,employee:document.getElementById('re-name').value.trim(),rate:parseFloat(document.getElementById('re-rate').value)||0,department:document.getElementById('re-dept').value.trim(),notes:document.getElementById('re-notes').value.trim()};
+  if(!data.employee){toast('El nombre es requerido','er');return;}
+  try{
+    const r=await apiCall('PUT','/rates/employee',data);if(r.error){toast(r.error,'er');return;}
+    rates=r.records;rateMaxRate=Math.max(...rates.map(r=>r.rate));rateMinRate=Math.min(...rates.map(r=>r.rate));
+    rateCurrentRec=rates.find(x=>rateNorm(x.employee)===rateNorm(data.employee));
+    document.getElementById('rp-rate').textContent='$'+data.rate.toFixed(2);
+    document.getElementById('rp-name').textContent=data.employee;
+    rateRender();rateUpdateStats();ratePopDepts();toast(data.employee+' actualizado ✓','ok');
+  }catch{toast('Error al guardar','er');}
+}
+
+async function rateDelete(){
+  if(!rateCurrentRec||!confirm('¿Eliminar a "'+rateCurrentRec.employee+'" del año '+rateActiveYear+'?'))return;
+  try{
+    const r=await apiCall('DELETE','/rates/employee',{year:rateActiveYear,employee:rateCurrentRec.employee});
+    if(r.error){toast(r.error,'er');return;}
+    await loadRates();closePanel();toast('Empleado eliminado','ok');
+  }catch{toast('Error al eliminar','er');}
+}
+
+function rateOpenNew(){
+  ['rn-name','rn-rate','rn-dept','rn-notes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  document.getElementById('mo-rnew').classList.add('on');
+}
+
+async function rateCreate(){
+  const data={year:rateActiveYear,employee:document.getElementById('rn-name').value.trim(),rate:parseFloat(document.getElementById('rn-rate').value)||0,department:document.getElementById('rn-dept').value.trim(),notes:document.getElementById('rn-notes').value.trim()};
+  if(!data.employee){toast('El nombre es requerido','er');return;}
+  const btn=document.getElementById('btn-rcreate');btn.disabled=true;btn.textContent='Agregando…';
+  try{
+    const r=await apiCall('PUT','/rates/employee',data);if(r.error){toast(r.error,'er');return;}
+    rates=r.records;rateMaxRate=Math.max(...rates.map(r=>r.rate));rateMinRate=Math.min(...rates.map(r=>r.rate));
+    closeMo('mo-rnew');rateRender();rateUpdateStats();ratePopDepts();toast(data.employee+' agregado ✓','ok');rateOpen(data.employee);
+  }catch{toast('Error al crear','er');}
+  finally{btn.disabled=false;btn.textContent='Agregar →';}
+}
+
+function rateOpenImport(){
+  rImpFile=null;document.getElementById('rimp-file').value='';document.getElementById('rimp-fname').textContent='—';
+  document.getElementById('rimp-results').style.display='none';document.getElementById('btn-rimp-run').disabled=true;
+  document.getElementById('mo-rimp').classList.add('on');
+}
+function onRimpFile(inp){if(inp.files.length){rImpFile=inp.files[0];document.getElementById('rimp-fname').textContent=rImpFile.name;document.getElementById('btn-rimp-run').disabled=false;}}
+function rDropImport(e){e.preventDefault();document.getElementById('rdz-imp').classList.remove('dg');const f=e.dataTransfer.files[0];if(f){rImpFile=f;document.getElementById('rimp-fname').textContent=f.name;document.getElementById('btn-rimp-run').disabled=false;}}
+
+async function rateRunImport(){
+  if(!rImpFile)return;
+  const btn=document.getElementById('btn-rimp-run');btn.disabled=true;btn.textContent='Importando…';
+  document.getElementById('rimp-results').style.display='none';
+  const fd=new FormData();fd.append('file',rImpFile);fd.append('year',document.getElementById('rimp-year').value);fd.append('mode',document.getElementById('rimp-mode').value);
+  try{
+    const r=await fetch('/api/import-rates-excel',{method:'POST',body:fd});const d=await r.json();
+    if(d.error){toast(d.error,'er');return;}
+    document.getElementById('rimp-chips').innerHTML=
+      '<div class="r-chip" style="background:rgba(39,174,96,.1);border:1px solid rgba(39,174,96,.25)"><div class="n" style="color:var(--green)">'+d.imported+'</div><div class="l" style="color:var(--green)">Importados</div></div>'+
+      '<div class="r-chip" style="background:rgba(200,16,46,.08);border:1px solid rgba(200,16,46,.2)"><div class="n" style="color:var(--red)">'+d.total+'</div><div class="l" style="color:var(--red)">Total tabla</div></div>'+
+      '<div class="r-chip" style="background:rgba(255,255,255,.04);border:1px solid var(--border)"><div class="n" style="color:'+(d.errors?.length?'#eb5757':'var(--muted)')+'">'+( d.errors?.length||0)+'</div><div class="l">Errores</div></div>';
+    document.getElementById('rimp-errs').innerHTML=(d.errors||[]).map(e=>'<div style="font-size:11px;color:#eb5757;padding:3px 0">✕ '+esc(e.employee)+': '+esc(e.error)+'</div>').join('');
+    document.getElementById('rimp-results').style.display='block';
+    if(parseInt(document.getElementById('rimp-year').value)===rateActiveYear)await loadRates();
+    toast(d.imported+' tarifas importadas al '+d.year+' ✓','ok',5000);
+  }catch(err){toast('Error: '+err.message,'er');}
+  finally{btn.disabled=false;btn.textContent='Importar →';}
+}
+
+function rateOpenCopyYear(){document.getElementById('rcopy-to').value=rateActiveYear+1;document.getElementById('mo-rcopy').classList.add('on');}
+
+async function rateCopyYear(){
+  const from=parseInt(document.getElementById('rcopy-from').value);
+  const to=parseInt(document.getElementById('rcopy-to').value);
+  if(!from||!to){toast('Completa ambos años','er');return;}
+  try{
+    const r=await apiCall('POST','/rates/copy-year',{source_year:from,target_year:to});
+    if(r.error){toast(r.error,'er');return;}
+    rateAvailYears=[...new Set([...rateAvailYears,to])].sort((a,b)=>b-a);
+    rateActiveYear=to;rateBuildYearSel();await loadRates();closeMo('mo-rcopy');
+    toast(r.count+' tarifas copiadas '+from+' → '+to+' ✓','ok');
+  }catch{toast('Error al copiar año','er');}
+}
+
+function rateExportCSV(){window.open('/api/export-rates/'+rateActiveYear,'_blank');}
+
+// ════════════════════════════════════════════════════════
+//  QUOTE REGISTER
+// ════════════════════════════════════════════════════════
+let quotes=[], quoteCurrentRow=null;
+
+function qStatus(r){return r.awarded?'awarded':r.sentClient?'client':r.sentMgmt?'mgmt':'open';}
+function qChipCls(s){return{awarded:'ch-a',client:'ch-c',mgmt:'ch-m',open:'ch-n'}[s];}
+function qChipTxt(s){return{awarded:'Awarded ✓',client:'Enviado a cliente',mgmt:'Enviado a dirección',open:'En proceso'}[s];}
+function qTypeLbl(r){const p=[];if(r.machine)p.push(r.machine+'×Mach');if(r.tool)p.push(r.tool+'×Tool');if(r.machTool)p.push(r.machTool+'×M+T');if(r.robotic)p.push(r.robotic+'×Rob');if(r.service)p.push(r.service+'×Svc');return p.join(' · ')||'—';}
+function qFmtD(d){if(!d)return'—';const dt=new Date(d+'T00:00:00');return dt.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'});}
+
+async function loadQuotes(){
+  document.getElementById('q-tb').innerHTML='<tr><td colspan="10"><div class="es"><div class="spinner"></div></div></td></tr>';
+  try{
+    const ping=await(await fetch('/api/ping')).json();
+    const ok=ping.xlsm_ok&&ping.quote_ok;
+    document.getElementById('q-dot').className='conn-dot'+(ok?' ok':'');
+    document.getElementById('q-lbl').textContent=ok?'Conectado':'Error de conexión';
+    document.getElementById('dot-quotes').className='conn-dot'+(ok?' ok':'');
+    document.getElementById('lbl-quotes').textContent='Quotes';
+    quotes=await(await fetch('/api/quotes')).json();
+    quoteRender();quoteUpdateStats();
+  }catch(e){toast('Error al cargar cotizaciones: '+e,'er');}
+}
+
+function quoteFiltered(){
+  const gs=document.getElementById('q-gs').value.toLowerCase();
+  const fc=document.getElementById('qf-cust').value.toLowerCase();
+  const fs=document.getElementById('qf-st').value;
+  const ft=document.getElementById('qf-tp').value;
+  const fy=document.getElementById('qf-yr').value;
+  let out=quotes.filter(r=>{
+    if(gs&&![r.qnum,r.customer,r.desc,r.rfq].join(' ').toLowerCase().includes(gs))return false;
+    if(fc&&!(r.customer||'').toLowerCase().includes(fc))return false;
+    if(fy&&!(r.qnum||'').includes('Q-'+fy))return false;
+    if(fs){const s=qStatus(r);if(fs==='done'&&!r.done)return false;if(fs==='open'&&s!=='open')return false;if(fs==='mgmt'&&s!=='mgmt')return false;if(fs==='client'&&s!=='client')return false;if(fs==='awarded'&&!r.awarded)return false;}
+    if(ft&&!r[ft])return false;
+    return true;
+  });
+  const {key,dir}=sortState.quotes;
+  if(key)out.sort((a,b)=>String(a[key]||'').localeCompare(String(b[key]||''),undefined,{numeric:true})*dir);
+  return out;
+}
+
+function quoteRender(){
+  const data=quoteFiltered();const tb=document.getElementById('q-tb');
+  quoteUpdateStats();
+  if(!data.length){tb.innerHTML='<tr><td colspan="10"><div class="es"><span class="ei">🔍</span><br>Sin resultados</div></td></tr>';return;}
+  tb.innerHTML=data.map(r=>{
+    const s=qStatus(r);const sc=s==='awarded'?'q-aw':s==='client'?'q-sc':s==='mgmt'?'q-sm':'';
+    return`<tr class="${sc}${r.row===quoteCurrentRow?' sel':''}" onclick="quoteOpen(${r.row})">
+      <td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--red)">${r.qnum||'—'}</td>
+      <td style="font-weight:600;color:#fff">${esc(r.customer)}</td>
+      <td style="max-width:210px;overflow:hidden;text-overflow:ellipsis;color:var(--muted2)">${esc(r.desc||'—')}</td>
+      <td style="font-size:11px">${qTypeLbl(r)}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:11px">${esc(r.rfq||'—')}</td>
+      <td>${qFmtD(r.received)}</td>
+      <td>${r.done?'<span class="badge b-done">Done ✓</span>':'<span class="badge b-toappr">Pendiente</span>'}</td>
+      <td>${r.sentMgmt?qFmtD(r.sentMgmt):'<span style="color:var(--muted)">—</span>'}</td>
+      <td>${r.sentClient?qFmtD(r.sentClient):'<span style="color:var(--muted)">—</span>'}</td>
+      <td>${r.awarded?'<span class="badge b-yes">Awarded</span>':'—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+function quoteUpdateStats(){
+  document.getElementById('qs-tot').textContent=quotes.length;
+  document.getElementById('qs-aw').textContent=quotes.filter(r=>r.awarded).length;
+  document.getElementById('qs-dn').textContent=quotes.filter(r=>r.done).length;
+  document.getElementById('qs-op').textContent=quotes.filter(r=>qStatus(r)==='open').length;
+}
+
+function quoteOpen(row){
+  const r=quotes.find(x=>x.row===row);if(!r)return;quoteCurrentRow=row;quoteRender();
+  document.getElementById('qp-q').textContent=r.qnum||'—';
+  document.getElementById('qp-c').textContent=r.customer;
+  const s=qStatus(r);
+  document.getElementById('qpchip').className='chip '+qChipCls(s);
+  document.getElementById('qpcl').textContent=qChipTxt(s);
+  document.getElementById('qe-cust').value=r.customer||'';
+  document.getElementById('qe-rfq').value=r.rfq||'';
+  document.getElementById('qe-desc').value=r.desc||'';
+  document.getElementById('qe-recv').value=r.received||'';
+  document.getElementById('qe-mc').value=r.machine||'';
+  document.getElementById('qe-tl').value=r.tool||'';
+  document.getElementById('qe-mt').value=r.machTool||'';
+  document.getElementById('qe-rb').value=r.robotic||'';
+  document.getElementById('qe-sv').value=r.service||'';
+  document.getElementById('qe-dn').checked=!!r.done;
+  document.getElementById('qe-sm').value=r.sentMgmt||'';
+  document.getElementById('qe-sc').value=r.sentClient||'';
+  document.getElementById('qe-aw').checked=!!r.awarded;
+  document.getElementById('qe-nt').value=r.notes||'';
+  document.getElementById('q-dp').textContent='\\\\naspersico\\SALES MX\\GERC\\QUOTE REG\\'+r.qnum;
+  qStab('det',document.querySelector('#q-panel .ptab'));
+  openPanel('q-panel');
+}
+
+function qStab(name,btn){
+  document.querySelectorAll('#q-panel .ptab').forEach(b=>b.classList.remove('on'));
+  document.querySelectorAll('#q-panel .tc2').forEach(c=>c.classList.remove('on'));
+  document.querySelectorAll('#q-panel .ptab').forEach(b=>{if(b.getAttribute('onclick').includes("'"+name+"'"))b.classList.add('on');});
+  document.getElementById('qtab-'+name).classList.add('on');
+  if(name==='doc'&&quoteCurrentRow!==null){const r=quotes.find(x=>x.row===quoteCurrentRow);if(r)qLoadFiles(r.qnum);}
+}
+
+async function quoteSave(){
+  const r=quotes.find(x=>x.row===quoteCurrentRow);if(!r)return;
+  const payload={
+    qnum:r.qnum,customer:document.getElementById('qe-cust').value.trim(),
+    rfq:document.getElementById('qe-rfq').value.trim(),desc:document.getElementById('qe-desc').value.trim(),
+    received:document.getElementById('qe-recv').value||null,
+    machine:document.getElementById('qe-mc').value||null,tool:document.getElementById('qe-tl').value||null,
+    machTool:document.getElementById('qe-mt').value||null,robotic:document.getElementById('qe-rb').value||null,
+    service:document.getElementById('qe-sv').value||null,done:document.getElementById('qe-dn').checked,
+    sentMgmt:document.getElementById('qe-sm').value||null,sentClient:document.getElementById('qe-sc').value||null,
+    awarded:document.getElementById('qe-aw').checked,notes:document.getElementById('qe-nt').value.trim(),
+  };
+  try{
+    const res=await apiCall('PUT','/quotes/'+quoteCurrentRow,payload);if(res.error)throw new Error(res.error);
+    Object.assign(r,payload);
+    document.getElementById('qp-q').textContent=r.qnum;document.getElementById('qp-c').textContent=r.customer;
+    const s=qStatus(r);document.getElementById('qpchip').className='chip '+qChipCls(s);document.getElementById('qpcl').textContent=qChipTxt(s);
+    quoteRender();toast('Guardado en Excel ✓','ok');
+  }catch(e){toast('Error al guardar: '+e,'er');}
+}
+
+async function quoteDelete(){
+  const r=quotes.find(x=>x.row===quoteCurrentRow);if(!r)return;
+  if(!confirm('¿Eliminar '+r.qnum+' – '+r.customer+'?'))return;
+  try{
+    await apiCall('DELETE','/quotes/'+quoteCurrentRow);
+    quotes=quotes.filter(x=>x.row!==quoteCurrentRow);closePanel();toast(r.qnum+' eliminada','if');await loadQuotes();
+  }catch(e){toast('Error: '+e,'er');}
+}
+
+function quoteOpenNew(){
+  const t=new Date().toISOString().split('T')[0];
+  ['qn-c','qn-r','qn-d','qn-nt'].forEach(id=>document.getElementById(id).value='');
+  ['qn-mc','qn-tl','qn-mt','qn-rb','qn-sv'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('qn-recv').value=t;
+  document.getElementById('mo-qnew').classList.add('on');
+  document.getElementById('qn-c').focus();
+}
+
+async function quoteCreate(){
+  const c=document.getElementById('qn-c').value.trim();const d=document.getElementById('qn-d').value.trim();
+  if(!c){toast('El cliente es obligatorio','er');return;}if(!d){toast('La descripción es obligatoria','er');return;}
+  const btn=document.getElementById('btn-qcreate');btn.disabled=true;btn.textContent='Creando…';
+  const payload={customer:c,rfq:document.getElementById('qn-r').value.trim(),desc:d,received:document.getElementById('qn-recv').value||null,
+    machine:document.getElementById('qn-mc').value||null,tool:document.getElementById('qn-tl').value||null,
+    machTool:document.getElementById('qn-mt').value||null,robotic:document.getElementById('qn-rb').value||null,
+    service:document.getElementById('qn-sv').value||null,notes:document.getElementById('qn-nt').value.trim(),
+    done:false,sentMgmt:null,sentClient:null,awarded:false};
+  try{
+    const res=await apiCall('POST','/quotes',payload);if(res.error)throw new Error(res.error);
+    closeMo('mo-qnew');toast(res.qnum+' creada ✓','ok');
+    await loadQuotes();setTimeout(()=>{const nr=quotes.find(x=>x.qnum===res.qnum);if(nr)quoteOpen(nr.row);},300);
+  }catch(e){toast('Error al crear: '+e,'er');}
+  finally{btn.disabled=false;btn.textContent='Crear cotización';}
+}
+
+async function qLoadFiles(qnum){
+  const fl=document.getElementById('q-fl');
+  fl.innerHTML='<div class="es"><div class="spinner"></div></div>';
+  try{
+    const files=await(await fetch('/api/quotes/files/'+qnum)).json();
+    if(!files.length){fl.innerHTML='<div class="es"><div class="ei">📂</div><p>Sin documentos.</p></div>';return;}
+    fl.innerHTML=files.map(f=>'<div class="fitem"><span class="fi-ic">'+fileIco(f.name)+'</span><div class="fi-inf"><div class="fi-nm">'+esc(f.name)+'</div><div class="fi-mt">'+fmtSz(f.size)+' · '+f.modified+'</div></div><button class="fi-del" onclick="qDelFile(\''+qnum+'\',\''+esc(f.name)+'\')">🗑</button></div>').join('');
+  }catch{fl.innerHTML='<div class="es"><div class="ei">⚠</div><p>Error al leer carpeta.</p></div>';}
+}
+
+async function qUploadFiles(fileList){
+  const r=quotes.find(x=>x.row===quoteCurrentRow);if(!r)return;
+  const fd=new FormData();Array.from(fileList).forEach(f=>fd.append('files',f));
+  try{
+    const res=await fetch('/api/quotes/upload/'+r.qnum,{method:'POST',body:fd});
+    const data=await res.json();if(data.error)throw new Error(data.error);
+    toast(data.saved.length+' archivo(s) guardados','ok');await qLoadFiles(r.qnum);
+  }catch(e){toast('Error al subir: '+e,'er');}
+  document.querySelector('#q-dz input').value='';
+}
+
+function qDropFiles(e){e.preventDefault();document.getElementById('q-dz').classList.remove('dg');qUploadFiles(e.dataTransfer.files);}
+
+async function qDelFile(qnum,filename){
+  if(!confirm('¿Eliminar "'+filename+'"?'))return;
+  try{const r=await(await fetch('/api/quotes/files/'+qnum+'/'+encodeURIComponent(filename),{method:'DELETE'})).json();if(r.error){toast(r.error,'er');return;}toast(filename+' eliminado','if');await qLoadFiles(qnum);}catch(e){toast('Error: '+e,'er');}
+}
+
+['qf-cust','qf-st','qf-tp','qf-yr'].forEach(id=>{const el=document.getElementById(id);if(el){el.addEventListener('input',quoteRender);el.addEventListener('change',quoteRender);}});
+
+// ════════════════════════════════════════════════════════
+//  INIT
+// ════════════════════════════════════════════════════════
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){
+    const mods=['mo-jnew','mo-jimp','mo-rnew','mo-rimp','mo-rcopy','mo-qnew','mo-po-imp'];
+    const open=mods.find(m=>document.getElementById(m).classList.contains('on'));
+    if(open)closeMo(open); else if(_currentPanel)closePanel();
+  }
+});
+
+// ════════════════════════════════════════════════════════
+//  PURCHASE ORDERS
+// ════════════════════════════════════════════════════════
+let poRecords=[], poActiveYear=new Date().getFullYear(), poAvailYears=[], poImpFile=null;
+
+const PO_EST_STYLE={
+  'Recepcionada':'background:rgba(39,174,96,.15);color:#58d68d;border:1px solid rgba(39,174,96,.25)',
+  'Emitida':     'background:rgba(41,128,185,.15);color:#5dade2;border:1px solid rgba(41,128,185,.25)',
+  'Cancelada':   'background:rgba(200,16,46,.12);color:#e8566a;border:1px solid rgba(200,16,46,.25)',
+  'Rec.Parc.':   'background:rgba(243,156,18,.12);color:#f39c12;border:1px solid rgba(243,156,18,.25)',
+  'Comprada':    'background:rgba(142,68,173,.12);color:#c39bd3;border:1px solid rgba(142,68,173,.25)',
+};
+
+function poFmtDate(s){ if(!s)return'—'; try{const d=new Date(s+'T00:00:00');return d.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'});}catch{return s;} }
+function poFmtNum(n,dec=2){ return n==null||n===''?'—':Number(n).toLocaleString('en-US',{minimumFractionDigits:dec,maximumFractionDigits:dec}); }
+
+async function loadPO(){
+  document.getElementById('po-tb').innerHTML='<tr><td colspan="9"><div class="es"><div class="spinner"></div></div></td></tr>';
+  try{
+    const ping=await(await fetch('/api/ping')).json();
+    const ok=ping.po_ok;
+    document.getElementById('po-dot').className='conn-dot'+(ok?' ok':'');
+    document.getElementById('po-lbl').textContent=ok?'NAS OK':'NAS sin acceso';
+    document.getElementById('dot-po').className='conn-dot'+(ok?' ok':'');
+    document.getElementById('lbl-po').textContent='IPOs';
+    document.getElementById('po-path').textContent=ping.po_folder||'—';
+    // Use USD-converted view
+    const d=await(await fetch('/api/po/usd-view?year='+poActiveYear)).json();
+    poRecords=d.records||[];
+    poAvailYears=d.available_years||[];
+    poBuildYearSel();
+    poRender();
+    poUpdateStats();
+  }catch(e){toast('Error al cargar Purchase Orders: '+e,'er');}
+}
+
+function poBuildYearSel(){
+  const all=[...new Set([poActiveYear,...poAvailYears])].sort((a,b)=>b-a);
+  document.getElementById('po-year-sel').innerHTML=all.map(y=>'<option value="'+y+'"'+(y===poActiveYear?' selected':'')+'>'+y+'</option>').join('');
+  // Also populate import modal year selector
+  const impSel=document.getElementById('po-imp-year');
+  if(impSel) impSel.innerHTML=all.map(y=>'<option value="'+y+'"'+(y===poActiveYear?' selected':'')+'>'+y+'</option>').join('');
+  document.getElementById('po-tb-year').textContent=poActiveYear;
+}
+
+function poSwitchYear(){ poActiveYear=parseInt(document.getElementById('po-year-sel').value); loadPO(); }
+
+function poFiltered(){
+  const nombre=document.getElementById('pof-nombre').value.toLowerCase();
+  const dest  =document.getElementById('pof-dest').value.toLowerCase();
+  const est   =document.getElementById('pof-est').value;
+  const mon   =document.getElementById('pof-moneda').value;
+  const minSub=parseFloat(document.getElementById('pof-min').value)||0;
+  const gs    =document.getElementById('po-gs').value.toLowerCase();
+
+  return poRecords.filter(r=>{
+    if(nombre && !(r.nombre||'').toLowerCase().includes(nombre)) return false;
+    if(dest   && !(r.entregar_a||'').toLowerCase().includes(dest)) return false;
+    if(est    && r.estatus!==est) return false;
+    if(mon==='MXN' && r.tipo_cambio>1) return false;
+    if(mon==='USD' && r.tipo_cambio<=1) return false;
+    if(r.subtotal<minSub) return false;
+    if(gs && !((r.clave||'')+(r.nombre||'')+(r.entregar_a||'')+(r.estatus||'')).toString().toLowerCase().includes(gs)) return false;
+    return true;
+  }).sort((a,b)=>{
+    const {key,dir}=sortState.po;
+    let av=a[key]??'', bv=b[key]??'';
+    if(typeof av==='number') return dir*(av-bv);
+    return dir*String(av).localeCompare(String(bv),undefined,{numeric:true});
+  });
+}
+
+function poRender(){
+  const rows=poFiltered();
+  const tb=document.getElementById('po-tb');
+  // Totals in USD
+  const totalUSD=rows.reduce((s,r)=>s+(r.subtotal_usd||r.subtotal||0),0);
+  document.getElementById('po-total-mxn').textContent='$'+poFmtNum(totalUSD,2)+' USD';
+
+  if(!rows.length){
+    tb.innerHTML='<tr><td colspan="9"><div class="es"><span class="ei">🛒</span><br>Sin registros</div></td></tr>';
+    return;
+  }
+  tb.innerHTML=rows.map(r=>{
+    const isUSD=r.moneda==='USD';
+    const hasFX=!isUSD && r.fx_rate_used;
+    const estStyle=PO_EST_STYLE[r.estatus]||'background:rgba(255,255,255,.06);color:var(--muted)';
+    const usdVal = r.subtotal_usd != null ? r.subtotal_usd : r.subtotal;
+    return`<tr>
+      <td style="font-family:'DM Mono',monospace;font-size:12px;color:var(--red);font-weight:600">${r.clave}</td>
+      <td style="color:var(--muted2)">${poFmtDate(r.fecha_doc)}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--amber)">${esc(r.entregar_a||'—')}</td>
+      <td style="max-width:230px;overflow:hidden;text-overflow:ellipsis;font-weight:500;color:#fff" title="${esc(r.nombre)}">${esc(r.nombre||'—')}</td>
+      <td style="text-align:right;font-family:'DM Mono',monospace;font-size:11px;color:var(--muted2)">
+        ${isUSD?'':'<span style="font-size:9px;color:var(--muted)">MXN </span>'}$${poFmtNum(r.subtotal)}
+      </td>
+      <td style="text-align:right;font-family:'DM Mono',monospace;font-size:12px;color:var(--gold);font-weight:600">
+        $${poFmtNum(usdVal)}
+      </td>
+      <td style="text-align:right;font-family:'DM Mono',monospace;font-size:10px;color:${hasFX?'var(--muted2)':'var(--muted)'}">
+        ${isUSD?'1.0000':hasFX?r.fx_rate_used.toFixed(4):'<span style="color:#eb5757;font-size:9px">N/FX</span>'}
+      </td>
+      <td><span class="badge" style="${estStyle}">${esc(r.estatus||'—')}</span></td>
+      <td style="color:var(--muted2)">${poFmtDate(r.fecha_recepcion)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function poUpdateStats(){
+  document.getElementById('pos-tot').textContent =poRecords.length;
+  document.getElementById('pos-rec').textContent =poRecords.filter(r=>r.estatus==='Recepcionada').length;
+  document.getElementById('pos-emit').textContent=poRecords.filter(r=>r.estatus==='Emitida').length;
+  document.getElementById('pos-can').textContent =poRecords.filter(r=>r.estatus==='Cancelada').length;
+}
+
+// Sort for PO
+sortState.po={key:'clave',dir:1};
+document.querySelectorAll('thead th[data-mod="po"]').forEach(th=>{
+  th.addEventListener('click',()=>{
+    const k=th.dataset.k;
+    if(sortState.po.key===k) sortState.po.dir*=-1; else{sortState.po.key=k;sortState.po.dir=1;}
+    document.querySelectorAll('thead th[data-mod="po"]').forEach(t=>t.classList.remove('sa','sd'));
+    th.classList.add(sortState.po.dir===1?'sa':'sd');
+    poRender();
+  });
+});
+
+// PO Import
+function poOpenImport(){
+  poImpFile=null;
+  document.getElementById('po-imp-file').value='';
+  document.getElementById('po-imp-fname').textContent='—';
+  document.getElementById('po-imp-results').style.display='none';
+  document.getElementById('btn-po-imp-run').disabled=true;
+  poBuildYearSel(); // refresh year dropdown
+  document.getElementById('mo-po-imp').classList.add('on');
+}
+function onPoImpFile(inp){
+  if(inp.files.length){poImpFile=inp.files[0];document.getElementById('po-imp-fname').textContent=poImpFile.name;document.getElementById('btn-po-imp-run').disabled=false;}
+}
+function poDropImport(e){
+  e.preventDefault();document.getElementById('po-dz-imp').classList.remove('dg');
+  const f=e.dataTransfer.files[0];
+  if(f){poImpFile=f;document.getElementById('po-imp-fname').textContent=f.name;document.getElementById('btn-po-imp-run').disabled=false;}
+}
+
+async function poRunImport(){
+  if(!poImpFile)return;
+  const btn=document.getElementById('btn-po-imp-run');
+  btn.disabled=true;btn.textContent='Importando…';
+  document.getElementById('po-imp-results').style.display='none';
+  const fd=new FormData();
+  fd.append('file',poImpFile);
+  fd.append('year',document.getElementById('po-imp-year').value);
+  fd.append('mode',document.getElementById('po-imp-mode').value);
+  try{
+    const r=await fetch('/api/po/import',{method:'POST',body:fd});
+    const d=await r.json();
+    if(d.error){toast(d.error,'er');return;}
+    document.getElementById('po-imp-chips').innerHTML=
+      '<div class="r-chip" style="background:rgba(39,174,96,.1);border:1px solid rgba(39,174,96,.25)"><div class="n" style="color:var(--green)">'+d.imported+'</div><div class="l" style="color:var(--green)">Importadas</div></div>'+
+      '<div class="r-chip" style="background:rgba(200,16,46,.08);border:1px solid rgba(200,16,46,.2)"><div class="n" style="color:var(--red)">'+d.total+'</div><div class="l" style="color:var(--red)">Total tabla</div></div>'+
+      '<div class="r-chip" style="background:rgba(255,255,255,.04);border:1px solid var(--border)"><div class="n" style="color:'+(d.errors?.length?'#eb5757':'var(--muted)')+'">'+( d.errors?.length||0)+'</div><div class="l">Errores</div></div>';
+    document.getElementById('po-imp-errs').innerHTML=(d.errors||[]).map(e=>'<div style="font-size:11px;color:#eb5757;padding:3px 0">✕ Clave '+esc(e.clave)+': '+esc(e.error)+'</div>').join('');
+    document.getElementById('po-imp-results').style.display='block';
+    if(parseInt(document.getElementById('po-imp-year').value)===poActiveYear) await loadPO();
+    toast(d.imported+' OCs importadas al '+d.year+' ✓','ok',5000);
+  }catch(err){toast('Error: '+err.message,'er');}
+  finally{btn.disabled=false;btn.textContent='Importar →';}
+}
+
+function poExportCSV(){ window.open('/api/po/export/'+poActiveYear,'_blank'); }
+
+// ════════════════════════════════════════════════════════
+//  WORK HOURS
+// ════════════════════════════════════════════════════════
+let whRecords=[], whActiveYear=new Date().getFullYear(), whAvailYears=[], whImpFile=null;
+let whRateMap={};   // normalized-name → rate (USD/hr), built when rates load
+sortState.wh={key:'date_worked',dir:1};
+
+function whBuildRateMap(){
+  // Called after loadRates() or loadWH() — cross-reference current rate year
+  whRateMap={};
+  for(const r of rates){
+    if(r.employee && r.rate!=null)
+      whRateMap[rateNorm(r.employee)] = parseFloat(r.rate)||0;
+  }
+}
+
+function whGetRate(employeeName){
+  return whRateMap[rateNorm(employeeName)] || 0;
+}
+
+async function loadWH(){
+  document.getElementById('wh-tb').innerHTML='<tr><td colspan="7"><div class="es"><div class="spinner"></div></div></td></tr>';
+  try{
+    const ping=await(await fetch('/api/ping')).json();
+    const ok=ping.wh_ok;
+    document.getElementById('wh-dot').className='conn-dot'+(ok?' ok':'');
+    document.getElementById('wh-lbl').textContent=ok?'NAS OK':'NAS sin acceso';
+    document.getElementById('dot-wh').className='conn-dot'+(ok?' ok':'');
+    document.getElementById('wh-path').textContent=ping.wh_folder||'—';
+
+    const d=await(await fetch('/api/wh?year='+whActiveYear)).json();
+    whRecords=d.records||[];
+    whAvailYears=d.available_years||[];
+    whBuildRateMap();
+    whBuildYearSel();
+    whRender(); whUpdateStats();
+  }catch(e){toast('Error al cargar Work Hours: '+e,'er');}
+}
+
+function whBuildYearSel(){
+  const all=[...new Set([whActiveYear,...whAvailYears])].sort((a,b)=>b-a);
+  document.getElementById('wh-year-sel').innerHTML=all.map(y=>'<option value="'+y+'"'+(y===whActiveYear?' selected':'')+'>'+y+'</option>').join('');
+  const impSel=document.getElementById('wh-imp-year');
+  if(impSel) impSel.innerHTML=all.map(y=>'<option value="'+y+'"'+(y===whActiveYear?' selected':'')+'>'+y+'</option>').join('');
+  document.getElementById('wh-tb-year').textContent=whActiveYear;
+}
+function whSwitchYear(){ whActiveYear=parseInt(document.getElementById('wh-year-sel').value); loadWH(); }
+
+function whFiltered(){
+  const emp  =document.getElementById('whf-emp').value.toLowerCase();
+  const code =document.getElementById('whf-code').value.toLowerCase();
+  const desc =document.getElementById('whf-desc').value.toLowerCase();
+  const from =document.getElementById('whf-from').value;
+  const to   =document.getElementById('whf-to').value;
+  const gs   =document.getElementById('wh-gs').value.toLowerCase();
+  return whRecords.filter(r=>{
+    if(emp  && !(r.employee||'').toLowerCase().includes(emp)) return false;
+    if(code && !(r.work_code||'').toLowerCase().includes(code)) return false;
+    if(desc && !(r.description||'').toLowerCase().includes(desc)) return false;
+    if(from && r.date_worked < from) return false;
+    if(to   && r.date_worked > to)   return false;
+    if(gs && !((r.employee||'')+(r.work_code||'')+(r.description||'')).toLowerCase().includes(gs)) return false;
+    return true;
+  }).sort((a,b)=>{
+    const {key,dir}=sortState.wh;
+    // cost is a computed field — sort by it properly
+    if(key==='cost'){
+      const ca=(a.hours||0)*whGetRate(a.employee||'');
+      const cb=(b.hours||0)*whGetRate(b.employee||'');
+      return dir*(ca-cb);
+    }
+    let av=a[key]??'', bv=b[key]??'';
+    if(typeof av==='number') return dir*(av-bv);
+    return dir*String(av).localeCompare(String(bv));
+  });
+}
+
+function whHrColor(h){ return h>=10?'#e74c3c':h>=6?'var(--amber)':h>=1?'var(--green)':'var(--muted)'; }
+
+function whRender(){
+  const rows=whFiltered();
+  const tb=document.getElementById('wh-tb');
+  const totalHrs =rows.reduce((s,r)=>s+(r.hours||0),0);
+  const totalCost=rows.reduce((s,r)=>s+(r.hours||0)*whGetRate(r.employee||''),0);
+  document.getElementById('wh-total-hrs').textContent =totalHrs.toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1})+' h';
+  document.getElementById('wh-total-cost').textContent='$'+totalCost.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  if(!rows.length){
+    tb.innerHTML='<tr><td colspan="7"><div class="es"><span class="ei">⏱</span><br>Sin registros</div></td></tr>';
+    return;
+  }
+  // Limit display to 2000 rows for performance
+  const display=rows.slice(0,2000);
+  const more=rows.length>2000?`<tr><td colspan="7" style="text-align:center;padding:10px;color:var(--muted);font-size:11px">… y ${rows.length-2000} registros más — afina los filtros para verlos</td></tr>`:'';
+  tb.innerHTML=display.map((r,i)=>{
+    const rate=whGetRate(r.employee||'');
+    const cost=(r.hours||0)*rate;
+    const hasRate=rate>0;
+    return`<tr style="${i%2===0?'':'background:rgba(255,255,255,.018)'}">
+      <td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)">${r.id||''}</td>
+      <td style="font-weight:500;color:#fff;max-width:190px;overflow:hidden;text-overflow:ellipsis">${esc(r.employee)}</td>
+      <td style="color:var(--muted2);font-family:'DM Mono',monospace;font-size:11px">${r.date_worked||'—'}</td>
+      <td><span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--amber);font-weight:600">${esc(r.work_code||'—')}</span></td>
+      <td style="text-align:right;font-family:'DM Mono',monospace;font-size:13px;font-weight:600;color:${whHrColor(r.hours||0)}">${(r.hours||0).toFixed(1)}</td>
+      <td style="text-align:right;font-family:'DM Mono',monospace;font-size:12px;color:${hasRate?'var(--green)':'var(--muted)'}" title="${hasRate?'$'+rate.toFixed(2)+'/hr':'Sin tarifa en Hourly Rates'}">
+        ${hasRate?'$'+cost.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):'<span style="font-size:10px;opacity:.5">N/T</span>'}
+      </td>
+      <td style="color:var(--muted2);max-width:220px;overflow:hidden;text-overflow:ellipsis">${esc(r.description||'—')}</td>
+    </tr>`;
+  }).join('')+more;
+}
+
+function whUpdateStats(){
+  const total=whRecords.reduce((s,r)=>s+(r.hours||0),0);
+  const totalCost=whRecords.reduce((s,r)=>s+(r.hours||0)*whGetRate(r.employee||''),0);
+  const emps =new Set(whRecords.map(r=>r.employee)).size;
+  const codes=new Set(whRecords.map(r=>r.work_code).filter(Boolean)).size;
+  document.getElementById('whs-tot').textContent =whRecords.length.toLocaleString();
+  document.getElementById('whs-hrs').textContent =total.toLocaleString('en-US',{maximumFractionDigits:0});
+  document.getElementById('whs-emp').textContent =emps;
+  document.getElementById('whs-codes').textContent=codes;
+}
+
+document.querySelectorAll('thead th[data-mod="wh"]').forEach(th=>{
+  th.addEventListener('click',()=>{
+    const k=th.dataset.k;
+    if(sortState.wh.key===k) sortState.wh.dir*=-1; else{sortState.wh.key=k;sortState.wh.dir=1;}
+    document.querySelectorAll('thead th[data-mod="wh"]').forEach(t=>t.classList.remove('sa','sd'));
+    th.classList.add(sortState.wh.dir===1?'sa':'sd'); whRender();
+  });
+});
+
+function whOpenImport(){
+  whImpFile=null;
+  document.getElementById('wh-imp-file').value='';
+  document.getElementById('wh-imp-fname').textContent='—';
+  document.getElementById('wh-imp-results').style.display='none';
+  document.getElementById('btn-wh-imp-run').disabled=true;
+  // Default date range: full year
+  document.getElementById('wh-imp-from').value=whActiveYear+'-01-01';
+  document.getElementById('wh-imp-to').value=whActiveYear+'-12-31';
+  whBuildYearSel();
+  document.getElementById('mo-wh-imp').classList.add('on');
+}
+function onWhImpFile(inp){
+  if(inp.files.length){whImpFile=inp.files[0];document.getElementById('wh-imp-fname').textContent=whImpFile.name;document.getElementById('btn-wh-imp-run').disabled=false;}
+}
+function whDropImport(e){
+  e.preventDefault();document.getElementById('wh-dz-imp').classList.remove('dg');
+  const f=e.dataTransfer.files[0];
+  if(f){whImpFile=f;document.getElementById('wh-imp-fname').textContent=f.name;document.getElementById('btn-wh-imp-run').disabled=false;}
+}
+
+async function whRunImport(){
+  if(!whImpFile)return;
+  const btn=document.getElementById('btn-wh-imp-run');
+  btn.disabled=true; btn.textContent='Importando…';
+  document.getElementById('wh-imp-results').style.display='none';
+  const fd=new FormData();
+  fd.append('file',whImpFile);
+  fd.append('year',document.getElementById('wh-imp-year').value);
+  fd.append('mode',document.getElementById('wh-imp-mode').value);
+  fd.append('date_from',document.getElementById('wh-imp-from').value);
+  fd.append('date_to',document.getElementById('wh-imp-to').value);
+  try{
+    const r=await fetch('/api/wh/import',{method:'POST',body:fd});
+    const d=await r.json();
+    if(d.error){toast(d.error,'er');return;}
+    document.getElementById('wh-imp-chips').innerHTML=
+      '<div class="r-chip" style="background:rgba(39,174,96,.1);border:1px solid rgba(39,174,96,.25)"><div class="n" style="color:var(--green)">'+d.imported+'</div><div class="l" style="color:var(--green)">Importados</div></div>'+
+      '<div class="r-chip" style="background:rgba(255,255,255,.04);border:1px solid var(--border)"><div class="n" style="color:var(--muted)">'+d.skipped+'</div><div class="l">Omitidos</div></div>'+
+      '<div class="r-chip" style="background:rgba(200,16,46,.08);border:1px solid rgba(200,16,46,.2)"><div class="n" style="color:var(--red)">'+d.total+'</div><div class="l" style="color:var(--red)">Total tabla</div></div>';
+    document.getElementById('wh-imp-errs').innerHTML=(d.errors||[]).map(e=>'<div style="font-size:11px;color:#eb5757;padding:3px 0">✕ Row '+esc(e.row)+': '+esc(e.error)+'</div>').join('');
+    document.getElementById('wh-imp-results').style.display='block';
+    if(parseInt(document.getElementById('wh-imp-year').value)===whActiveYear) await loadWH();
+    toast(d.imported+' registros importados ✓ ('+d.skipped+' omitidos por fecha)','ok',6000);
+  }catch(err){toast('Error: '+err.message,'er');}
+  finally{btn.disabled=false;btn.textContent='Importar →';}
+}
+
+function whExportCSV(){ window.open('/api/wh/export/'+whActiveYear,'_blank'); }
+
+// ════════════════════════════════════════════════════════
+//  INVOICED POs
+// ════════════════════════════════════════════════════════
+let ivpRecords=[], ivpActiveYear=new Date().getFullYear(), ivpAvailYears=[], ivpImpFile=null;
+sortState.ivp={key:'clave',dir:1};
+
+const IVP_EST_STYLE={
+  'Emitida': 'background:rgba(41,128,185,.15);color:#5dade2;border:1px solid rgba(41,128,185,.25)',
+  'Devuelta':'background:rgba(200,16,46,.12);color:#e8566a;border:1px solid rgba(200,16,46,.25)',
+};
+
+async function loadIVP(){
+  document.getElementById('ivp-tb').innerHTML='<tr><td colspan="9"><div class="es"><div class="spinner"></div></div></td></tr>';
+  try{
+    const ping=await(await fetch('/api/ping')).json();
+    const ok=ping.ivp_ok;
+    document.getElementById('ivp-dot').className='conn-dot'+(ok?' ok':'');
+    document.getElementById('ivp-lbl').textContent=ok?'NAS OK':'NAS sin acceso';
+    document.getElementById('dot-ivp').className='conn-dot'+(ok?' ok':'');
+    document.getElementById('ivp-path').textContent=ping.ivp_folder||'—';
+
+    const d=await(await fetch('/api/ivp?year='+ivpActiveYear)).json();
+    ivpRecords=d.records||[];
+    ivpAvailYears=d.available_years||[];
+    ivpBuildYearSel();
+    ivpRender(); ivpUpdateStats();
+  }catch(e){toast('Error al cargar Invoiced POs: '+e,'er');}
+}
+
+function ivpBuildYearSel(){
+  const all=[...new Set([ivpActiveYear,...ivpAvailYears])].sort((a,b)=>b-a);
+  document.getElementById('ivp-year-sel').innerHTML=all.map(y=>'<option value="'+y+'"'+(y===ivpActiveYear?' selected':'')+'>'+y+'</option>').join('');
+  const impSel=document.getElementById('ivp-imp-year');
+  if(impSel) impSel.innerHTML=all.map(y=>'<option value="'+y+'"'+(y===ivpActiveYear?' selected':'')+'>'+y+'</option>').join('');
+  document.getElementById('ivp-tb-year').textContent=ivpActiveYear;
+}
+function ivpSwitchYear(){ ivpActiveYear=parseInt(document.getElementById('ivp-year-sel').value); loadIVP(); }
+
+function ivpFiltered(){
+  const nombre=document.getElementById('ivpf-nombre').value.toLowerCase();
+  const dest  =document.getElementById('ivpf-dest').value.toLowerCase();
+  const est   =document.getElementById('ivpf-est').value;
+  const mon   =document.getElementById('ivpf-mon').value;
+  const from  =document.getElementById('ivpf-from').value;
+  const to    =document.getElementById('ivpf-to').value;
+  const gs    =document.getElementById('ivp-gs').value.toLowerCase();
+  return ivpRecords.filter(r=>{
+    if(nombre && !(r.nombre||'').toLowerCase().includes(nombre)) return false;
+    if(dest   && !(r.entregar_a||'').toLowerCase().includes(dest)) return false;
+    if(est    && r.estatus!==est) return false;
+    if(mon    && r.moneda!==mon)  return false;
+    if(from   && r.fecha_pago && r.fecha_pago < from) return false;
+    if(to     && r.fecha_pago && r.fecha_pago > to)   return false;
+    if(gs && !((r.clave||'')+(r.nombre||'')+(r.entregar_a||'')).toString().toLowerCase().includes(gs)) return false;
+    return true;
+  }).sort((a,b)=>{
+    const {key,dir}=sortState.ivp;
+    let av=a[key]??'', bv=b[key]??'';
+    if(typeof av==='number') return dir*(av-bv);
+    return dir*String(av).localeCompare(String(bv),undefined,{numeric:true});
+  });
+}
+
+function ivpRender(){
+  const rows=ivpFiltered();
+  const tb=document.getElementById('ivp-tb');
+  const totalMXN=rows.filter(r=>r.moneda==='MXN').reduce((s,r)=>s+(r.subtotal||0),0);
+  const totalUSD=rows.filter(r=>r.moneda==='USD').reduce((s,r)=>s+(r.subtotal||0),0);
+  let totalTxt='';
+  if(totalMXN>0) totalTxt+='$'+totalMXN.toLocaleString('en-US',{maximumFractionDigits:0})+' MXN';
+  if(totalUSD>0) totalTxt+=(totalTxt?' · ':'')+'$'+totalUSD.toLocaleString('en-US',{maximumFractionDigits:2})+' USD';
+  document.getElementById('ivp-total').textContent=totalTxt||'—';
+
+  if(!rows.length){
+    tb.innerHTML='<tr><td colspan="9"><div class="es"><span class="ei">🧾</span><br>Sin registros</div></td></tr>';
+    return;
+  }
+  tb.innerHTML=rows.map(r=>{
+    const isUSD=r.moneda==='USD';
+    const estStyle=IVP_EST_STYLE[r.estatus]||'background:rgba(255,255,255,.06);color:var(--muted)';
+    return`<tr>
+      <td style="font-family:'DM Mono',monospace;font-size:12px;color:var(--red);font-weight:600">${r.clave}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--amber)">${esc(r.entregar_a||'—')}</td>
+      <td style="max-width:230px;overflow:hidden;text-overflow:ellipsis;font-weight:500;color:#fff" title="${esc(r.nombre)}">${esc(r.nombre||'—')}</td>
+      <td style="text-align:right;font-family:'DM Mono',monospace;font-size:12px">$${(r.subtotal||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+      <td><span class="badge" style="${isUSD?'background:rgba(41,128,185,.15);color:#5dade2;border:1px solid rgba(41,128,185,.25)':'background:rgba(39,174,96,.12);color:#58d68d;border:1px solid rgba(39,174,96,.25)'}">
+        ${isUSD?'USD':'MXN'}</span></td>
+      <td><span class="badge" style="${estStyle}">${esc(r.estatus||'—')}</span></td>
+      <td style="color:var(--muted2);font-size:11px">${r.fecha_recepcion||'—'}</td>
+      <td style="color:var(--muted2);font-size:11px;font-weight:${r.fecha_pago?'600':'400'};color:${r.fecha_pago?'var(--gold)':'var(--muted)'}">${r.fecha_pago||'—'}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted2)">${r.doc_anterior||'—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+function ivpUpdateStats(){
+  document.getElementById('ivps-tot').textContent =ivpRecords.length;
+  document.getElementById('ivps-emit').textContent=ivpRecords.filter(r=>r.estatus==='Emitida').length;
+  document.getElementById('ivps-usd').textContent =ivpRecords.filter(r=>r.moneda==='USD').length;
+  document.getElementById('ivps-dev').textContent =ivpRecords.filter(r=>r.estatus==='Devuelta').length;
+}
+
+document.querySelectorAll('thead th[data-mod="ivp"]').forEach(th=>{
+  th.addEventListener('click',()=>{
+    const k=th.dataset.k;
+    if(sortState.ivp.key===k) sortState.ivp.dir*=-1; else{sortState.ivp.key=k;sortState.ivp.dir=1;}
+    document.querySelectorAll('thead th[data-mod="ivp"]').forEach(t=>t.classList.remove('sa','sd'));
+    th.classList.add(sortState.ivp.dir===1?'sa':'sd'); ivpRender();
+  });
+});
+
+function ivpOpenImport(){
+  ivpImpFile=null;
+  document.getElementById('ivp-imp-file').value='';
+  document.getElementById('ivp-imp-fname').textContent='—';
+  document.getElementById('ivp-imp-results').style.display='none';
+  document.getElementById('btn-ivp-imp-run').disabled=true;
+  ivpBuildYearSel();
+  document.getElementById('mo-ivp-imp').classList.add('on');
+}
+function onIvpImpFile(inp){
+  if(inp.files.length){ivpImpFile=inp.files[0];document.getElementById('ivp-imp-fname').textContent=ivpImpFile.name;document.getElementById('btn-ivp-imp-run').disabled=false;}
+}
+function ivpDropImport(e){
+  e.preventDefault();document.getElementById('ivp-dz-imp').classList.remove('dg');
+  const f=e.dataTransfer.files[0];
+  if(f){ivpImpFile=f;document.getElementById('ivp-imp-fname').textContent=f.name;document.getElementById('btn-ivp-imp-run').disabled=false;}
+}
+
+async function ivpRunImport(){
+  if(!ivpImpFile)return;
+  const btn=document.getElementById('btn-ivp-imp-run');
+  btn.disabled=true; btn.textContent='Importando…';
+  document.getElementById('ivp-imp-results').style.display='none';
+  const fd=new FormData();
+  fd.append('file',ivpImpFile);
+  fd.append('year',document.getElementById('ivp-imp-year').value);
+  fd.append('mode',document.getElementById('ivp-imp-mode').value);
+  try{
+    const r=await fetch('/api/ivp/import',{method:'POST',body:fd});
+    const d=await r.json();
+    if(d.error){toast(d.error,'er');return;}
+    document.getElementById('ivp-imp-chips').innerHTML=
+      '<div class="r-chip" style="background:rgba(39,174,96,.1);border:1px solid rgba(39,174,96,.25)"><div class="n" style="color:var(--green)">'+d.imported+'</div><div class="l" style="color:var(--green)">Importados</div></div>'+
+      '<div class="r-chip" style="background:rgba(200,16,46,.08);border:1px solid rgba(200,16,46,.2)"><div class="n" style="color:var(--red)">'+d.total+'</div><div class="l" style="color:var(--red)">Total tabla</div></div>'+
+      '<div class="r-chip" style="background:rgba(255,255,255,.04);border:1px solid var(--border)"><div class="n" style="color:'+(d.errors?.length?'#eb5757':'var(--muted)')+'">'+( d.errors?.length||0)+'</div><div class="l">Errores</div></div>';
+    document.getElementById('ivp-imp-errs').innerHTML=(d.errors||[]).map(e=>'<div style="font-size:11px;color:#eb5757;padding:3px 0">✕ Clave '+esc(e.clave)+': '+esc(e.error)+'</div>').join('');
+    document.getElementById('ivp-imp-results').style.display='block';
+    if(parseInt(document.getElementById('ivp-imp-year').value)===ivpActiveYear) await loadIVP();
+    toast(d.imported+' IVPs importadas al '+d.year+' ✓','ok',5000);
+  }catch(err){toast('Error: '+err.message,'er');}
+  finally{btn.disabled=false;btn.textContent='Importar →';}
+}
+
+function ivpExportCSV(){ window.open('/api/ivp/export/'+ivpActiveYear,'_blank'); }
+
+// ════════════════════════════════════════════════════════
+//  INIT
+// ════════════════════════════════════════════════════════
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){
+    const mods=['mo-jnew','mo-jimp','mo-rnew','mo-rimp','mo-rcopy','mo-qnew','mo-po-imp','mo-wh-imp','mo-ivp-imp','mo-fx-imp'];
+    const open=mods.find(m=>document.getElementById(m).classList.contains('on'));
+    if(open)closeMo(open); else if(_currentPanel)closePanel();
+  }
+});
+
+async function init(){
+  await loadJobs();
+  await loadRates();
+  await loadQuotes();
+  await loadFX();    // FX loaded before PO so conversion is ready
+  await loadPO();
+  await loadWH();
+  await loadIVP();
+  rptInit();
+}
+init();
+
+// ════════════════════════════════════════════════════════
+//  JOB REPORT
+// ════════════════════════════════════════════════════════
+
+/* Inject card CSS once */
+(function(){
+  const s=document.createElement('style');
+  s.textContent=`
+.rpt-card{border-radius:8px;padding:16px 18px;border:1px solid rgba(255,255,255,.08);display:flex;flex-direction:column;gap:4px}
+.rpt-card .rc-label{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,.55)}
+.rpt-card .rc-val{font-family:'DM Mono',monospace;font-size:22px;font-weight:600;color:#fff;line-height:1}
+.rpt-card .rc-sub{font-size:10px;color:rgba(255,255,255,.45);margin-top:2px}
+.rpt-card-blue{background:rgba(41,128,185,.18);border-color:rgba(41,128,185,.3)}
+.rpt-card-dark{background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.1)}
+.rpt-card-gm.pos{background:rgba(39,174,96,.16);border-color:rgba(39,174,96,.35)}
+.rpt-card-gm.neg{background:rgba(200,16,46,.14);border-color:rgba(200,16,46,.3)}
+.rpt-td{padding:7px 10px;font-size:12px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle}
+.rpt-tr:hover td{background:rgba(200,16,46,.07)!important}
+.rpt-foot td{padding:8px 10px;font-size:12px;font-weight:700;background:#111;border-top:2px solid var(--red);color:#fff}
+`;
+  document.head.appendChild(s);
+})();
+
+let rptCurrentJob = null, rptData = null;
+
+function rptFmtMoney(n){ return n==null?'—':'$'+Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function rptFmtHrs(n){   return n==null?'—':Number(n).toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1})+'h'; }
+
+function rptInit(){
+  // Populate year dropdowns from already-loaded data
+  const curY = new Date().getFullYear();
+
+  function buildYearOpts(selId, availYears){
+    const all = [...new Set([curY, ...availYears])].sort((a,b)=>b-a);
+    const sel = document.getElementById(selId);
+    sel.innerHTML = all.map(y=>`<option value="${y}"${y===curY?' selected':''}>${y}</option>`).join('');
+  }
+
+  // Rate years
+  buildYearOpts('rpt-rate-year', rateAvailYears);
+  buildYearOpts('rpt-wh-year',   whAvailYears);
+  buildYearOpts('rpt-po-year',   poAvailYears);
+
+  // Populate job selector from loaded jobs
+  rptRefreshJobList();
+}
+
+function rptRefreshJobList(){
+  const sel = document.getElementById('rpt-job-sel');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— Seleccionar Job —</option>' +
+    jobs.map(j=>`<option value="${j.job_number}" ${j.job_number===cur?'selected':''}>${j.job_number}${j.customer?' · '+j.customer.substring(0,22):''}</option>`).join('');
+  if(cur) sel.value = cur;
+}
+
+function rptGetJobNumber(){
+  const manual = document.getElementById('rpt-job-input').value.trim();
+  const sel    = document.getElementById('rpt-job-sel').value;
+  return manual || sel;
+}
+
+function rptOnJobSelect(){
+  const jn = document.getElementById('rpt-job-sel').value;
+  document.getElementById('rpt-job-input').value = '';
+  if(jn){
+    const j = jobs.find(x=>x.job_number===jn);
+    document.getElementById('rpt-customer-display').innerHTML =
+      j ? `<span style="color:#fff;font-weight:600">${esc(j.customer||'—')}</span><span style="color:var(--muted);font-size:10px;margin-left:8px">${esc(j.status||'')}</span>` : '<span style="color:var(--muted)">Cliente: —</span>';
+    document.getElementById('btn-rpt-gen').disabled = false;
+  } else {
+    document.getElementById('rpt-customer-display').innerHTML = '<span style="color:var(--muted)">Cliente: —</span>';
+    document.getElementById('btn-rpt-gen').disabled = true;
+  }
+}
+
+function rptOnManualInput(){
+  const jn = document.getElementById('rpt-job-input').value.trim();
+  document.getElementById('rpt-job-sel').value = '';
+  if(jn){
+    // Try to find in loaded jobs for customer auto-fill
+    const j = jobs.find(x=>x.job_number===jn);
+    document.getElementById('rpt-customer-display').innerHTML = j
+      ? `<span style="color:#fff;font-weight:600">${esc(j.customer||'—')}</span><span style="color:var(--muted);font-size:10px;margin-left:8px">${esc(j.status||'')}</span>`
+      : `<span style="color:var(--muted)">Escribe un Job Number registrado</span>`;
+    document.getElementById('btn-rpt-gen').disabled = false;
+  } else {
+    document.getElementById('rpt-customer-display').innerHTML = '<span style="color:var(--muted)">Cliente: —</span>';
+    document.getElementById('btn-rpt-gen').disabled = true;
+  }
+}
+
+async function rptGenerate(){
+  const jn = rptGetJobNumber();
+  if(!jn){ toast('Selecciona o escribe un Job Number','er'); return; }
+
+  const btn = document.getElementById('btn-rpt-gen');
+  btn.disabled = true; btn.textContent = '⚙ Calculando…';
+  document.getElementById('rpt-status').textContent = 'Calculando…';
+  document.getElementById('rpt-dot').className = 'conn-dot';
+  document.getElementById('rpt-empty').style.display = 'flex';
+  document.getElementById('rpt-content').style.display = 'none';
+
+  const rateY = document.getElementById('rpt-rate-year').value;
+  const whY   = document.getElementById('rpt-wh-year').value;
+  const poY   = document.getElementById('rpt-po-year').value;
+
+  try{
+    const resp = await fetch(`/api/report/data?job=${encodeURIComponent(jn)}&rate_year=${rateY}&wh_year=${whY}&po_year=${poY}`);
+    const d    = await resp.json();
+    if(d.error){ toast(d.error,'er'); return; }
+
+    rptData = d;
+    rptCurrentJob = jn;
+    rptRender(d);
+    document.getElementById('btn-rpt-xlsx').disabled = false;
+    document.getElementById('rpt-dot').className = 'conn-dot ok';
+    document.getElementById('rpt-status').textContent = `Job ${jn} · ${new Date().toLocaleTimeString('es-MX')}`;
+  }catch(e){ toast('Error al generar reporte: '+e,'er'); }
+  finally{ btn.disabled = false; btn.textContent = '⚙ Generar Reporte'; }
+}
+
+function rptRender(d){
+  // ── Summary cards ─────────────────────────────────────────────
+  function card(id, label, val, sub, extraClass=''){
+    const el = document.getElementById(id);
+    el.innerHTML = `<div class="rc-label">${label}</div><div class="rc-val">${val}</div><div class="rc-sub">${sub}</div>`;
+    if(extraClass) el.className = 'rpt-card ' + extraClass;
+  }
+
+  card('rpt-card-rev', 'Revenue',
+    rptFmtMoney(d.revenue), d.customer||'—', 'rpt-card-blue');
+
+  card('rpt-card-wh', 'Work Hours Cost',
+    rptFmtMoney(d.amount_wh),
+    rptFmtHrs(d.accum_hours)+' acumuladas · '+d.workers.length+' empleado(s)', 'rpt-card-dark');
+
+  card('rpt-card-pur', 'Purchasings Total',
+    rptFmtMoney(d.purchasing_total),
+    d.po_items.length+' OC(s) encontradas', 'rpt-card-dark');
+
+  const gmClass = d.gross_margin >= 0 ? 'rpt-card-gm pos' : 'rpt-card-gm neg';
+  const gmSign  = d.gross_margin >= 0 ? '▲' : '▼';
+  card('rpt-card-gm', 'Gross Margin',
+    rptFmtMoney(d.gross_margin),
+    `${gmSign} ${d.gm_pct.toFixed(1)}%  ·  Cost: ${rptFmtMoney(d.cost)}`, gmClass);
+
+  // ── Cost bar ──────────────────────────────────────────────────
+  const rev = d.revenue || 1;
+  const whPct  = Math.min((d.amount_wh / rev)*100, 100);
+  const purPct = Math.min((d.purchasing_total / rev)*100, 100 - whPct);
+  document.getElementById('rpt-bar-wh').style.width  = whPct.toFixed(1)+'%';
+  document.getElementById('rpt-bar-pur').style.left  = whPct.toFixed(1)+'%';
+  document.getElementById('rpt-bar-pur').style.width = purPct.toFixed(1)+'%';
+
+  // ── Workers table ─────────────────────────────────────────────
+  const wtb = document.getElementById('rpt-workers-tb');
+  if(d.workers.length){
+    wtb.innerHTML = d.workers.map((w,i)=>`
+      <tr class="rpt-tr" style="${i%2?'background:rgba(255,255,255,.02)':''}">
+        <td class="rpt-td" style="color:#fff;font-size:11px">${esc(w.employee)}</td>
+        <td class="rpt-td" style="text-align:right;font-family:'DM Mono',monospace;color:var(--amber)">${rptFmtHrs(w.hours)}</td>
+        <td class="rpt-td" style="text-align:right;font-family:'DM Mono',monospace;color:var(--muted2)">${w.rate?'$'+w.rate.toFixed(2):'N/A'}</td>
+        <td class="rpt-td" style="text-align:right;font-family:'DM Mono',monospace;color:var(--green)">${rptFmtMoney(w.amount)}</td>
+      </tr>`).join('');
+  } else {
+    wtb.innerHTML = `<tr><td colspan="4" style="padding:20px;text-align:center;color:var(--muted);font-size:12px">Sin horas registradas para este Job en el año ${d.wh_year}</td></tr>`;
+  }
+  document.getElementById('rpt-workers-foot').innerHTML = d.workers.length ? `
+    <tr class="rpt-foot">
+      <td colspan="2">TOTAL</td>
+      <td class="rpt-td" style="text-align:right;font-family:'DM Mono',monospace;color:var(--amber)">${rptFmtHrs(d.accum_hours)}</td>
+      <td class="rpt-td" style="text-align:right;font-family:'DM Mono',monospace;color:var(--green)">${rptFmtMoney(d.amount_wh)}</td>
+    </tr>` : '';
+
+  // ── PO table ──────────────────────────────────────────────────
+  const ptb = document.getElementById('rpt-po-tb');
+  if(d.po_items.length){
+    ptb.innerHTML = d.po_items.map((p,i)=>{
+      const isUSD = p.moneda==='USD';
+      const usdVal = p.subtotal_usd != null ? p.subtotal_usd : p.subtotal;
+      return `<tr class="rpt-tr" style="${i%2?'background:rgba(255,255,255,.02)':''}">
+        <td class="rpt-td" style="font-family:'DM Mono',monospace;color:var(--red);font-size:11px">${p.clave}</td>
+        <td class="rpt-td" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;color:#fff;font-size:11px" title="${esc(p.nombre)}">${esc(p.nombre)}</td>
+        <td class="rpt-td" style="text-align:right;font-family:'DM Mono',monospace;color:var(--gold)">${rptFmtMoney(usdVal)}</td>
+        <td class="rpt-td" style="text-align:center;font-size:9px;color:var(--muted2)">${isUSD?'USD':'MXN→USD'}</td>
+      </tr>`;
+    }).join('');
+  } else {
+    ptb.innerHTML = `<tr><td colspan="4" style="padding:20px;text-align:center;color:var(--muted);font-size:12px">Sin Purchase Orders para este Job en el año ${d.po_year}</td></tr>`;
+  }
+  document.getElementById('rpt-po-foot').innerHTML = d.po_items.length ? `
+    <tr class="rpt-foot">
+      <td colspan="2">TOTAL (USD)</td>
+      <td class="rpt-td" style="text-align:right;font-family:'DM Mono',monospace;color:var(--gold)">${rptFmtMoney(d.purchasing_total)}</td>
+      <td></td>
+    </tr>` : '';
+
+  // ── Warnings ──────────────────────────────────────────────────
+  const warns = [];
+  if(d.workers.length > 0 && d.workers.some(w=>w.rate===0))
+    warns.push(`⚠ Algunos empleados no tienen tarifa en Hourly Rates ${d.rate_year}. Su monto aparece como $0.`);
+  if(d.wh_matches === 0)
+    warns.push(`ℹ No se encontraron registros de Work Hours para "${rptCurrentJob}" en el año ${d.wh_year}.`);
+  if(d.po_matches === 0)
+    warns.push(`ℹ No se encontraron Purchase Orders con destino "${rptCurrentJob}" en el año ${d.po_year}.`);
+  if(d.revenue === 0)
+    warns.push(`ℹ El Job no tiene Revenue registrado. El Gross Margin no se puede calcular correctamente.`);
+
+  const warnEl = document.getElementById('rpt-warn');
+  if(warns.length){ warnEl.innerHTML = warns.join('<br>'); warnEl.style.display='block'; }
+  else warnEl.style.display='none';
+
+  // Show content
+  document.getElementById('rpt-empty').style.display = 'none';
+  document.getElementById('rpt-content').style.display = 'block';
+}
+
+function rptExportXLSX(){
+  if(!rptCurrentJob){ toast('Genera el reporte primero','er'); return; }
+  const rateY = document.getElementById('rpt-rate-year').value;
+  const whY   = document.getElementById('rpt-wh-year').value;
+  const poY   = document.getElementById('rpt-po-year').value;
+  window.open(`/api/report/export-excel?job=${encodeURIComponent(rptCurrentJob)}&rate_year=${rateY}&wh_year=${whY}&po_year=${poY}`, '_blank');
+}
+
+// ════════════════════════════════════════════════════════
+//  FX / TIPO DE CAMBIO
+// ════════════════════════════════════════════════════════
+let fxRecords=[], fxActiveYear=new Date().getFullYear(), fxAvailYears=[], fxImpFile=null;
+sortState.fx={key:'date',dir:-1};
+const DAYS_ES=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+
+async function loadFX(){
+  if(document.getElementById('fx-tb'))
+    document.getElementById('fx-tb').innerHTML='<tr><td colspan="4"><div class="es"><div class="spinner"></div></div></td></tr>';
+  try{
+    const ping=await(await fetch('/api/ping')).json();
+    const ok=ping.fx_ok;
+    if(document.getElementById('fx-dot')){
+      document.getElementById('fx-dot').className='conn-dot'+(ok?' ok':'');
+      document.getElementById('fx-lbl').textContent=ok?'NAS OK':'NAS sin acceso';
+      document.getElementById('fx-path').textContent=ping.fx_folder||'—';
+    }
+    document.getElementById('dot-fx').className='conn-dot'+(ok?' ok':'');
+    const d=await(await fetch('/api/fx?year='+fxActiveYear)).json();
+    fxRecords=d.records||[];
+    fxAvailYears=d.available_years||[];
+    fxBuildYearSel();
+    fxRender();
+    fxUpdateStats();
+    // Today's rate
+    const today=new Date().toISOString().split('T')[0];
+    const todayRec=fxRecords.find(r=>r.date===today)||fxRecords[fxRecords.length-1];
+    if(todayRec && document.getElementById('fx-today-rate'))
+      document.getElementById('fx-today-rate').textContent='$'+todayRec.rate.toFixed(4)+' MXN'+(todayRec.date!==today?' ('+todayRec.date+')':'');
+  }catch(e){toast('Error al cargar FX: '+e,'er');}
+}
+
+function fxBuildYearSel(){
+  const curY=new Date().getFullYear();
+  const all=[...new Set([fxActiveYear,...fxAvailYears,curY])].sort((a,b)=>b-a);
+  const sel=document.getElementById('fx-year-sel');
+  if(sel) sel.innerHTML=all.map(y=>'<option value="'+y+'"'+(y===fxActiveYear?' selected':'')+'>'+y+'</option>').join('');
+  if(document.getElementById('fx-tb-year')) document.getElementById('fx-tb-year').textContent=fxActiveYear;
+}
+function fxSwitchYear(){ fxActiveYear=parseInt(document.getElementById('fx-year-sel').value); loadFX(); }
+
+function fxFiltered(){
+  const from=document.getElementById('fxf-from').value;
+  const to  =document.getElementById('fxf-to').value;
+  const gs  =(document.getElementById('fxf-gs').value||'').toLowerCase()||(document.getElementById('fx-gs2').value||'').toLowerCase();
+  return [...fxRecords].filter(r=>{
+    if(from && r.date<from) return false;
+    if(to   && r.date>to)   return false;
+    if(gs   && !r.date.includes(gs)) return false;
+    return true;
+  }).sort((a,b)=>sortState.fx.key==='rate'?sortState.fx.dir*(a.rate-b.rate):sortState.fx.dir*a.date.localeCompare(b.date));
+}
+
+function fxRender(){
+  const rows=fxFiltered();
+  const tb=document.getElementById('fx-tb');
+  if(!tb) return;
+  if(!rows.length){tb.innerHTML='<tr><td colspan="4"><div class="es"><span class="ei">💱</span><br>Sin registros — carga el archivo del Banco de México</div></td></tr>';return;}
+  const byDate={};
+  for(const r of fxRecords) byDate[r.date]=r.rate;
+  const sortedDates=Object.keys(byDate).sort();
+  tb.innerHTML=rows.map((r,i)=>{
+    const d=new Date(r.date+'T12:00:00');
+    const dayName=DAYS_ES[d.getDay()];
+    const isWknd=d.getDay()===0||d.getDay()===6;
+    const idx=sortedDates.indexOf(r.date);
+    const prevRate=idx>0?byDate[sortedDates[idx-1]]:null;
+    let deltaHtml='—';
+    if(prevRate!=null){
+      const delta=r.rate-prevRate;
+      const pct=(delta/prevRate*100);
+      if(Math.abs(delta)<0.0001) deltaHtml='<span style="color:var(--muted)">Sin cambio</span>';
+      else{
+        const clr=delta>0?'#e74c3c':'var(--green)';
+        deltaHtml=`<span style="color:${clr}">${delta>0?'▲':'▼'} ${Math.abs(delta).toFixed(4)} (${Math.abs(pct).toFixed(3)}%)</span>`;
+      }
+    }
+    return`<tr style="${isWknd?'opacity:.5':''}${i%2?'background:rgba(255,255,255,.022)':''}">
+      <td style="font-family:'DM Mono',monospace;font-size:12px;font-weight:600;color:${isWknd?'var(--muted)':'#fff'}">${r.date}</td>
+      <td style="text-align:right;font-family:'DM Mono',monospace;font-size:15px;font-weight:700;color:var(--gold)">${r.rate.toFixed(4)}</td>
+      <td style="color:var(--muted2);font-size:11px">${dayName}</td>
+      <td style="text-align:right;font-size:12px">${deltaHtml}</td>
+    </tr>`;
+  }).join('');
+}
+
+function fxUpdateStats(){
+  if(!fxRecords.length){['fxs-tot','fxs-avg','fxs-min','fxs-max'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent='—';});return;}
+  const rates=fxRecords.map(r=>r.rate);
+  const avg=rates.reduce((a,b)=>a+b,0)/rates.length;
+  if(document.getElementById('fxs-tot')) document.getElementById('fxs-tot').textContent=fxRecords.length;
+  if(document.getElementById('fxs-avg')) document.getElementById('fxs-avg').textContent=avg.toFixed(4);
+  if(document.getElementById('fxs-min')) document.getElementById('fxs-min').textContent=Math.min(...rates).toFixed(4);
+  if(document.getElementById('fxs-max')) document.getElementById('fxs-max').textContent=Math.max(...rates).toFixed(4);
+}
+
+document.querySelectorAll('thead th[data-mod="fx"]').forEach(th=>{
+  th.addEventListener('click',()=>{
+    const k=th.dataset.k;
+    if(sortState.fx.key===k) sortState.fx.dir*=-1; else{sortState.fx.key=k;sortState.fx.dir=1;}
+    document.querySelectorAll('thead th[data-mod="fx"]').forEach(t=>t.classList.remove('sa','sd'));
+    th.classList.add(sortState.fx.dir===1?'sa':'sd'); fxRender();
+  });
+});
+
+['fxf-gs','fx-gs2'].forEach(id=>{const el=document.getElementById(id);if(el)el.addEventListener('input',fxRender);});
+
+function fxOpenImport(){
+  fxImpFile=null;
+  document.getElementById('fx-imp-file').value='';
+  document.getElementById('fx-imp-fname').textContent='—';
+  document.getElementById('fx-imp-results').style.display='none';
+  document.getElementById('btn-fx-imp-run').disabled=true;
+  document.getElementById('mo-fx-imp').classList.add('on');
+}
+function onFxImpFile(inp){
+  if(inp.files.length){fxImpFile=inp.files[0];document.getElementById('fx-imp-fname').textContent=fxImpFile.name;document.getElementById('btn-fx-imp-run').disabled=false;}
+}
+function fxDropImport(e){
+  e.preventDefault();document.getElementById('fx-dz-imp').classList.remove('dg');
+  const f=e.dataTransfer.files[0];
+  if(f){fxImpFile=f;document.getElementById('fx-imp-fname').textContent=f.name;document.getElementById('btn-fx-imp-run').disabled=false;}
+}
+async function fxRunImport(){
+  if(!fxImpFile)return;
+  const btn=document.getElementById('btn-fx-imp-run');
+  btn.disabled=true; btn.textContent='Importando…';
+  document.getElementById('fx-imp-results').style.display='none';
+  const fd=new FormData();
+  fd.append('file',fxImpFile);
+  fd.append('mode',document.getElementById('fx-imp-mode').value);
+  try{
+    const r=await fetch('/api/fx/import',{method:'POST',body:fd});
+    const d=await r.json();
+    if(d.error){toast(d.error,'er');return;}
+    document.getElementById('fx-imp-chips').innerHTML=
+      '<div class="r-chip" style="background:rgba(39,174,96,.1);border:1px solid rgba(39,174,96,.25)"><div class="n" style="color:var(--green)">'+d.imported+'</div><div class="l" style="color:var(--green)">Importados</div></div>'+
+      '<div class="r-chip" style="background:rgba(255,255,255,.04);border:1px solid var(--border)"><div class="n" style="color:var(--muted)">'+d.skipped+'</div><div class="l">N/E omitidos</div></div>'+
+      '<div class="r-chip" style="background:rgba(41,128,185,.1);border:1px solid rgba(41,128,185,.25)"><div class="n" style="color:#5dade2">'+d.total_saved+'</div><div class="l" style="color:#5dade2">Total guardado</div></div>';
+    document.getElementById('fx-imp-detail').textContent='Años procesados: '+(d.years||[]).join(', ');
+    document.getElementById('fx-imp-results').style.display='block';
+    if((d.years||[]).includes(fxActiveYear)) await loadFX();
+    await loadPO();   // Reload PO with new FX rates
+    toast(d.imported+' tipos de cambio importados — años: '+(d.years||[]).join(', '),'ok',6000);
+  }catch(err){toast('Error: '+err.message,'er');}
+  finally{btn.disabled=false;btn.textContent='Importar →';}
+}
+</script>
+</body>
+</html>
