@@ -1,0 +1,250 @@
+[
+  {
+    "employee": "3DELFINO HERNANDEZ",
+    "rate": 13.91,
+    "department": "",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-15T12:58:03.881772"
+  },
+  {
+    "employee": "6 MARIANO ARENAS ROJAS",
+    "rate": 13.39,
+    "department": "",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-15T12:58:03.882003"
+  },
+  {
+    "employee": "16KALEB TORIBIO",
+    "rate": 15.77,
+    "department": "",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-15T12:58:03.882060"
+  },
+  {
+    "employee": "18 DANIEL NOTARIO ANGEL",
+    "rate": 18.57,
+    "department": "",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-15T12:58:03.882094"
+  },
+  {
+    "employee": "15HECTOR FEDERICO PEREZ",
+    "rate": 11.78,
+    "department": "",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-15T12:58:03.882119"
+  },
+  {
+    "employee": "26DANIEL MORALES",
+    "rate": 15.66,
+    "department": "",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-15T12:58:03.882147"
+  },
+  {
+    "employee": "25ROBERTO SALINAS",
+    "rate": 9.33,
+    "department": "",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-15T12:58:03.882175"
+  },
+  {
+    "employee": "29GUILLERMO E RIVERA CRUZ",
+    "rate": 43.85,
+    "department": "",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-15T12:58:03.882209"
+  },
+  {
+    "employee": "35ALDO OMAR FLORES LOPEZ",
+    "rate": 11.82,
+    "department": "",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-15T12:58:03.882241"
+  },
+  {
+    "employee": "36SAMUEL MERINO ESPINOZA",
+    "rate": 13.81,
+    "department": "",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-15T12:58:03.882267"
+  },
+  {
+    "employee": "37 VLADIMIR PEDRAZA DURAN",
+    "rate": 12.67,
+    "department": "",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-15T12:58:03.882298"
+  },
+  {
+    "employee": "38MIGUEL CASTREJON",
+    "rate": 18.53,
+    "department": "",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-15T12:58:03.882334"
+  },
+  {
+    "employee": "39MARIO HEREDIA",
+    "rate": 8.85,
+    "department": "",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-15T12:58:03.882361"
+  },
+  {
+    "employee": "41JORGE LENIN MEDEL",
+    "rate": 10.1,
+    "department": "",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-15T12:58:03.882388"
+  },
+  {
+    "employee": "42JOSE ROMERO PASTOR",
+    "rate": 9.71,
+    "department": "",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-15T12:58:03.882426"
+  },
+  {
+    "employee": "43LUZ AILED MUÑOZ RODRIGUEZ",
+    "rate": 6.34,
+    "department": "",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-15T12:58:03.882459"
+  },
+  {
+    "employee": "44 Luis Enrique Jimenez",
+    "rate": 13.64,
+    "department": "",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-15T12:58:03.882488"
+  },
+  {
+    "employee": "45 JOSE LUIS VALENCIA",
+    "rate": 17.04,
+    "department": "",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-15T12:58:03.882528"
+  },
+  {
+    "employee": "46 MOISES LUIS",
+    "rate": 12.81,
+    "department": "",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-15T12:58:03.882570"
+  },
+  {
+    "employee": "47 ARIAN LOPEZ",
+    "rate": 12.5,
+    "department": "",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-15T12:58:03.882617"
+  },
+  {
+    "employee": "49 CARLOS ADOLFO REYES",
+    "rate": 4.68,
+    "department": "",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-15T12:58:03.882661"
+  },
+  {
+    "employee": "50 LUIS ANTONIO PEREZ",
+    "rate": 4.72,
+    "department": "",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-15T12:58:03.882697"
+  },
+  {
+    "employee": "48 JOSÉ MANUEL OLGUIN",
+    "rate": 9.3,
+    "department": "",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-15T12:58:03.882759"
+  },
+  {
+    "employee": "51 JOSUE TORRES",
+    "rate": 13.13,
+    "department": "",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-15T12:58:03.882812"
+  },
+  {
+    "employee": "52 EDUARDO GUEVARA AGUIRRE",
+    "rate": 4.28,
+    "department": "",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-15T12:58:03.882856"
+  },
+  {
+    "employee": "53 ANGEL DIAZ SANDOVAL",
+    "rate": 4.18,
+    "department": "",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-15T12:58:03.882890"
+  },
+  {
+    "employee": "54 JOSE CARLOS PEREZ BONILLA",
+    "rate": 8.37,
+    "department": "",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-15T12:58:03.882915"
+  },
+  {
+    "employee": "55 VICTOR ENRIQUE RAMIREZ",
+    "rate": 8.16,
+    "department": "",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-15T12:58:03.882936"
+  },
+  {
+    "employee": "58 ALDO CARRILLO",
+    "rate": 5.66,
+    "department": "",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-15T12:58:03.882960"
+  },
+  {
+    "employee": "59 ANGELA CORONA",
+    "rate": 7.41,
+    "department": "",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-15T12:58:03.882988"
+  },
+  {
+    "employee": "60 DANIEL ROSAS",
+    "rate": 12.85,
+    "department": "",
+    "notes": "",
+    "imported": true,
+    "created_at": "2026-06-15T12:58:03.883011"
+  }
+]

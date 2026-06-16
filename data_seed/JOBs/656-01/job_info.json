@@ -1,0 +1,21 @@
+{
+  "job_number": "656-01",
+  "main_index": 656,
+  "subindex": "01",
+  "subindex_label": "Instalación y puesta en marcha",
+  "customer": "Persico USA",
+  "customer_full": "Persico USA, 50450 Wing Dr, Shelby Township, MI, 48305",
+  "pm": "Guillermo Rivera - Persico",
+  "description": "Edge folding tools assy. -  mechanical support",
+  "product_group": "1.6 Service/P.MEX",
+  "product_subgroup": "Service",
+  "revenue": 4865.0,
+  "estimated_cost": 0.0,
+  "po_number": "55973",
+  "ship_date": "2026-02-20",
+  "approval_fc": "Yes",
+  "status": "Open",
+  "notes": "",
+  "created_at": "2026-02-06",
+  "imported": true
+}

@@ -1,0 +1,21 @@
+{
+  "job_number": "664-61",
+  "main_index": 664,
+  "subindex": "61",
+  "subindex_label": "Servicio pagado por cliente (61)",
+  "customer": "Persico USA",
+  "customer_full": "Persico USA, 50450 Wing Dr, Shelby Township, MI, 48305",
+  "pm": "Guillermo Rivera - Persico",
+  "description": "Electrical design & construction support on shleby plant.",
+  "product_group": "1.6 Service/P.MEX",
+  "product_subgroup": "Service",
+  "revenue": 9700.0,
+  "estimated_cost": 0.0,
+  "po_number": "56383",
+  "ship_date": "2026-04-17",
+  "approval_fc": "InProgress",
+  "status": "Open",
+  "notes": "",
+  "created_at": "2026-03-18",
+  "imported": true
+}

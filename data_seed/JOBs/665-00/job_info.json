@@ -1,0 +1,22 @@
+{
+  "job_number": "665-00",
+  "main_index": 665,
+  "subindex": "00",
+  "subindex_label": "Máquina / equipo principal",
+  "customer": "Persico USA",
+  "customer_full": "Persico USA, 50450 Wing Dr, Shelby Township, MI, 48305",
+  "pm": "Pablo Rodrigo Gutierrez - Persico",
+  "description": "IAC Design & Electric boxes  C1UC",
+  "product_group": "1.6 Service/P.MEX",
+  "product_subgroup": "Service",
+  "revenue": 64805,
+  "estimated_cost": 35892,
+  "po_number": "TBD",
+  "ship_date": "2026-05-22",
+  "approval_fc": "InProgress",
+  "status": "Open",
+  "notes": "",
+  "created_at": "2026-03-18",
+  "imported": true,
+  "updated_at": "2026-06-15T12:11:49.771978"
+}

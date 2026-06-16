@@ -1,0 +1,21 @@
+{
+  "job_number": "670-00",
+  "main_index": 670,
+  "subindex": "00",
+  "subindex_label": "Máquina / equipo principal",
+  "customer": "A&P Solutions Río Lerma 1",
+  "customer_full": "A&P Solutions Río Lerma 1, Sanctorum, 72730 San Lorenzo Almecatla, Pue.",
+  "pm": "Luz Munoz - Persico",
+  "description": "Supply and instalation of electronic spare parts: - Presure Sensor Keller. - HMS Anybus SER-PIO.",
+  "product_group": "1.6 Service/P.MEX",
+  "product_subgroup": "Service",
+  "revenue": 5193.0,
+  "estimated_cost": 3147.0,
+  "po_number": "TBD",
+  "ship_date": "2026-07-06",
+  "approval_fc": "Yes",
+  "status": "Open",
+  "notes": "",
+  "created_at": "2026-05-07",
+  "imported": true
+}

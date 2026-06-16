@@ -1,0 +1,21 @@
+{
+  "job_number": "652-53",
+  "main_index": 652,
+  "subindex": "53",
+  "subindex_label": "Refacción pagada por cliente (53)",
+  "customer": "Inteva Bluffton",
+  "customer_full": "Inteva Bluffton, IN Plant",
+  "pm": "Luz Munoz - Persico",
+  "description": "652-00 ECR EOAT Update",
+  "product_group": "1.4 ROBOTIC /P.MEX",
+  "product_subgroup": "Robotic Cells",
+  "revenue": 60600.0,
+  "estimated_cost": 0.0,
+  "po_number": "BLF004013",
+  "ship_date": "2026-05-29",
+  "approval_fc": "Yes",
+  "status": "Open",
+  "notes": "",
+  "created_at": "2026-01-19",
+  "imported": true
+}

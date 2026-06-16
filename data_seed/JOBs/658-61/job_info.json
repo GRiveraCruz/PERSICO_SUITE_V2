@@ -1,0 +1,21 @@
+{
+  "job_number": "658-61",
+  "main_index": 658,
+  "subindex": "61",
+  "subindex_label": "Servicio pagado por cliente (61)",
+  "customer": "FAURECIA I.S. PREMIUM HJZ Circuito Esteban de Antunano N 741",
+  "customer_full": "FAURECIA I.S. PREMIUM HJZ Circuito Esteban de Antunano N 74160 Huejotzingo, Puebla, PUE Mexico",
+  "pm": "Ramiro Bravo - Persico",
+  "description": "Instalation Service ECR New Nest & Pneumatic Scrap Punching for Bielomatik Vibration Machine Tesla Opal",
+  "product_group": "1.6 Service/P.MEX",
+  "product_subgroup": "Service",
+  "revenue": 0.0,
+  "estimated_cost": 0.0,
+  "po_number": "Pending. after done service",
+  "ship_date": "2026-01-30",
+  "approval_fc": "InProgress",
+  "status": "Open",
+  "notes": "Once the service is done all the cost must be collected to send a quotaion and get PO",
+  "created_at": "2026-01-16",
+  "imported": true
+}

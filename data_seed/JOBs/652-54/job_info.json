@@ -1,0 +1,21 @@
+{
+  "job_number": "652-54",
+  "main_index": 652,
+  "subindex": "54",
+  "subindex_label": "Refacción pagada por cliente (54)",
+  "customer": "Inteva Bluffton",
+  "customer_full": "Inteva Bluffton, IN Plant",
+  "pm": "Luz Munoz - Persico",
+  "description": "ECR Fixture CC BLCCIPRT01",
+  "product_group": "1.4 ROBOTIC /P.MEX",
+  "product_subgroup": "Robotic Cells",
+  "revenue": 0.0,
+  "estimated_cost": 0.0,
+  "po_number": "",
+  "ship_date": "2026-06-23",
+  "approval_fc": "InProgress",
+  "status": "Open",
+  "notes": "",
+  "created_at": "2026-02-19",
+  "imported": true
+}

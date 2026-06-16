@@ -1,0 +1,21 @@
+{
+  "job_number": "674-00",
+  "main_index": 674,
+  "subindex": "00",
+  "subindex_label": "Máquina / equipo principal",
+  "customer": "Persico USA",
+  "customer_full": "Persico USA, 50450 Wing Dr, Shelby Township, MI, 48305",
+  "pm": "Luz Munoz - Persico",
+  "description": "PO 56869 | Siemens",
+  "product_group": "1.7 Spare Parts/P.MEX",
+  "product_subgroup": "Spare Parts",
+  "revenue": 9.96356,
+  "estimated_cost": 9.96356,
+  "po_number": "56869",
+  "ship_date": "2026-06-08",
+  "approval_fc": "InProgress",
+  "status": "Open",
+  "notes": "",
+  "created_at": "2026-05-22",
+  "imported": true
+}
