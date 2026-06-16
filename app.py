@@ -43,7 +43,7 @@ PO_FOLDER    = _os.path.join(_DATA, "IPOs")
 FX_FOLDER    = _os.path.join(_DATA, "FX")
 
 HOST         = "0.0.0.0"
-PORT         = 5000
+PORT         = int(_os.environ.get("PORT", 5000))
 CURRENT_YEAR = datetime.date.today().year
 
 # Quote Register constants
