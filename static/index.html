@@ -1,0 +1,1974 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Persico Mex · Suite</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --red:#C8102E;--red-h:#e8001f;--gold:#F0A500;
+  --bg:#0f0f0f;--sb:#141414;--panel:#161616;--card:#1a1a1a;
+  --border:rgba(255,255,255,.08);--border2:rgba(255,255,255,.14);
+  --text:#e8e8e8;--muted:#666;--muted2:#999;--inp:#0a0a0a;
+  --r:5px;--tr:.16s ease;
+  --green:#27ae60;--amber:#f39c12;--blue:#2980b9;
+}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;display:flex;flex-direction:column;font-size:13px}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-thumb{background:#333;border-radius:2px}
+
+/* ── TOP NAV ── */
+.topnav{height:48px;background:#000;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:0;flex-shrink:0;padding:0 8px}
+.logo-area{padding:0 16px;display:flex;align-items:center;gap:10px;border-right:1px solid var(--border);height:100%}
+.logo-area .brand{font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:2.5px;color:#fff}
+.logo-area .bar{width:2px;height:18px;background:var(--red);display:inline-block}
+.nav-tabs{display:flex;height:100%;margin-left:4px}
+.nav-tab{padding:0 20px;display:flex;align-items:center;gap:8px;font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all var(--tr);background:none;border-left:none;border-right:none;border-top:none}
+.nav-tab:hover{color:var(--text)}
+.nav-tab.on{color:#fff;border-bottom-color:var(--red)}
+.nav-tab .ni{font-size:14px}
+.nav-status{margin-left:auto;display:flex;align-items:center;gap:16px;padding-right:8px}
+.conn-group{display:flex;align-items:center;gap:5px;font-size:10px}
+.conn-dot{width:6px;height:6px;border-radius:50%;background:#eb5757;transition:background .4s}
+.conn-dot.ok{background:var(--green)}
+.conn-lbl{color:var(--muted)}
+
+/* ── LAYOUT ── */
+.app-body{flex:1;display:flex;overflow:hidden}
+.module{flex:1;display:none;overflow:hidden;flex-direction:row}
+.module.on{display:flex}
+
+/* ── SIDEBAR ── */
+.sidebar{width:240px;min-width:240px;background:var(--sb);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.sb-head{padding:16px 20px 12px;border-bottom:1px solid var(--border)}
+.sb-head .mod-title{font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:2px;color:#fff}
+.sb-head .mod-sub{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-top:3px}
+.sb-head .bar{width:24px;height:2px;background:var(--red);margin-top:8px}
+.sb-path{padding:8px 20px;border-bottom:1px solid var(--border);font-family:'DM Mono',monospace;font-size:9px;color:var(--muted);line-height:1.5;word-break:break-all}
+.sb-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px 20px;border-bottom:1px solid var(--border)}
+.stat{background:rgba(200,16,46,.07);border:1px solid rgba(200,16,46,.2);border-radius:var(--r);padding:9px 11px}
+.stat .n{font-family:'Bebas Neue',sans-serif;font-size:22px;color:#fff;line-height:1}
+.stat .l{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-top:2px}
+.sb-filters{padding:14px 20px;flex:1;overflow-y:auto}
+.ft{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px}
+.fg{margin-bottom:10px}
+.fg label{display:block;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}
+.fg input,.fg select{width:100%;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:7px 10px;font-family:'DM Sans',sans-serif;font-size:12px;outline:none;transition:border-color var(--tr)}
+.fg input:focus,.fg select:focus{border-color:var(--red)}
+.sb-btns{padding:0 20px 16px;display:flex;flex-direction:column;gap:6px}
+.btn-new{width:100%;background:var(--red);border:none;border-radius:var(--r);color:#fff;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;letter-spacing:.6px;padding:10px 0;cursor:pointer;transition:background var(--tr);text-transform:uppercase}
+.btn-new:hover{background:var(--red-h)}
+.btn-sec{width:100%;background:transparent;border:1px solid var(--border);border-radius:var(--r);color:var(--muted);font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;letter-spacing:.5px;padding:8px 0;cursor:pointer;transition:all var(--tr);text-transform:uppercase}
+.btn-sec:hover{border-color:var(--red);color:#fff}
+
+/* ── MAIN CONTENT ── */
+.main-content{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.bar-top{padding:12px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;background:var(--sb);flex-shrink:0}
+.bar-top h1{font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:2.5px;color:#fff;flex:1}
+.sw{position:relative;width:250px}
+.sw input{width:100%;background:var(--inp);border:1px solid var(--border);border-radius:20px;color:var(--text);padding:7px 14px 7px 30px;font-family:'DM Sans',sans-serif;font-size:12px;outline:none;transition:border-color var(--tr)}
+.sw input:focus{border-color:var(--red)}
+.sw input::placeholder{color:var(--muted)}
+.sw .si{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:13px}
+.btn-reload{background:none;border:1px solid var(--border);border-radius:var(--r);color:var(--muted);padding:6px 10px;font-size:11px;cursor:pointer;transition:all var(--tr)}
+.btn-reload:hover{border-color:var(--red);color:#fff}
+.btn-export{background:none;border:1px solid rgba(39,174,96,.3);border-radius:var(--r);color:var(--green);padding:6px 12px;font-size:11px;cursor:pointer;transition:all var(--tr);font-weight:600}
+.btn-export:hover{background:rgba(39,174,96,.1)}
+
+/* ── TABLE ── */
+.tw{flex:1;overflow:auto}
+table{width:100%;border-collapse:collapse}
+thead tr{background:#111;position:sticky;top:0;z-index:10}
+thead th{padding:10px 14px;text-align:left;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);border-bottom:2px solid var(--red);white-space:nowrap;cursor:pointer;user-select:none;transition:color var(--tr)}
+thead th:hover{color:var(--text)}
+thead th.sa::after{content:' ▲';color:var(--gold)}
+thead th.sd::after{content:' ▼';color:var(--gold)}
+tbody tr{border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer;transition:background var(--tr)}
+tbody tr:nth-child(odd){background:rgba(255,255,255,.022)}
+tbody tr:hover{background:rgba(200,16,46,.09)!important}
+tbody tr.sel{background:rgba(200,16,46,.16)!important}
+tbody tr.no-meta td{color:var(--muted)}
+td{padding:8px 14px;font-size:12px;color:var(--text);vertical-align:middle;white-space:nowrap}
+.tjob{font-family:'DM Mono',monospace;font-size:12px;color:var(--red);font-weight:600;letter-spacing:.5px}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;letter-spacing:.3px}
+.b-open{background:rgba(41,128,185,.15);color:#5dade2;border:1px solid rgba(41,128,185,.25)}
+.b-wip{background:rgba(243,156,18,.12);color:#f39c12;border:1px solid rgba(243,156,18,.25)}
+.b-done{background:rgba(39,174,96,.15);color:#58d68d;border:1px solid rgba(39,174,96,.25)}
+.b-toappr{background:rgba(200,16,46,.12);color:#e8566a;border:1px solid rgba(200,16,46,.25)}
+.b-inprog{background:rgba(142,68,173,.12);color:#c39bd3;border:1px solid rgba(142,68,173,.25)}
+.b-yes{background:rgba(39,174,96,.15);color:#58d68d;border:1px solid rgba(39,174,96,.25)}
+.b-nometa{background:rgba(255,255,255,.06);color:var(--muted);border:1px solid var(--border);font-style:italic}
+
+/* ── OVERLAY & SLIDE PANEL ── */
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;opacity:0;pointer-events:none;transition:opacity var(--tr);backdrop-filter:blur(2px)}
+.ov.on{opacity:1;pointer-events:all}
+.panel{position:fixed;top:48px;right:0;width:490px;height:calc(100% - 48px);background:var(--panel);border-left:1px solid var(--border);z-index:101;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .28s cubic-bezier(.4,0,.2,1);overflow:hidden}
+.panel.on{transform:translateX(0)}
+.ph{padding:16px 22px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;gap:12px;flex-shrink:0}
+.px{margin-left:auto;background:none;border:1px solid var(--border);border-radius:50%;width:28px;height:28px;color:var(--muted);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:all var(--tr);flex-shrink:0}
+.px:hover{border-color:var(--red);color:#fff}
+.ptabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0}
+.ptab{flex:1;background:none;border:none;padding:11px 0;font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all var(--tr)}
+.ptab.on{color:var(--red);border-bottom-color:var(--red)}
+.ptab:hover:not(.on){color:var(--text)}
+.pb{flex:1;overflow-y:auto;padding:18px 22px}
+.tc2{display:none}.tc2.on{display:block}
+.sl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.8px;color:var(--red);padding-bottom:7px;border-bottom:1px solid var(--border);margin-bottom:14px;margin-top:6px}
+.fr{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.fr.f1{grid-template-columns:1fr}
+.fi{display:flex;flex-direction:column;gap:4px}
+.fi label{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted)}
+.fi input,.fi textarea,.fi select{background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:8px 11px;font-family:'DM Sans',sans-serif;font-size:12px;outline:none;transition:border-color var(--tr);width:100%}
+.fi input:focus,.fi textarea:focus,.fi select:focus{border-color:var(--red)}
+.fi textarea{resize:vertical;min-height:60px}
+.fi input[type=number]{font-family:'DM Mono',monospace;font-size:14px;font-weight:600}
+.hint{font-size:10px;color:var(--muted);margin-top:2px}
+.hint.ok{color:var(--green)}.hint.bad{color:#eb5757}
+.money-wrap{position:relative}.money-wrap input{padding-left:26px}
+.money-sym{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:12px;font-family:'DM Mono',monospace}
+.gm-preview{margin-top:6px;font-size:11px;color:var(--muted)}
+.gm-preview.pos{color:var(--green)}.gm-preview.neg{color:#eb5757}
+.job-preview{background:rgba(200,16,46,.07);border:1px solid rgba(200,16,46,.2);border-radius:var(--r);padding:11px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px}
+.job-preview .jn{font-family:'DM Mono',monospace;font-size:20px;color:var(--red);font-weight:600}
+.sguide{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin-bottom:14px;font-size:11px;background:rgba(255,255,255,.03);padding:11px;border-radius:var(--r);border:1px solid var(--border)}
+.sguide .sc{font-family:'DM Mono',monospace;color:var(--red);font-weight:600;white-space:nowrap}
+.sguide .sd{color:var(--muted2)}
+.pf{padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:9px;flex-shrink:0}
+.btn{flex:1;padding:10px 0;border-radius:var(--r);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;letter-spacing:.4px;cursor:pointer;border:none;text-transform:uppercase;transition:all var(--tr)}
+.btn-p{background:var(--red);color:#fff}.btn-p:hover{background:var(--red-h)}
+.btn-s{background:transparent;color:var(--muted);border:1px solid var(--border)}.btn-s:hover{border-color:var(--red);color:#fff}
+.btn-d{background:transparent;color:#eb5757;border:1px solid rgba(235,87,87,.3)}.btn-d:hover{background:rgba(235,87,87,.1)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.cr{display:flex;align-items:center;gap:9px;padding:9px 12px;background:rgba(200,16,46,.05);border:1px solid var(--border);border-radius:var(--r);margin-bottom:12px}
+.cr label{font-size:12px;cursor:pointer}
+.cr input[type=checkbox]{width:15px;height:15px;cursor:pointer;accent-color:var(--red)}
+
+/* ── DOCS panel ── */
+.dz{border:2px dashed var(--border);border-radius:var(--r);padding:24px 18px;text-align:center;cursor:pointer;transition:all var(--tr);margin-bottom:14px;position:relative}
+.dz:hover,.dz.dg{border-color:var(--red);background:rgba(200,16,46,.05)}
+.dz input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.dz-icon{font-size:26px;margin-bottom:6px}
+.dz-t{font-size:12px;color:var(--muted)}.dz-t span{color:var(--red);font-weight:600}
+.pp{background:#111;border:1px solid var(--border);border-radius:var(--r);padding:9px 12px;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.pp-ic{color:var(--gold);font-size:13px}
+.pp-tx{font-family:'DM Mono',monospace;font-size:9px;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fl{display:flex;flex-direction:column;gap:6px}
+.fitem{display:flex;align-items:center;gap:9px;padding:9px 11px;background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:var(--r);transition:background var(--tr)}
+.fitem:hover{background:rgba(200,16,46,.07)}
+.fi-ic{font-size:17px;flex-shrink:0}
+.fi-inf{flex:1;min-width:0}
+.fi-nm{font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fi-mt{font-size:10px;color:var(--muted);margin-top:2px}
+.fi-del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;padding:3px 6px;flex-shrink:0;transition:color var(--tr);border-radius:3px}
+.fi-del:hover{color:#eb5757;background:rgba(235,87,87,.1)}.fi-dl{background:rgba(99,179,237,.12);color:#63b3ed;border-radius:4px;padding:3px 8px;font-size:13px;text-decoration:none;display:inline-flex;align-items:center}.fi-dl:hover{background:rgba(99,179,237,.28)}
+.step-ind{flex:1;text-align:center;padding:7px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);border-bottom:2px solid var(--border);transition:all var(--tr)}
+.step-ind.active{color:var(--red);border-bottom-color:var(--red)}
+.refused-row{opacity:.55}
+
+/* ── Hourly Rate bar ── */
+.temp{font-family:'DM Mono',monospace;font-size:13px;font-weight:600;text-align:right}
+.temp.high{color:#e74c3c}.temp.mid{color:var(--amber)}.temp.low{color:var(--green)}
+.rate-bar{height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin-top:2px}
+.rate-fill{height:100%;border-radius:3px;transition:width .4s ease}
+.ph-rate{font-family:'Bebas Neue',sans-serif;font-size:30px;color:var(--gold);line-height:1}
+.rate-preview{margin-top:6px;padding:9px 12px;background:rgba(240,165,0,.06);border:1px solid rgba(240,165,0,.2);border-radius:var(--r);font-size:11px;color:var(--gold)}
+.hist-item{display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:var(--r);margin-bottom:6px}
+.hist-yr{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);min-width:34px}
+.hist-rate{font-family:'DM Mono',monospace;font-size:13px;font-weight:600;color:var(--gold)}
+.hist-diff{font-size:10px;margin-left:auto}
+.hist-diff.up{color:#e74c3c}.hist-diff.dn{color:var(--green)}.hist-diff.same{color:var(--muted)}
+.sb-year{padding:12px 20px;border-bottom:1px solid var(--border)}
+.sb-year label{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1.2px;display:block;margin-bottom:6px}
+.year-row{display:flex;gap:6px;align-items:center}
+.year-row select{flex:1;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:7px 10px;font-family:'DM Mono',sans-serif;font-size:13px;font-weight:600;outline:none;transition:border-color var(--tr)}
+.year-row select:focus{border-color:var(--red)}
+.btn-yr{background:none;border:1px solid var(--border);border-radius:var(--r);color:var(--muted);padding:6px 9px;font-size:11px;cursor:pointer;transition:all var(--tr);white-space:nowrap}
+.btn-yr:hover{border-color:var(--red);color:#fff}
+
+/* ── Quote status chips ── */
+.chip{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;margin-bottom:16px}
+.chip .d{width:6px;height:6px;border-radius:50%}
+.ch-n{background:rgba(139,163,187,.1);color:#777;border:1px solid var(--border)}
+.ch-n .d{background:var(--muted)}
+.ch-m{background:rgba(244,162,97,.12);color:#f4a261;border:1px solid rgba(244,162,97,.28)}
+.ch-m .d{background:#f4a261}
+.ch-c{background:rgba(242,201,76,.12);color:#f2c94c;border:1px solid rgba(242,201,76,.28)}
+.ch-c .d{background:#f2c94c}
+.ch-a{background:rgba(111,207,151,.15);color:#6fcf97;border:1px solid rgba(111,207,151,.28)}
+.ch-a .d{background:#6fcf97}
+.qg{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px}
+.qi label{display:block;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px;text-align:center}
+.qi input{width:100%;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:7px 4px;font-family:'DM Mono',monospace;font-size:13px;text-align:center;outline:none;transition:border-color var(--tr)}
+.qi input:focus{border-color:var(--red)}
+
+/* ── Modal ── */
+.mo{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:200;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity var(--tr);backdrop-filter:blur(3px)}
+.mo.on{opacity:1;pointer-events:all}
+.md{background:var(--panel);border:1px solid var(--border2);border-radius:10px;width:540px;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;transform:translateY(14px);transition:transform var(--tr)}
+.mo.on .md{transform:translateY(0)}
+.mh{padding:18px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px}
+.mh h2{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:2px;flex:1;color:#fff}
+.mb2{flex:1;overflow-y:auto;padding:20px 24px}
+.mf{padding:14px 24px;border-top:1px solid var(--border);display:flex;gap:9px;justify-content:flex-end}
+.mf .btn{flex:none;padding:10px 22px}
+.dz-imp{border:2px dashed var(--border);border-radius:var(--r);padding:22px 18px;text-align:center;cursor:pointer;transition:all var(--tr);margin-bottom:12px;position:relative}
+.dz-imp:hover,.dz-imp.dg{border-color:var(--red);background:rgba(200,16,46,.05)}
+.dz-imp input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.r-chips{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px}
+.r-chip{padding:10px 12px;border-radius:var(--r);text-align:center}
+.r-chip .n{font-family:'Bebas Neue',sans-serif;font-size:22px;line-height:1}
+.r-chip .l{font-size:9px;text-transform:uppercase;letter-spacing:1px;margin-top:2px;opacity:.7}
+
+/* ── Toasts ── */
+.tw2{position:fixed;bottom:20px;right:20px;z-index:300;display:flex;flex-direction:column;gap:6px;pointer-events:none}
+.toast{background:#1e1e1e;border:1px solid var(--border2);border-radius:var(--r);padding:10px 15px;font-size:12px;display:flex;align-items:center;gap:9px;animation:tsi .22s ease;pointer-events:all;max-width:340px;box-shadow:0 8px 32px rgba(0,0,0,.5)}
+.toast.ok{border-left:3px solid var(--green)}.toast.er{border-left:3px solid #eb5757}.toast.if{border-left:3px solid var(--red)}
+@keyframes tsi{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:translateX(0)}}
+.es{padding:44px 0;text-align:center;color:var(--muted)}
+.es .ei{font-size:38px;margin-bottom:10px;opacity:.3}
+.spinner{width:17px;height:17px;border:2px solid var(--border);border-top-color:var(--red);border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Quote table rows */
+tbody tr.q-sm{background:rgba(244,162,97,.08)!important}
+tbody tr.q-sc{background:rgba(242,201,76,.08)!important}
+tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
+.lang-sel{display:flex;align-items:center;gap:3px;padding:0 12px;border-left:1px solid var(--border)}
+.lang-btn{background:rgba(255,255,255,.06);border:1px solid transparent;font-size:11px;font-weight:700;letter-spacing:.5px;cursor:pointer;opacity:.5;transition:all var(--tr);padding:4px 8px;border-radius:5px;color:var(--text)}
+.lang-btn:hover{opacity:.9;background:rgba(255,255,255,.1)}
+.lang-btn.active{opacity:1;background:rgba(200,16,46,.2);border-color:var(--red);color:var(--red)}
+</style>
+</head>
+<body>
+
+<!-- TOP NAV -->
+<nav class="topnav">
+  <div class="logo-area">
+    <div class="brand">PERSICO MEX</div>
+    <div class="bar"></div>
+  </div>
+  <div class="nav-tabs">
+    <button class="nav-tab on" onclick="switchModule('quotes',this)"><span class="ni">📋</span> Quote Register</button>
+    <button class="nav-tab" onclick="switchModule('cpo',this)"><span class="ni">💼</span> Customer POs</button>
+    <button class="nav-tab" onclick="switchModule('jobs',this)"><span class="ni">🗂</span> Job Register</button>
+    <button class="nav-tab" onclick="switchModule('pt',this)"><span class="ni">🗂</span> PT Numbers</button>
+    <button class="nav-tab" onclick="switchModule('sv',this)"><span class="ni">🔧</span> SV Numbers</button>
+    <button class="nav-tab" onclick="switchModule('wh',this)"><span class="ni">⏱</span> Work Hours</button>
+    <button class="nav-tab" onclick="switchModule('po',this)"><span class="ni">🛒</span> Purchase Orders</button>
+    <button class="nav-tab" onclick="switchModule('ivp',this)"><span class="ni">🧾</span> Invoiced POs</button>
+    <button class="nav-tab" onclick="switchModule('report',this)"><span class="ni">📊</span> Job Report</button>
+    <button class="nav-tab" onclick="switchModule('multirpt',this)"><span class="ni">📈</span> Multi-Job Report</button>
+    <button class="nav-tab" onclick="switchModule('rates',this)"><span class="ni">💰</span> Hourly Rates</button>
+    <button class="nav-tab" onclick="switchModule('fx',this)"><span class="ni">💱</span> Exchange Rate</button>
+  </div>
+
+  <div id="admin-tab-wrap" style="display:none">
+    <button class="nav-tab" onclick="switchModule('admin',this)" style="margin-left:4px"><span class="ni">⚙</span> Admin</button>
+  </div>
+  <div class="lang-sel">
+    <button class="lang-btn" id="lb-es" onclick="setLang('es')" title="Español">ES</button>
+    <button class="lang-btn" id="lb-en" onclick="setLang('en')" title="English">EN</button>
+    <button class="lang-btn" id="lb-it" onclick="setLang('it')" title="Italiano">IT</button>
+  </div>
+</nav>
+
+<div class="app-body">
+
+<!-- ══════════════════════════════════════════════════
+     MODULE: JOB REGISTER
+══════════════════════════════════════════════════ -->
+<div class="module" id="mod-jobs">
+  <aside class="sidebar">
+    <div class="sb-head">
+      <div class="mod-title">Job Register</div>
+      <div class="mod-sub">Cost Controlling</div>
+      <div class="bar"></div>
+    </div>
+    <div class="sb-path" id="j-path">Cargando…</div>
+    <div class="sb-stats">
+      <div class="stat"><div class="n" id="js-tot">—</div><div class="l">Total Jobs</div></div>
+      <div class="stat"><div class="n" id="js-open">—</div><div class="l">Open</div></div>
+      <div class="stat"><div class="n" id="js-wip">—</div><div class="l">WIP</div></div>
+      <div class="stat"><div class="n" id="js-done">—</div><div class="l">Done</div></div>
+    </div>
+    <div class="sb-filters">
+      <div class="ft" data-i18n="lbl_filters">Filtros</div>
+      <div class="fg"><label>PM</label><select id="jf-pm"><option value="">Todos</option></select></div>
+      <div class="fg"><label data-i18n="lbl_customer">Cliente</label><input type="text" id="jf-cust" placeholder="Buscar cliente…" data-i18n-ph="ph_search_customer"></div>
+      <div class="fg"><label>Grupo de Producto</label><select id="jf-pg"><option value="">Todos</option></select></div>
+      <div class="fg"><label data-i18n="lbl_status" data-i18n="lbl_status">Estado</label>
+        <select id="jf-st">
+          <option value="">Todos</option><option value="Open">Open</option>
+          <option value="WIP">WIP</option><option value="Done">Done</option><option value="Cancelled">Cancelled</option>
+        </select></div>
+      <div class="fg"><label>Tipo de subíndice</label>
+        <select id="jf-sub">
+          <option value="">Todos</option>
+          <option value="00">00 – Máquina principal</option><option value="01">01 – Instalación</option>
+          <option value="02-50">02–50 Ing. changes</option><option value="51-60">51–60 Spare parts</option>
+          <option value="61-97">61–97 Services</option><option value="99">99 – Garantía</option>
+        </select></div>
+    </div>
+    <div class="sb-btns">
+      <button class="btn-new" onclick="jobOpenNew()">+ Nuevo Job</button>
+      <button class="btn-sec" onclick="jobOpenImport()">↑ Importar Excel</button>
+    </div>
+  </aside>
+  <div class="main-content">
+    <div class="bar-top">
+      <h1>Job Register</h1>
+      <div class="sw"><span class="si">⌕</span><input type="text" id="j-gs" placeholder="Job #, cliente, descripción…" oninput="jobRender()"></div>
+      <button class="btn-reload" onclick="loadJobs()">↺ Recargar</button>
+      <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted)">
+        <div class="conn-dot" id="j-dot"></div><span id="j-lbl">Conectando…</span>
+      </div>
+    </div>
+    <div class="tw">
+      <table>
+        <thead><tr>
+          <th data-mod="jobs" data-k="job_number">Job #</th>
+          <th data-mod="jobs" data-k="customer">Cliente</th>
+          <th data-mod="jobs" data-k="description">Descripción</th>
+          <th data-mod="jobs" data-k="pm">PM</th>
+          <th data-mod="jobs" data-k="product_group">Grupo</th>
+          <th data-mod="jobs" data-k="revenue">Revenue (USD)</th>
+          <th data-mod="jobs" data-k="approval_fc">FC</th>
+          <th data-mod="jobs" data-k="status" data-i18n="lbl_status">Estado</th><th>Q Number</th><th>PT/SV</th>
+          <th data-mod="jobs" data-k="ship_date">Ship Date</th>
+        </tr></thead>
+        <tbody id="j-tb"><tr><td colspan="9"><div class="es"><div class="spinner"></div></div></td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     MODULE: HOURLY RATES
+══════════════════════════════════════════════════ -->
+<div class="module" id="mod-rates">
+  <aside class="sidebar">
+    <div class="sb-head">
+      <div class="mod-title">Hourly Rates</div>
+      <div class="mod-sub">Cost Controlling</div>
+      <div class="bar"></div>
+    </div>
+    <div class="sb-path" id="r-path">Cargando…</div>
+    <div class="sb-year">
+      <label data-i18n="lbl_active_year">Año activo</label>
+      <div class="year-row">
+        <select id="r-year-sel" onchange="rateSwitchYear()"></select>
+        <button class="btn-yr" onclick="rateOpenCopyYear()">+ Año</button>
+      </div>
+    </div>
+    <div class="sb-stats">
+      <div class="stat"><div class="n" id="rs-emp">—</div><div class="l">Empleados</div></div>
+      <div class="stat"><div class="n" id="rs-avg">—</div><div class="l">Avg $/hr</div></div>
+      <div class="stat"><div class="n" id="rs-max">—</div><div class="l">Máx</div></div>
+      <div class="stat"><div class="n" id="rs-min">—</div><div class="l">Mín</div></div>
+    </div>
+    <div class="sb-filters">
+      <div class="ft" data-i18n="lbl_filters">Filtros</div>
+      <div class="fg"><label data-i18n="lbl_search_emp">Buscar empleado</label><input type="text" id="rf-name" placeholder="Nombre…" data-i18n-ph="ph_name" oninput="rateRender()"></div>
+      <div class="fg"><label data-i18n="lbl_dept" data-i18n="lbl_dept">Departamento</label><select id="rf-dept" onchange="rateRender()"><option value="">Todos</option></select></div>
+      <div class="fg"><label data-i18n="lbl_rate_range">Rango de tarifa</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+          <input type="number" id="rf-min" placeholder="Mín $" oninput="rateRender()" style="background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:6px 8px;font-size:12px;outline:none">
+          <input type="number" id="rf-max" placeholder="Máx $" oninput="rateRender()" style="background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:6px 8px;font-size:12px;outline:none">
+        </div></div>
+    </div>
+    <div class="sb-btns">
+      <button class="btn-new" onclick="rateOpenNew()">+ Nuevo Empleado</button>
+      <button class="btn-sec" onclick="rateOpenImport()">↑ Importar Excel</button>
+      <button class="btn-sec btn-export" onclick="rateExportCSV()">↓ Exportar CSV</button>
+    </div>
+  </aside>
+  <div class="main-content">
+    <div class="bar-top">
+      <h1>Hourly Rate Register — <span id="r-tb-year" style="color:var(--gold)">—</span></h1>
+      <div class="sw"><span class="si">⌕</span><input type="text" id="r-gs" placeholder="Buscar…" oninput="rateRender()"></div>
+      <button class="btn-reload" onclick="loadRates()">↺ Recargar</button>
+    </div>
+    <div class="tw">
+      <table>
+        <thead><tr>
+          <th data-mod="rates" data-k="id">#</th>
+          <th data-mod="rates" data-k="employee">Empleado</th>
+          <th data-mod="rates" data-k="department" data-i18n="lbl_dept">Departamento</th>
+          <th data-mod="rates" data-k="rate" style="text-align:right">Tarifa / hr</th>
+          <th>Distribución</th>
+          <th data-mod="rates" data-k="notes">Notas</th>
+        </tr></thead>
+        <tbody id="r-tb"><tr><td colspan="6"><div class="es"><div class="spinner"></div></div></td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     MODULE: QUOTE REGISTER
+══════════════════════════════════════════════════ -->
+<div class="module on" id="mod-quotes">
+  <aside class="sidebar">
+    <div class="sb-head">
+      <div class="mod-title">Quote Register</div>
+      <div class="mod-sub">GERC · Sales MX</div>
+      <div class="bar"></div>
+    </div>
+    <div class="sb-stats">
+      <div class="stat"><div class="n" id="qs-tot">—</div><div class="l">Total</div></div>
+      <div class="stat"><div class="n" id="qs-aw">—</div><div class="l">Awarded</div></div>
+      <div class="stat"><div class="n" id="qs-dn">—</div><div class="l">Done</div></div>
+      <div class="stat"><div class="n" id="qs-op">—</div><div class="l">Open</div></div>
+    </div>
+    <div class="sb-filters">
+      <div class="ft" data-i18n="lbl_filters">Filtros</div>
+      <div class="fg"><label data-i18n="lbl_customer">Cliente</label><input type="text" id="qf-cust" placeholder="Buscar cliente…" data-i18n-ph="ph_search_customer"></div>
+      <div class="fg"><label data-i18n="lbl_status" data-i18n="lbl_status">Estado</label>
+        <select id="qf-st">
+          <option value="">Todos</option><option value="open">En proceso</option>
+          <option value="mgmt">→ Dirección</option><option value="client">→ Cliente</option>
+          <option value="awarded">Awarded</option><option value="done">Done ✓</option>
+        </select></div>
+      <div class="fg"><label>Tipo</label>
+        <select id="qf-tp">
+          <option value="">Todos</option><option value="machine">Machine</option>
+          <option value="tool">Tool / Tolling</option><option value="machTool">Machine &amp; Tool</option>
+          <option value="robotic">Robotic Cell</option><option value="service">Service</option>
+        </select></div>
+      <div class="fg"><label data-i18n="lbl_year">Año</label>
+        <select id="qf-yr"><option value="">Todos</option><option value="2026" selected>2026</option><option value="2025">2025</option></select></div>
+    </div>
+    <div class="sb-btns">
+      <button class="btn-new" onclick="quoteOpenNew()">+ Nueva Cotización</button>
+      <button class="btn-sec" onclick="quoteOpenImport()">↑ Importar Excel</button>
+    </div>
+  </aside>
+  <div class="main-content">
+    <div class="bar-top">
+      <h1>Quotation Register</h1>
+      <div class="sw"><span class="si">⌕</span><input type="text" id="q-gs" placeholder="Q-Number, cliente, descripción…" oninput="quoteRender()"></div>
+      <button class="btn-reload" onclick="loadQuotes()">↺ Recargar</button>
+      <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted)">
+        <div class="conn-dot" id="q-dot"></div><span id="q-lbl">Conectando…</span>
+      </div>
+    </div>
+    <div class="tw">
+      <table>
+        <thead><tr>
+          <th data-mod="quotes" data-k="qnum">Q-Number</th>
+          <th data-mod="quotes" data-k="customer">Cliente</th>
+          <th data-mod="quotes" data-k="desc">Descripción</th>
+          <th>Tipo</th>
+          <th data-mod="quotes" data-k="rfq">RFQ Ref.</th>
+          <th data-mod="quotes" data-k="received">Recepción</th>
+          <th>Done</th>
+          <th data-mod="quotes" data-k="sentMgmt">→ Dirección</th>
+          <th data-mod="quotes" data-k="sentClient">→ Cliente</th>
+          <th>Awarded</th>
+        </tr></thead>
+        <tbody id="q-tb"><tr><td colspan="10"><div class="es"><div class="spinner"></div></div></td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     MODULE: PURCHASE ORDERS
+══════════════════════════════════════════════════ -->
+<div class="module" id="mod-po">
+  <aside class="sidebar">
+    <div class="sb-head">
+      <div class="mod-title">Purchase Orders</div>
+      <div class="mod-sub">Cost Controlling · IPOs</div>
+      <div class="bar"></div>
+    </div>
+    <div class="sb-path" id="po-path">Cargando…</div>
+    <div class="sb-year">
+      <label data-i18n="lbl_active_year">Año activo</label>
+      <div class="year-row">
+        <select id="po-year-sel" onchange="poSwitchYear()"></select>
+      </div>
+    </div>
+    <div class="sb-stats">
+      <div class="stat"><div class="n" id="pos-tot">—</div><div class="l">Total OCs</div></div>
+      <div class="stat"><div class="n" id="pos-rec">—</div><div class="l">Recepcionadas</div></div>
+      <div class="stat"><div class="n" id="pos-emit">—</div><div class="l">Emitidas</div></div>
+      <div class="stat"><div class="n" id="pos-can">—</div><div class="l">Canceladas</div></div>
+    </div>
+    <div class="sb-filters">
+      <div class="ft" data-i18n="lbl_filters">Filtros</div>
+      <div class="fg"><label>Proveedor</label><input type="text" id="pof-nombre" placeholder="Buscar proveedor…" oninput="poRender()"></div>
+      <div class="fg"><label>Destino (Job)</label><input type="text" id="pof-dest" placeholder="Ej. 625-09, SHOP FLOOR…" oninput="poRender()"></div>
+      <div class="fg"><label>Estatus</label>
+        <select id="pof-est" onchange="poRender()">
+          <option value="">Todos</option>
+          <option value="Recepcionada">Recepcionada</option>
+          <option value="Emitida">Emitida</option>
+          <option value="Cancelada">Cancelada</option>
+          <option value="Rec.Parc.">Rec. Parcial</option>
+          <option value="Comprada">Comprada</option>
+        </select></div>
+      <div class="fg"><label>Moneda</label>
+        <select id="pof-moneda" onchange="poRender()">
+          <option value="">Todas</option>
+          <option value="MXN">MXN (TC = 1)</option>
+          <option value="USD">USD (TC > 1)</option>
+        </select></div>
+      <div class="fg"><label>Subtotal mín. (orig.)</label>
+        <input type="number" id="pof-min" placeholder="0" oninput="poRender()" style="background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:6px 8px;font-size:12px;outline:none;width:100%"></div>
+    </div>
+    <div class="sb-btns">
+      <button class="btn-new" onclick="poOpenImport()">↑ Cargar Excel</button>
+      <button class="btn-sec btn-export" onclick="poExportCSV()">↓ Exportar CSV</button>
+    </div>
+  </aside>
+  <div class="main-content">
+    <div class="bar-top">
+      <h1>Purchase Orders — <span id="po-tb-year" style="color:var(--gold)">—</span></h1>
+      <div style="display:flex;align-items:center;gap:10px;margin-left:auto">
+        <span style="font-size:11px;color:var(--muted)">Total USD:</span>
+        <span id="po-total-mxn" style="font-family:'DM Mono',monospace;font-size:13px;font-weight:600;color:var(--gold)">—</span>
+      </div>
+      <div class="sw" style="margin-left:12px"><span class="si">⌕</span><input type="text" id="po-gs" placeholder="Clave, proveedor, destino…" oninput="poRender()"></div>
+      <button class="btn-reload" onclick="loadPO()">↺ Recargar</button>
+      <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted)">
+        <div class="conn-dot" id="po-dot"></div><span id="po-lbl">Conectando…</span>
+      </div>
+    </div>
+    <div class="tw">
+      <table>
+        <thead><tr>
+          <th data-mod="po" data-k="clave">Clave OC</th>
+          <th data-mod="po" data-k="fecha_doc">Fecha Doc.</th>
+          <th data-mod="po" data-k="entregar_a">Destino</th>
+          <th data-mod="po" data-k="nombre">Proveedor</th>
+          <th data-mod="po" data-k="subtotal" style="text-align:right">Subtotal (orig.)</th>
+          <th data-mod="po" data-k="subtotal_usd" style="text-align:right">USD</th>
+          <th data-mod="po" data-k="fx_rate_used" style="text-align:right">T.C. usado</th>
+          <th data-mod="po" data-k="estatus">Estatus</th>
+          <th data-mod="po" data-k="fecha_recepcion">Fecha Recep.</th>
+        </tr></thead>
+        <tbody id="po-tb"><tr><td colspan="9"><div class="es"><div class="spinner"></div></div></td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     MODULE: WORK HOURS
+══════════════════════════════════════════════════ -->
+<!-- ══════════════════════════════════════════════════
+     MODULE: SV NUMBERS
+══════════════════════════════════════════════════ -->
+<div class="module" id="mod-sv">
+  <aside class="sidebar">
+    <div class="sb-head">
+      <div class="mod-title">SV Numbers</div>
+      <div class="mod-sub">Servicios · Jobs asociados</div>
+      <div class="bar"></div>
+    </div>
+    <div class="sb-flt">
+      <div class="fg"><label>Buscar</label>
+        <div class="sw"><span class="si">⌕</span>
+        <input type="text" id="sv-gs" placeholder="SV, cliente, programa, job…" oninput="svRender()"></div>
+      </div>
+    </div>
+    <div class="sb-btns">
+      <button class="btn-new" onclick="svOpenNew()">+ Nuevo SV</button>
+    </div>
+  </aside>
+  <div class="main-content">
+    <div class="bar-top">
+      <h1>SV Numbers</h1>
+      <button class="btn-reload" onclick="loadSv()">↺ Recargar</button>
+      <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted)">
+        <div class="conn-dot" id="sv-dot"></div><span id="sv-lbl">Conectando…</span>
+      </div>
+    </div>
+    <div style="overflow-x:auto;flex:1">
+      <table class="tbl">
+        <thead><tr>
+          <th>SV Number</th><th>Cliente</th><th>Programa Cliente</th><th>PM</th><th>Jobs</th><th>Notas</th>
+        </tr></thead>
+        <tbody id="sv-tb"></tbody>
+      </table>
+    </div>
+    <div class="bar-bot"><span id="sv-count" style="font-size:11px;color:var(--muted)">—</span></div>
+  </div>
+</div>
+
+<div class="module" id="mod-wh">
+  <aside class="sidebar">
+    <div class="sb-head">
+      <div class="mod-title">Work Hours</div>
+      <div class="mod-sub">Cost Controlling · WHs</div>
+      <div class="bar"></div>
+    </div>
+    <div class="sb-path" id="wh-path">Cargando…</div>
+    <div class="sb-year">
+      <label data-i18n="lbl_active_year">Año activo</label>
+      <div class="year-row"><select id="wh-year-sel" onchange="whSwitchYear()"></select></div>
+    </div>
+    <div class="sb-stats">
+      <div class="stat"><div class="n" id="whs-tot">—</div><div class="l">Registros</div></div>
+      <div class="stat"><div class="n" id="whs-hrs">—</div><div class="l">Total Horas</div></div>
+      <div class="stat"><div class="n" id="whs-emp">—</div><div class="l">Empleados</div></div>
+      <div class="stat"><div class="n" id="whs-codes">—</div><div class="l">Work Codes</div></div>
+    </div>
+    <div class="sb-filters">
+      <div class="ft" data-i18n="lbl_filters">Filtros</div>
+      <div class="fg"><label data-i18n="wh_employee">Empleado</label><input type="text" id="whf-emp" placeholder="Nombre o ID…" data-i18n-ph="ph_name_id" oninput="whRender()"></div>
+      <div class="fg"><label>Work Code / Job</label><input type="text" id="whf-code" placeholder="Ej. 625-09, INTEVA…" oninput="whRender()"></div>
+      <div class="fg"><label>Descripción</label><input type="text" id="whf-desc" placeholder="Buscar descripción…" oninput="whRender()"></div>
+      <div class="fg"><label data-i18n="lbl_date_from">Fecha inicial</label><input type="date" id="whf-from" onchange="whRender()"></div>
+      <div class="fg"><label data-i18n="lbl_date_to">Fecha final</label><input type="date" id="whf-to" onchange="whRender()"></div>
+    </div>
+    <div class="sb-btns">
+      <button class="btn-new" onclick="whOpenImport()">↑ Cargar Excel</button>
+      <button class="btn-sec btn-export" onclick="whExportCSV()">↓ Exportar CSV</button>
+    </div>
+  </aside>
+  <div class="main-content">
+    <div class="bar-top">
+      <h1>Work Hours — <span id="wh-tb-year" style="color:var(--gold)">—</span></h1>
+      <div style="display:flex;align-items:center;gap:10px;margin-left:auto">
+        <span style="font-size:11px;color:var(--muted)">Horas filtradas:</span>
+        <span id="wh-total-hrs" style="font-family:'DM Mono',monospace;font-size:13px;font-weight:600;color:var(--gold)">—</span>
+        <span style="font-size:11px;color:var(--muted);margin-left:8px">Costo:</span>
+        <span id="wh-total-cost" style="font-family:'DM Mono',monospace;font-size:13px;font-weight:600;color:var(--green)">—</span>
+      </div>
+      <div class="sw" style="margin-left:12px"><span class="si">⌕</span><input type="text" id="wh-gs" placeholder="Empleado, code, descripción…" oninput="whRender()"></div>
+      <button class="btn-reload" onclick="loadWH()">↺ Recargar</button>
+      <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted)">
+        <div class="conn-dot" id="wh-dot"></div><span id="wh-lbl">Conectando…</span>
+      </div>
+    </div>
+    <div class="tw">
+      <table>
+        <thead><tr>
+          <th data-mod="wh" data-k="id">#</th>
+          <th data-mod="wh" data-k="employee">Empleado</th>
+          <th data-mod="wh" data-k="date_worked">Fecha</th>
+          <th data-mod="wh" data-k="work_code">Work Code</th>
+          <th data-mod="wh" data-k="hours" style="text-align:right">Horas</th>
+          <th data-mod="wh" data-k="cost" style="text-align:right">Costo (USD)</th>
+          <th data-mod="wh" data-k="description">Descripción</th>
+        </tr></thead>
+        <tbody id="wh-tb"><tr><td colspan="7"><div class="es"><div class="spinner"></div></div></td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     MODULE: INVOICED POs
+══════════════════════════════════════════════════ -->
+<div class="module" id="mod-ivp">
+  <aside class="sidebar">
+    <div class="sb-head">
+      <div class="mod-title">Invoiced POs</div>
+      <div class="mod-sub">Cost Controlling · IVPs</div>
+      <div class="bar"></div>
+    </div>
+    <div class="sb-path" id="ivp-path">Cargando…</div>
+    <div class="sb-year">
+      <label data-i18n="lbl_active_year">Año activo</label>
+      <div class="year-row"><select id="ivp-year-sel" onchange="ivpSwitchYear()"></select></div>
+    </div>
+    <div class="sb-stats">
+      <div class="stat"><div class="n" id="ivps-tot">—</div><div class="l">Total IVPs</div></div>
+      <div class="stat"><div class="n" id="ivps-emit">—</div><div class="l">Emitidas</div></div>
+      <div class="stat"><div class="n" id="ivps-usd">—</div><div class="l">En USD</div></div>
+      <div class="stat"><div class="n" id="ivps-dev">—</div><div class="l">Devueltas</div></div>
+    </div>
+    <div class="sb-filters">
+      <div class="ft" data-i18n="lbl_filters">Filtros</div>
+      <div class="fg"><label>Proveedor</label><input type="text" id="ivpf-nombre" placeholder="Buscar proveedor…" oninput="ivpRender()"></div>
+      <div class="fg"><label>Destino (Job)</label><input type="text" id="ivpf-dest" placeholder="Ej. 625-09, SHOP FLOOR…" oninput="ivpRender()"></div>
+      <div class="fg"><label>Estatus</label>
+        <select id="ivpf-est" onchange="ivpRender()">
+          <option value="">Todos</option>
+          <option value="Emitida">Emitida</option>
+          <option value="Devuelta">Devuelta</option>
+        </select></div>
+      <div class="fg"><label>Moneda</label>
+        <select id="ivpf-mon" onchange="ivpRender()">
+          <option value="">Todas</option>
+          <option value="MXN">MXN</option>
+          <option value="USD">USD</option>
+        </select></div>
+      <div class="fg"><label data-i18n="lbl_date_from">Fecha pago desde</label><input type="date" id="ivpf-from" onchange="ivpRender()"></div>
+      <div class="fg"><label data-i18n="lbl_date_to">Fecha pago hasta</label><input type="date" id="ivpf-to" onchange="ivpRender()"></div>
+    </div>
+    <div class="sb-btns">
+      <button class="btn-new" onclick="ivpOpenImport()">↑ Cargar Excel</button>
+      <button class="btn-sec btn-export" onclick="ivpExportCSV()">↓ Exportar CSV</button>
+    </div>
+  </aside>
+  <div class="main-content">
+    <div class="bar-top">
+      <h1>Invoiced POs — <span id="ivp-tb-year" style="color:var(--gold)">—</span></h1>
+      <div style="display:flex;align-items:center;gap:10px;margin-left:auto">
+        <span style="font-size:11px;color:var(--muted)">Total filtrado:</span>
+        <span id="ivp-total" style="font-family:'DM Mono',monospace;font-size:13px;font-weight:600;color:var(--gold)">—</span>
+      </div>
+      <div class="sw" style="margin-left:12px"><span class="si">⌕</span><input type="text" id="ivp-gs" placeholder="Clave, proveedor, destino…" oninput="ivpRender()"></div>
+      <button class="btn-reload" onclick="loadIVP()">↺ Recargar</button>
+      <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted)">
+        <div class="conn-dot" id="ivp-dot"></div><span id="ivp-lbl">Conectando…</span>
+      </div>
+    </div>
+    <div class="tw">
+      <table>
+        <thead><tr>
+          <th data-mod="ivp" data-k="clave">Clave IVP</th>
+          <th data-mod="ivp" data-k="entregar_a">Destino</th>
+          <th data-mod="ivp" data-k="nombre">Proveedor</th>
+          <th data-mod="ivp" data-k="subtotal" style="text-align:right">Subtotal</th>
+          <th data-mod="ivp" data-k="moneda">Moneda</th>
+          <th data-mod="ivp" data-k="estatus">Estatus</th>
+          <th data-mod="ivp" data-k="fecha_recepcion">Fecha Recep.</th>
+          <th data-mod="ivp" data-k="fecha_pago">Fecha Pago</th>
+          <th data-mod="ivp" data-k="doc_anterior">Doc. Anterior</th>
+        </tr></thead>
+        <tbody id="ivp-tb"><tr><td colspan="9"><div class="es"><div class="spinner"></div></div></td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     MODULE: JOB REPORT
+══════════════════════════════════════════════════ -->
+<div class="module" id="mod-report">
+  <!-- LEFT SIDEBAR: controls -->
+  <aside class="sidebar" style="width:270px;min-width:270px">
+    <div class="sb-head">
+      <div class="mod-title">Job Report</div>
+      <div class="mod-sub">Cost · Margin · Hours · POs</div>
+      <div class="bar"></div>
+    </div>
+    <div style="padding:16px 20px;border-bottom:1px solid var(--border)">
+      <div class="fg">
+        <label>Job Number</label>
+        <div style="display:flex;gap:6px;align-items:center">
+          <select id="rpt-job-sel" style="flex:1;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--gold);padding:8px 10px;font-family:'DM Mono',monospace;font-size:13px;font-weight:600;outline:none;transition:border-color var(--tr)" onchange="rptOnJobSelect()">
+            <option value="">— Seleccionar Job —</option>
+          </select>
+        </div>
+        <div style="margin-top:6px;display:flex;gap:6px">
+          <input type="text" id="rpt-job-input" placeholder="o escribe el #…" style="flex:1;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:7px 10px;font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border-color var(--tr)" oninput="rptOnManualInput()">
+        </div>
+      </div>
+      <div style="margin-top:4px;padding:8px 10px;background:rgba(200,16,46,.06);border:1px solid rgba(200,16,46,.15);border-radius:var(--r);font-size:11px;color:var(--muted2);min-height:32px" id="rpt-customer-display">
+        <span style="color:var(--muted)">Cliente: —</span>
+      </div>
+    </div>
+    <div style="padding:14px 20px;border-bottom:1px solid var(--border)">
+      <div class="ft">Fuentes de datos</div>
+      <div class="fg"><label data-i18n="mrpt_rate_yr">Año Hourly Rates</label>
+        <select id="rpt-rate-year" style="width:100%;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:7px 10px;font-size:12px;outline:none"></select></div>
+      <div class="fg"><label data-i18n="mrpt_wh_yr">Año Work Hours</label>
+        <select id="rpt-wh-year" style="width:100%;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:7px 10px;font-size:12px;outline:none"></select></div>
+      <div class="fg"><label data-i18n="mrpt_po_yr">Año Purchase Orders</label>
+        <select id="rpt-po-year" style="width:100%;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:7px 10px;font-size:12px;outline:none"></select></div>
+    </div>
+    <div style="padding:14px 20px;flex:1"></div>
+    <div class="sb-btns">
+      <button class="btn-new" id="btn-rpt-gen" onclick="rptGenerate()" disabled>⚙ Generar Reporte</button>
+      <button class="btn-sec btn-export" id="btn-rpt-xlsx" onclick="rptExportXLSX()" disabled>↓ Exportar .xlsx</button>
+    </div>
+  </aside>
+
+  <!-- MAIN: report view -->
+  <div class="main-content" style="overflow-y:auto">
+    <div class="bar-top">
+      <h1>Job Cost Report</h1>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+        <div class="conn-dot" id="rpt-dot" style="background:var(--muted)"></div>
+        <span style="font-size:10px;color:var(--muted)" id="rpt-status">Sin datos</span>
+      </div>
+    </div>
+
+    <!-- Empty / loading state -->
+    <div id="rpt-empty" style="display:flex;align-items:center;justify-content:center;height:100%">
+      <div class="es">
+        <div class="ei">📊</div>
+        Selecciona un Job y presiona <b style="color:var(--red)">Generar Reporte</b>
+      </div>
+    </div>
+
+    <!-- Report content -->
+    <div id="rpt-content" style="display:none;padding:24px;max-width:1100px">
+
+      <!-- ── Summary cards ── -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
+        <div id="rpt-card-rev"  class="rpt-card rpt-card-blue"></div>
+        <div id="rpt-card-wh"   class="rpt-card rpt-card-dark"></div>
+        <div id="rpt-card-pur"  class="rpt-card rpt-card-dark"></div>
+        <div id="rpt-card-gm"   class="rpt-card rpt-card-gm"></div>
+      </div>
+
+      <!-- ── Cost breakdown bar ── -->
+      <div style="margin-bottom:20px">
+        <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px">Cost Breakdown vs Revenue</div>
+        <div style="background:var(--border);border-radius:4px;height:22px;overflow:hidden;position:relative">
+          <div id="rpt-bar-wh"  style="position:absolute;left:0;top:0;height:100%;background:var(--blue);transition:width .5s ease"></div>
+          <div id="rpt-bar-pur" style="position:absolute;top:0;height:100%;background:var(--amber);transition:width .5s ease"></div>
+        </div>
+        <div style="display:flex;gap:16px;margin-top:5px;font-size:10px;color:var(--muted)">
+          <div><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--blue);margin-right:4px"></span>Work Hours</div>
+          <div><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--amber);margin-right:4px"></span>Purchasings</div>
+          <div><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--border);margin-right:4px"></span>Gross Margin</div>
+        </div>
+      </div>
+
+      <!-- ── Two-column detail tables ── -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+
+        <!-- Workers table -->
+        <div>
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.8px;color:var(--red);padding-bottom:7px;border-bottom:1px solid var(--border);margin-bottom:10px">
+            ⏱ Work Hours by Employee
+          </div>
+          <div style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse">
+              <thead><tr>
+                <th style="padding:7px 10px;text-align:left;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:2px solid var(--red)">Empleado</th>
+                <th style="padding:7px 10px;text-align:right;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:2px solid var(--red)">Horas</th>
+                <th style="padding:7px 10px;text-align:right;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:2px solid var(--red)">$/hr</th>
+                <th style="padding:7px 10px;text-align:right;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:2px solid var(--red)">Monto</th>
+              </tr></thead>
+              <tbody id="rpt-workers-tb"></tbody>
+              <tfoot id="rpt-workers-foot"></tfoot>
+            </table>
+          </div>
+        </div>
+
+        <!-- PO table -->
+        <div>
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.8px;color:var(--red);padding-bottom:7px;border-bottom:1px solid var(--border);margin-bottom:10px">
+            🛒 Purchase Orders
+          </div>
+          <div style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse">
+              <thead><tr>
+                <th style="padding:7px 10px;text-align:left;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:2px solid var(--red)">Clave</th>
+                <th style="padding:7px 10px;text-align:left;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:2px solid var(--red)">Proveedor</th>
+                <th style="padding:7px 10px;text-align:right;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:2px solid var(--red)">Subtotal</th>
+                <th style="padding:7px 10px;text-align:center;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:2px solid var(--red)">Mon.</th>
+              </tr></thead>
+              <tbody id="rpt-po-tb"></tbody>
+              <tfoot id="rpt-po-foot"></tfoot>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Warning if no data ── -->
+      <div id="rpt-warn" style="display:none;margin-top:16px;padding:12px 16px;background:rgba(243,156,18,.08);border:1px solid rgba(243,156,18,.25);border-radius:var(--r);font-size:12px;color:var(--amber)"></div>
+
+    </div><!-- end rpt-content -->
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     MODULE: PT NUMBERS
+══════════════════════════════════════════════════ -->
+<div class="module" id="mod-pt">
+  <aside class="sidebar">
+    <div class="sb-head">
+      <div class="mod-title">PT Numbers</div>
+      <div class="mod-sub">Programas · Jobs asociados</div>
+      <div class="bar"></div>
+    </div>
+    <div class="sb-flt">
+      <div class="fg"><label data-i18n="lbl_search">Buscar</label>
+        <div class="sw"><span class="si">⌕</span>
+        <input type="text" id="pt-gs" placeholder="PT, cliente, programa, job…" oninput="ptRender()"></div>
+      </div>
+    </div>
+    <div class="sb-btns">
+      <button class="btn-new" onclick="ptOpenNew()">+ Nuevo PT</button>
+    </div>
+  </aside>
+  <div class="main-content">
+    <div class="bar-top">
+      <h1>PT Numbers</h1>
+      <button class="btn-reload" onclick="loadPt()">↺ Recargar</button>
+      <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted)">
+        <div class="conn-dot" id="pt-dot"></div><span id="pt-lbl">Conectando…</span>
+      </div>
+    </div>
+    <div style="overflow-x:auto;flex:1">
+      <table class="tbl">
+        <thead><tr>
+          <th>PT Number</th><th>Cliente</th><th>Programa Cliente</th><th>PM</th><th>Jobs</th><th>Notas</th>
+        </tr></thead>
+        <tbody id="pt-tb"></tbody>
+      </table>
+    </div>
+    <div class="bar-bot"><span id="pt-count" style="font-size:11px;color:var(--muted)">—</span></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     MODULE: CUSTOMER POs
+══════════════════════════════════════════════════ -->
+<div class="module" id="mod-cpo">
+  <aside class="sidebar">
+    <div class="sb-head">
+      <div class="mod-title">Customer POs</div>
+      <div class="mod-sub">Revenue · Status · Jobs</div>
+      <div class="bar"></div>
+    </div>
+    <div class="sb-flt">
+      <div class="fg"><label data-i18n="lbl_year">Año</label>
+        <select id="cpo-year-sel" onchange="loadCpo()"></select></div>
+      <div class="fg"><label>Filtrar Job</label>
+        <input type="text" id="cpo-job-flt" placeholder="ej. 652-50" oninput="cpoRender()"></div>
+      <div class="fg"><label data-i18n="lbl_search">Buscar</label>
+        <div class="sw"><span class="si">⌕</span>
+        <input type="text" id="cpo-gs" placeholder="cliente, PO, PM…" oninput="cpoRender()"></div></div>
+    </div>
+    <div class="sb-btns">
+      <button class="btn-new" onclick="cpoOpenNew()">+ Nueva CPO</button>
+      <button class="btn-sec" onclick="cpoOpenImport()">↑ Importar Excel</button>
+    </div>
+  </aside>
+  <div class="main-content">
+    <div class="bar-top">
+      <h1>Customer Purchase Orders</h1>
+      <div class="sw"><span class="si">⌕</span><input type="text" placeholder="Buscar…" oninput="document.getElementById('cpo-gs').value=this.value;cpoRender()"></div>
+      <button class="btn-reload" onclick="loadCpo()">↺ Recargar</button>
+      <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted)">
+        <div class="conn-dot" id="cpo-dot"></div><span id="cpo-lbl">Conectando…</span>
+      </div>
+    </div>
+    <div style="overflow-x:auto;flex:1">
+      <table class="tbl">
+        <thead><tr>
+          <th>PO Number</th><th>Job</th><th>Customer</th><th>Customer/Supplier</th>
+          <th style="text-align:right">Value (USD)</th><th>Status</th><th>Date</th><th>PM</th><th>Est. Finalize</th>
+        </tr></thead>
+        <tbody id="cpo-tb"></tbody>
+      </table>
+    </div>
+    <div class="bar-bot"><span id="cpo-count" style="font-size:11px;color:var(--muted)">—</span>
+      <span id="cpo-total" style="margin-left:auto;font-size:12px;color:var(--green);font-weight:600"></span>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     MODULE: MULTI-JOB REPORT
+══════════════════════════════════════════════════ -->
+<div class="module" id="mod-multirpt">
+  <aside class="sidebar" style="width:270px;min-width:270px">
+    <div class="sb-head">
+      <div class="mod-title">Multi-Job Report</div>
+      <div class="mod-sub">Agrupación por Programa</div>
+      <div class="bar"></div>
+    </div>
+    <div style="padding:14px 20px;border-bottom:1px solid var(--border)">
+      <div class="fg"><label>Modo de consulta</label>
+        <div style="display:flex;gap:8px;margin-bottom:10px">
+          <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text);cursor:pointer">
+            <input type="radio" name="mrpt-mode" value="jobs" checked onchange="mrptToggleMode(this.value)"> Por Jobs
+          </label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text);cursor:pointer">
+            <input type="radio" name="mrpt-mode" value="pt" onchange="mrptToggleMode(this.value)"> Por PT Number
+          </label>
+        </div>
+      </div>
+      <div class="fg"><label>Etiqueta / Programa</label>
+        <input type="text" id="mrpt-label" placeholder="ej. IAC C1UC" style="width:100%;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:7px 10px;font-size:12px;outline:none"></div>
+      <div id="mrpt-jobs-panel" class="fg"><label>Jobs (uno por línea)</label>
+        <textarea id="mrpt-jobs" rows="6" placeholder="665-00&#10;665-01&#10;665-02" style="width:100%;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--gold);padding:8px 10px;font-family:'DM Mono',monospace;font-size:12px;outline:none;resize:vertical"></textarea></div>
+      <div id="mrpt-pt-panel" class="fg" style="display:none"><label>PT Number</label>
+        <div style="display:flex;gap:6px">
+          <input type="text" id="mrpt-pt-input" placeholder="ej. PT0001" style="flex:1;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--gold);padding:7px 10px;font-size:13px;font-family:'DM Mono',monospace;font-weight:700;outline:none;text-transform:uppercase">
+          <button class="btn btn-s" style="font-size:11px;padding:0 10px" onclick="mrptLoadPt()">Cargar</button>
+        </div>
+        <div id="mrpt-pt-info" style="margin-top:8px;font-size:11px;color:var(--muted)"></div>
+      </div>
+    </div>
+    <div style="padding:14px 20px;border-bottom:1px solid var(--border)">
+      <div class="ft">Fuentes de datos</div>
+      <div class="fg"><label data-i18n="mrpt_rate_yr">Año Hourly Rates</label>
+        <select id="mrpt-rate-year" style="width:100%;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:7px 10px;font-size:12px;outline:none"></select></div>
+      <div class="fg"><label data-i18n="mrpt_wh_yr">Año Work Hours</label>
+        <select id="mrpt-wh-year" style="width:100%;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:7px 10px;font-size:12px;outline:none"></select></div>
+      <div class="fg"><label data-i18n="mrpt_po_yr">Año Purchase Orders</label>
+        <select id="mrpt-po-year" style="width:100%;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:7px 10px;font-size:12px;outline:none"></select></div>
+      <div class="fg"><label data-i18n="mrpt_cpo_yr">Año Customer POs</label>
+        <select id="mrpt-cpo-year" style="width:100%;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:7px 10px;font-size:12px;outline:none"></select></div>
+    </div>
+    <div class="sb-btns">
+      <button class="btn-new" onclick="mrptGenerate()">⚙ Generar Reporte</button>
+    </div>
+  </aside>
+  <div class="main-content" style="overflow-y:auto">
+    <div class="bar-top">
+      <h1 id="mrpt-title">Multi-Job Report</h1>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+        <div class="conn-dot" id="mrpt-dot" style="background:var(--muted)"></div>
+        <span style="font-size:10px;color:var(--muted)" id="mrpt-status">Sin datos</span>
+      </div>
+    </div>
+    <div id="mrpt-empty" style="display:flex;align-items:center;justify-content:center;height:100%">
+      <div class="es"><div class="ei">📈</div>Ingresa los jobs y presiona <b style="color:var(--red)">Generar Reporte</b></div>
+    </div>
+    <div id="mrpt-content" style="display:none;padding:24px;max-width:1200px">
+      <!-- Summary totals cards -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px">
+        <div id="mrpt-card-rev"  class="rpt-card rpt-card-blue"></div>
+        <div id="mrpt-card-wh"   class="rpt-card rpt-card-dark"></div>
+        <div id="mrpt-card-pur"  class="rpt-card rpt-card-dark"></div>
+        <div id="mrpt-card-gm"   class="rpt-card rpt-card-gm"></div>
+      </div>
+      <!-- Jobs table -->
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.8px;color:var(--red);padding-bottom:7px;border-bottom:1px solid var(--border);margin-bottom:10px">📊 Detalle por Job</div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr id="mrpt-thead">
+            <th style="padding:7px 10px;text-align:left;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:2px solid var(--red)">Job</th>
+            <th style="padding:7px 10px;text-align:left;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:2px solid var(--red)">Cliente</th>
+            <th style="padding:7px 10px;text-align:left;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:2px solid var(--red)">Descripción</th>
+            <th style="padding:7px 10px;text-align:right;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:2px solid var(--red)">Revenue</th>
+            <th style="padding:7px 10px;text-align:right;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:2px solid var(--red)">Hrs</th>
+            <th style="padding:7px 10px;text-align:right;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:2px solid var(--red)">WH Cost</th>
+            <th style="padding:7px 10px;text-align:right;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:2px solid var(--red)">Purchasings</th>
+            <th style="padding:7px 10px;text-align:right;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:2px solid var(--red)">Gross Margin</th>
+            <th style="padding:7px 10px;text-align:right;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:2px solid var(--red)">GM%</th>
+          </tr></thead>
+          <tbody id="mrpt-tb"></tbody>
+          <tfoot id="mrpt-tfoot"></tfoot>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     MODULE: FX / TIPO DE CAMBIO
+══════════════════════════════════════════════════ -->
+<div class="module" id="mod-fx">
+  <aside class="sidebar">
+    <div class="sb-head">
+      <div class="mod-title">Tipo de Cambio</div>
+      <div class="mod-sub">MXN/USD · Banco de México</div>
+      <div class="bar"></div>
+    </div>
+    <div class="sb-path" id="fx-path">Cargando…</div>
+    <div class="sb-year">
+      <label data-i18n="lbl_active_year">Año activo</label>
+      <div class="year-row"><select id="fx-year-sel" onchange="fxSwitchYear()"></select></div>
+    </div>
+    <div class="sb-stats">
+      <div class="stat"><div class="n" id="fxs-tot">—</div><div class="l">Días con dato</div></div>
+      <div class="stat"><div class="n" id="fxs-avg">—</div><div class="l">Promedio</div></div>
+      <div class="stat"><div class="n" id="fxs-min">—</div><div class="l">Mínimo</div></div>
+      <div class="stat"><div class="n" id="fxs-max">—</div><div class="l">Máximo</div></div>
+    </div>
+    <div class="sb-filters">
+      <div class="ft" data-i18n="lbl_filters">Filtros</div>
+      <div class="fg"><label data-i18n="lbl_date_from">Fecha desde</label><input type="date" id="fxf-from" onchange="fxRender()"></div>
+      <div class="fg"><label data-i18n="lbl_date_to">Fecha hasta</label><input type="date" id="fxf-to" onchange="fxRender()"></div>
+      <div class="fg"><label data-i18n="lbl_search_date">Buscar fecha</label><input type="text" id="fxf-gs" placeholder="Ej. 2026-03…" oninput="fxRender()"></div>
+    </div>
+    <div class="sb-btns">
+      <button class="btn-new" onclick="fxOpenImport()">↑ Cargar Excel (.xls)</button>
+    </div>
+  </aside>
+  <div class="main-content">
+    <div class="bar-top">
+      <h1>Tipo de Cambio MXN/USD — <span id="fx-tb-year" style="color:var(--gold)">—</span></h1>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+        <span style="font-size:11px;color:var(--muted)">Hoy:</span>
+        <span id="fx-today-rate" style="font-family:'DM Mono',monospace;font-size:14px;font-weight:600;color:var(--gold)">—</span>
+      </div>
+      <div class="sw" style="margin-left:12px"><span class="si">⌕</span><input type="text" id="fx-gs2" placeholder="Fecha…" oninput="fxRender()"></div>
+      <button class="btn-reload" onclick="loadFX()">↺ Recargar</button>
+      <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted)">
+        <div class="conn-dot" id="fx-dot"></div><span id="fx-lbl">Conectando…</span>
+      </div>
+    </div>
+    <div class="tw">
+      <table>
+        <thead><tr>
+          <th data-mod="fx" data-k="date">Fecha</th>
+          <th data-mod="fx" data-k="rate" style="text-align:right">Tipo de Cambio (MXN/USD)</th>
+          <th>Día semana</th>
+          <th data-mod="fx" data-k="rate" style="text-align:right">Variación vs anterior</th>
+        </tr></thead>
+        <tbody id="fx-tb"><tr><td colspan="4"><div class="es"><div class="spinner"></div></div></td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     MODULE: ADMIN
+══════════════════════════════════════════════════ -->
+<div class="module" id="mod-admin">
+  <aside class="sidebar" style="width:220px;min-width:220px">
+    <div class="sb-head">
+      <div class="mod-title">Admin</div>
+      <div class="mod-sub">Usuarios · Permisos</div>
+      <div class="bar"></div>
+    </div>
+    <div style="padding:14px 16px">
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:10px" data-i18n="lbl_system_status">Estado del sistema</div>
+      <div style="display:flex;flex-direction:column;gap:7px">
+        <div class="conn-group"><div class="conn-dot" id="dot-jobs"></div><span class="conn-lbl" id="lbl-jobs">Jobs</span></div>
+        <div class="conn-group"><div class="conn-dot" id="dot-rates"></div><span class="conn-lbl" id="lbl-rates">Rates</span></div>
+        <div class="conn-group"><div class="conn-dot" id="dot-quotes"></div><span class="conn-lbl" id="lbl-quotes">Quotes</span></div>
+        <div class="conn-group"><div class="conn-dot" id="dot-po"></div><span class="conn-lbl" id="lbl-po">IPOs</span></div>
+        <div class="conn-group"><div class="conn-dot" id="dot-wh"></div><span class="conn-lbl" id="lbl-wh">WHs</span></div>
+        <div class="conn-group"><div class="conn-dot" id="dot-ivp"></div><span class="conn-lbl" id="lbl-ivp">IVPs</span></div>
+        <div class="conn-group"><div class="conn-dot" id="dot-report" style="background:var(--muted)"></div><span class="conn-lbl" id="lbl-report">Report</span></div>
+        <div class="conn-group"><div class="conn-dot" id="dot-fx"></div><span class="conn-lbl" id="lbl-fx">FX</span></div>
+      </div>
+    </div>
+  </aside>
+  <div class="main-content" style="overflow-y:auto">
+    <div class="bar-top">
+      <h1>Administración</h1>
+      <button class="btn-reload" onclick="loadAdminUsers()">↺ Recargar</button>
+    </div>
+    <div style="padding:24px;max-width:1100px">
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.8px;color:var(--red);padding-bottom:7px;border-bottom:1px solid var(--border);margin-bottom:16px">👤 Usuarios y Permisos</div>
+      <div id="admin-users-grid"></div>
+    </div>
+  </div>
+</div>
+
+</div><!-- end app-body -->
+
+<!-- ════════════════════════ SHARED OVERLAY ════════════════════════ -->
+<div class="ov" id="ov" onclick="closePanel()"></div>
+
+<!-- ════════════════════════ JOB PANEL ════════════════════════ -->
+<aside class="panel" id="j-panel">
+  <div class="ph">
+    <div>
+      <div style="font-family:'DM Mono',monospace;font-size:24px;color:var(--red);font-weight:600" id="jp-job">—</div>
+      <div style="font-size:10px;color:var(--muted);margin-top:3px" id="jp-sub">—</div>
+      <div style="font-size:13px;font-weight:600;color:#fff;margin-top:2px" id="jp-cust">—</div>
+    </div>
+    <button class="px" onclick="closePanel()">✕</button>
+  </div>
+  <div class="ptabs">
+    <button class="ptab on" onclick="jStab('det',this)">Detalles</button>
+    <button class="ptab" onclick="jStab('doc',this)">Documentación</button>
+  </div>
+  <div class="pb">
+    <div class="tc2 on" id="jtab-det">
+      <div class="sl">Información General</div>
+      <div class="fr">
+        <div class="fi"><label data-i18n="lbl_customer">Cliente</label><input type="text" id="je-cust"></div>
+        <div class="fi"><label>PM Asignado</label><input type="text" id="je-pm"></div>
+      </div>
+      <div class="fr f1"><div class="fi"><label>Descripción</label><textarea id="je-desc" rows="3"></textarea></div></div>
+      <div class="fr">
+        <div class="fi"><label>Grupo de Producto</label>
+          <select id="je-pg">
+            <option value="">— Seleccionar —</option>
+            <option>1.1 B1-COMPRESSION /P.MEX</option><option>1.2 B7-INTERIORS /P.MEX</option>
+            <option>1.3 SECONDARIES/P.MEX</option><option>1.4 ROBOTIC /P.MEX</option>
+            <option>1.5 WELDING /P.MEX</option><option>1.6 Service/P.MEX</option><option>1.7 Spare Parts/P.MEX</option>
+          </select></div>
+        <div class="fi"><label>Subgrupo</label><input type="text" id="je-psg"></div>
+      </div>
+      <div class="sl">Financiero</div>
+      <div class="fr">
+        <div class="fi"><label>Revenue (USD)</label><div class="money-wrap"><span class="money-sym">$</span><input type="number" id="je-rev" min="0" step="0.01" oninput="jCalcGM()"></div></div>
+        <div class="fi"><label>Costo Estimado (USD)</label><div class="money-wrap"><span class="money-sym">$</span><input type="number" id="je-cost" min="0" step="0.01" oninput="jCalcGM()"></div></div>
+      </div>
+      <div id="j-gm" class="gm-preview">GM: —</div>
+      <div class="fr">
+        <div class="fi"><label>PO Number</label><input type="text" id="je-po"></div>
+        <div class="fi"><label>Ship Date</label><input type="date" id="je-ship"></div>
+      </div>
+      <div class="sl" data-i18n="lbl_status">Estado</div>
+      <div class="fr">
+        <div class="fi"><label>Aprobación FC</label>
+          <select id="je-fc"><option value="ToApprove">ToApprove</option><option value="InProgress">InProgress</option><option value="Yes">Yes</option><option value="No">No</option></select></div>
+        <div class="fi"><label data-i18n="lbl_status">Estado del Job</label>
+          <select id="je-st"><option value="Open">Open</option><option value="WIP">WIP</option><option value="Done">Done</option><option value="Cancelled">Cancelled</option></select></div>
+      </div>
+      <div class="fr f1"><div class="fi"><label>Notas</label><textarea id="je-notes" rows="3"></textarea></div></div>
+    </div>
+    <div class="tc2" id="jtab-doc">
+      <div class="pp"><span class="pp-ic">📁</span><span class="pp-tx" id="j-dp">—</span></div>
+      <div class="dz" id="j-dz" ondragover="ev=>{ev.preventDefault();document.getElementById('j-dz').classList.add('dg')}" ondragleave="document.getElementById('j-dz').classList.remove('dg')" ondrop="jDropFiles(event)">
+        <input type="file" multiple onchange="jUploadFiles(this.files)">
+        <div class="dz-icon">📎</div>
+        <div class="dz-t">Arrastra archivos o <span>haz clic</span> para seleccionar</div>
+      </div>
+      <div class="fl" id="j-fl"><div class="es" style="padding:20px 0"><span class="ei">📂</span><br>Sin documentos</div></div>
+    </div>
+  </div>
+  <div class="pf">
+    <button class="btn btn-d" onclick="jobDelete()">Eliminar</button>
+    <button class="btn btn-s" onclick="closePanel()">Cancelar</button>
+    <button class="btn btn-p" onclick="jobSave()">Guardar cambios</button>
+  </div>
+</aside>
+
+<!-- ════════════════════════ RATE PANEL ════════════════════════ -->
+<aside class="panel" id="r-panel">
+  <div class="ph">
+    <div>
+      <div class="ph-rate" id="rp-rate">$—</div>
+      <div style="font-size:11px;color:var(--muted)">USD / hora</div>
+      <div style="font-size:13px;font-weight:600;color:#fff;margin-top:3px" id="rp-name">—</div>
+    </div>
+    <button class="px" onclick="closePanel()">✕</button>
+  </div>
+  <div class="pb">
+    <div class="sl">Información del Empleado</div>
+    <div class="fr f1"><div class="fi"><label>Nombre / ID</label><input type="text" id="re-name" placeholder="Ej. 15HECTOR PEREZ"></div></div>
+    <div class="fr">
+      <div class="fi"><label>Tarifa por hora (USD)</label><div class="money-wrap"><span class="money-sym">$</span><input type="number" id="re-rate" min="0" step="0.01" oninput="rateUpdatePreview()"></div></div>
+      <div class="fi"><label data-i18n="lbl_dept" data-i18n="lbl_dept">Departamento</label><input type="text" id="re-dept" placeholder="Ej. CNC, Ensamble…"></div>
+    </div>
+    <div id="r-preview" class="rate-preview" style="display:none"></div>
+    <div class="fr f1"><div class="fi"><label>Notas</label><textarea id="re-notes" rows="3"></textarea></div></div>
+    <div class="sl" style="margin-top:16px">Historial por año</div>
+    <div id="r-hist"><div class="es" style="padding:14px 0"><div class="spinner"></div></div></div>
+  </div>
+  <div class="pf">
+    <button class="btn btn-d" onclick="rateDelete()">Eliminar</button>
+    <button class="btn btn-s" onclick="closePanel()">Cancelar</button>
+    <button class="btn btn-p" onclick="rateSave()">Guardar</button>
+  </div>
+</aside>
+
+<!-- ════════════════════════ QUOTE PANEL ════════════════════════ -->
+<aside class="panel" id="q-panel">
+  <div class="ph">
+    <div><div style="font-family:'Bebas Neue',sans-serif;font-size:26px;color:var(--red)" id="qp-q">—</div><div style="font-size:13px;font-weight:600;margin-top:3px" id="qp-c">—</div></div>
+    <button class="px" onclick="closePanel()">✕</button>
+  </div>
+  <div class="ptabs">
+    <button class="ptab on" onclick="qStab('det',this)">Detalles</button>
+    <button class="ptab" onclick="qStab('doc',this)">Documentación</button>
+  </div>
+  <div class="pb">
+    <div class="tc2 on" id="qtab-det">
+      <div id="qpchip" class="chip ch-n"><span class="d"></span><span id="qpcl">Sin estado</span></div>
+      <div class="sl">Información General</div>
+      <div class="fr"><div class="fi"><label data-i18n="lbl_customer">Cliente</label><input type="text" id="qe-cust"></div><div class="fi"><label>RFQ Ref.</label><input type="text" id="qe-rfq"></div></div>
+      <div class="fr f1"><div class="fi"><label>Descripción</label><textarea id="qe-desc" rows="3"></textarea></div></div>
+      <div class="fr"><div class="fi"><label data-i18n="lbl_date_recv">Fecha de recepción</label><input type="date" id="qe-recv"></div></div>
+      <div class="sl">Alcance a cotizar</div>
+      <div class="qg">
+        <div class="qi"><label>Machine</label><input type="number" id="qe-mc" min="0" placeholder="0"></div>
+        <div class="qi"><label>Tool</label><input type="number" id="qe-tl" min="0" placeholder="0"></div>
+        <div class="qi"><label>M+Tool</label><input type="number" id="qe-mt" min="0" placeholder="0"></div>
+        <div class="qi"><label>Robotic</label><input type="number" id="qe-rb" min="0" placeholder="0"></div>
+        <div class="qi"><label>Service</label><input type="number" id="qe-sv" min="0" placeholder="0"></div>
+      </div>
+      <div class="sl">Seguimiento</div>
+      <div class="cr"><input type="checkbox" id="qe-dn"><label for="qe-dn">Cotización concluida (Done ✓)</label></div>
+      <div class="fr"><div class="fi"><label>Enviado a dirección</label><input type="date" id="qe-sm"></div><div class="fi"><label>Enviado a cliente</label><input type="date" id="qe-sc"></div></div>
+      <div class="cr"><input type="checkbox" id="qe-aw"><label for="qe-aw">AWARDED — Proyecto ganado</label></div>
+      <div class="sl">Notas</div>
+      <div class="fr f1"><div class="fi"><textarea id="qe-nt" rows="3" placeholder="Observaciones…"></textarea></div></div>
+    </div>
+    <div class="tc2" id="qtab-doc">
+      <div class="pp"><span class="pp-ic">📁</span><span class="pp-tx" id="q-dp">—</span></div>
+      <div class="dz" id="q-dz" ondragover="ev=>{ev.preventDefault();document.getElementById('q-dz').classList.add('dg')}" ondragleave="document.getElementById('q-dz').classList.remove('dg')" ondrop="qDropFiles(event)">
+        <input type="file" multiple onchange="qUploadFiles(this.files)">
+        <div class="dz-icon">⬆</div>
+        <div class="dz-t">Arrastra archivos o <span>haz clic</span> para seleccionar</div>
+      </div>
+      <div class="fl" id="q-fl"><div class="es"><div class="ei">📂</div><p>Sin documentos.</p></div></div>
+    </div>
+  </div>
+  <div class="pf" style="flex-direction:column;gap:6px">
+    <div style="display:flex;gap:6px;width:100%">
+      <button class="btn btn-d" onclick="quoteDelete()" style="flex:1">Eliminar</button>
+      <button class="btn btn-s" onclick="closePanel()" style="flex:1">Cancelar</button>
+      <button class="btn btn-p" onclick="quoteSave()" style="flex:1">Guardar</button>
+    </div>
+    <button id="btn-award-flow" onclick="quoteAwardFlow()" style="display:none;width:100%;background:rgba(39,174,96,.2);border:1px solid rgba(39,174,96,.4);color:#6fcf97;border-radius:var(--r);padding:8px;font-size:12px;font-weight:700;cursor:pointer">🏆 Registrar Venta</button>
+    <button id="btn-refuse-flow" onclick="quoteRefuseFlow()" style="width:100%;background:rgba(200,16,46,.12);border:1px solid rgba(200,16,46,.3);color:#ff6b6b;border-radius:var(--r);padding:8px;font-size:12px;font-weight:700;cursor:pointer">✕ Rechazar Cotización</button>
+  </div>
+</aside>
+
+<!-- ════ MODALS ════ -->
+<!-- Job New -->
+<div class="mo" id="mo-jnew">
+  <div class="md">
+    <div class="mh"><h2>Nuevo Job</h2><button class="px" onclick="closeMo('mo-jnew')">✕</button></div>
+    <div class="mb2">
+      <div class="sl">Número de Job</div>
+      <div class="sguide">
+        <span class="sc">00</span><span class="sd">Máquina o equipo principal</span>
+        <span class="sc">01</span><span class="sd">Instalación y puesta en marcha</span>
+        <span class="sc">02–50</span><span class="sd">Cambios de ingeniería</span>
+        <span class="sc">51–60</span><span class="sd">Refacciones pagadas por el cliente</span>
+        <span class="sc">61–97</span><span class="sd">Servicios pagados por el cliente</span>
+        <span class="sc">99</span><span class="sd">Servicios de garantía</span>
+      </div>
+      <div class="fr">
+        <div class="fi"><label>Índice Principal (automático)</label><input type="text" id="jn-main" readonly style="color:var(--red);font-family:'DM Mono',monospace;font-weight:600;font-size:16px"></div>
+        <div class="fi"><label>Subíndice</label><input type="number" id="jn-sub" min="0" max="99" placeholder="ej. 00, 61, 01…" oninput="jobUpdatePreview()" style="font-family:'DM Mono',monospace;font-size:16px"><div class="hint" id="jn-hint"></div></div>
+      </div>
+      <div class="job-preview"><div><div class="jn" id="jn-num">—</div><div style="font-size:10px;color:var(--muted2);margin-top:3px" id="jn-lbl">Ingresa un subíndice</div></div></div>
+      <div class="sl">Información General</div>
+      <div class="fr">
+        <div class="fi"><label data-i18n="lbl_customer">Cliente</label><input type="text" id="jn-cust"></div>
+        <div class="fi"><label>PM Asignado</label>
+          <select id="jn-pm">
+            <option value="">— Seleccionar —</option>
+            <option>Ana Mariel Rocha - Persico</option><option>Eduardo Bernal - Persico</option>
+            <option>Guillermo Rivera - Persico</option><option>Hector Viveros - Persico</option>
+            <option>Luis Jimenez - Persico</option><option>Luz Munoz - Persico</option>
+            <option>Omar Moreno - Persico</option><option>Oswaldo Aguinaga - Persico</option>
+            <option>Pablo Rodrigo Gutierrez - Persico</option><option>Ramiro Bravo - Persico</option>
+          </select></div>
+      </div>
+      <div class="fr f1"><div class="fi"><label>Descripción</label><textarea id="jn-desc" rows="2"></textarea></div></div>
+      <div class="fr">
+        <div class="fi"><label>Grupo de Producto</label>
+          <select id="jn-pg">
+            <option value="">— Seleccionar —</option>
+            <option>1.1 B1-COMPRESSION /P.MEX</option><option>1.2 B7-INTERIORS /P.MEX</option>
+            <option>1.3 SECONDARIES/P.MEX</option><option>1.4 ROBOTIC /P.MEX</option>
+            <option>1.5 WELDING /P.MEX</option><option>1.6 Service/P.MEX</option><option>1.7 Spare Parts/P.MEX</option>
+          </select></div>
+        <div class="fi"><label>Subgrupo</label><input type="text" id="jn-psg"></div>
+      </div>
+      <div class="fr">
+        <div class="fi"><label>Revenue (USD)</label><div class="money-wrap"><span class="money-sym">$</span><input type="number" id="jn-rev" min="0" step="0.01" placeholder="0.00"></div></div>
+        <div class="fi"><label>Costo Estimado (USD)</label><div class="money-wrap"><span class="money-sym">$</span><input type="number" id="jn-cost" min="0" step="0.01" placeholder="0.00"></div></div>
+      </div>
+      <div class="fr">
+        <div class="fi"><label>PO Number</label><input type="text" id="jn-po"></div>
+        <div class="fi"><label>Ship Date</label><input type="date" id="jn-ship"></div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-s" onclick="closeMo('mo-jnew')">Cancelar</button>
+      <button class="btn btn-p" id="btn-jcreate" onclick="jobCreate()">Crear Job →</button>
+    </div>
+  </div>
+</div>
+
+<!-- Job Import -->
+<div class="mo" id="mo-jimp">
+  <div class="md" style="width:580px">
+    <div class="mh"><h2>Importar Jobs desde Excel</h2><button class="px" onclick="closeMo('mo-jimp')">✕</button></div>
+    <div class="mb2">
+      <p style="font-size:12px;color:var(--muted2);margin-bottom:14px;line-height:1.6">Sube el <b style="color:var(--text)">JOB_LIST_*.xlsx</b> exportado de SharePoint. Jobs existentes se omiten sin sobreescribir.</p>
+      <div class="fr">
+        <div class="fi"><label>Filtrar por año de creación</label>
+          <select id="jimp-year">
+            <option value="">Todos</option><option value="2026" selected>Solo 2026</option><option value="2025">Solo 2025</option><option value="2024">Solo 2024</option>
+          </select></div>
+        <div class="fi"><label>Archivo Excel (.xlsx)</label>
+          <div class="dz-imp" id="jdz-imp" ondragover="ev=>{ev.preventDefault();document.getElementById('jdz-imp').classList.add('dg')}" ondragleave="document.getElementById('jdz-imp').classList.remove('dg')" ondrop="jDropImport(event)">
+            <input type="file" accept=".xlsx,.xls" id="jimp-file" onchange="onJimpFile(this)">
+            <div style="font-size:12px;color:var(--muted)">📂 <span id="jimp-fname" style="color:var(--red)">Seleccionar o arrastrar</span></div>
+          </div></div>
+      </div>
+      <div id="jimp-results" style="display:none;margin-top:14px">
+        <div class="sl">Resultado</div>
+        <div id="jimp-summary" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px"></div>
+        <div id="jimp-detail" style="max-height:200px;overflow-y:auto"></div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-s" onclick="closeMo('mo-jimp')">Cerrar</button>
+      <button class="btn btn-p" id="btn-jimp-run" onclick="jobRunImport()" disabled>Importar →</button>
+    </div>
+  </div>
+</div>
+
+<!-- Rate New Employee -->
+<div class="mo" id="mo-rnew">
+  <div class="md" style="width:420px">
+    <div class="mh"><h2>Nuevo Empleado</h2><button class="px" onclick="closeMo('mo-rnew')">✕</button></div>
+    <div class="mb2">
+      <div class="fr f1"><div class="fi"><label>Nombre / ID</label><input type="text" id="rn-name" placeholder="Ej. 61 JUAN PEREZ"></div></div>
+      <div class="fr">
+        <div class="fi"><label>Tarifa por hora (USD)</label><div class="money-wrap"><span class="money-sym">$</span><input type="number" id="rn-rate" min="0" step="0.01" placeholder="0.00"></div></div>
+        <div class="fi"><label data-i18n="lbl_dept" data-i18n="lbl_dept">Departamento</label><input type="text" id="rn-dept" placeholder="Ej. CNC"></div>
+      </div>
+      <div class="fr f1"><div class="fi"><label>Notas</label><textarea id="rn-notes" rows="2"></textarea></div></div>
+      <p style="font-size:11px;color:var(--muted);margin-top:8px">Año activo: <b id="rn-year" style="color:var(--gold)">—</b></p>
+    </div>
+    <div class="mf">
+      <button class="btn btn-s" onclick="closeMo('mo-rnew')">Cancelar</button>
+      <button class="btn btn-p" id="btn-rcreate" onclick="rateCreate()">Agregar →</button>
+    </div>
+  </div>
+</div>
+
+<!-- Rate Import -->
+<div class="mo" id="mo-rimp">
+  <div class="md">
+    <div class="mh"><h2>Importar desde Excel</h2><button class="px" onclick="closeMo('mo-rimp')">✕</button></div>
+    <div class="mb2">
+      <p style="font-size:12px;color:var(--muted2);margin-bottom:14px;line-height:1.6">Sube el <b style="color:var(--text)">INT_MP_HOURLY_RATE_YYYY.xlsx</b> con columnas <code style="color:var(--red)">EMPLOYEE</code> y <code style="color:var(--red)">HOURLY RATE</code>.</p>
+      <div class="fr">
+        <div class="fi"><label>Año destino</label><select id="rimp-year"></select></div>
+        <div class="fi"><label>Modo</label>
+          <select id="rimp-mode">
+            <option value="replace">Reemplazar todo</option>
+            <option value="merge">Fusionar (no borra)</option>
+          </select></div>
+      </div>
+      <div class="dz-imp" id="rdz-imp" ondragover="ev=>{ev.preventDefault();document.getElementById('rdz-imp').classList.add('dg')}" ondragleave="document.getElementById('rdz-imp').classList.remove('dg')" ondrop="rDropImport(event)">
+        <input type="file" accept=".xlsx,.xls" id="rimp-file" onchange="onRimpFile(this)">
+        <div class="dz-icon">📊</div>
+        <div class="dz-t">Arrastra el Excel o <span>haz clic</span> para seleccionar</div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Archivo: <span id="rimp-fname" style="color:var(--text)">—</span></div>
+      <div id="rimp-results" style="display:none;margin-top:12px">
+        <div class="sl">Resultado</div>
+        <div class="r-chips" id="rimp-chips"></div>
+        <div id="rimp-errs"></div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-s" onclick="closeMo('mo-rimp')">Cerrar</button>
+      <button class="btn btn-p" id="btn-rimp-run" onclick="rateRunImport()" disabled>Importar →</button>
+    </div>
+  </div>
+</div>
+
+<!-- SV New / Edit -->
+<div class="mo" id="mo-sv-new">
+  <div class="md" style="max-width:560px">
+    <div class="mh"><h2 id="sv-new-title">Nuevo SV Number</h2><button class="px" onclick="closeMo('mo-sv-new')">✕</button></div>
+    <div class="mb2">
+      <div class="fr">
+        <div class="fi"><label>SV Number *</label>
+          <input type="text" id="sv-new-num" placeholder="ej. SV0001" style="font-family:'DM Mono',monospace;font-weight:700;color:var(--gold);text-transform:uppercase"></div>
+        <div class="fi"><label>PM</label>
+          <input type="text" id="sv-new-pm" placeholder="ej. Guillermo Rivera"></div>
+      </div>
+      <div class="fr">
+        <div class="fi"><label>Cliente *</label>
+          <input type="text" id="sv-new-cust" placeholder="ej. INTEVA"></div>
+        <div class="fi"><label>Programa Cliente</label>
+          <input type="text" id="sv-new-prog" placeholder="ej. Servicio Maq. BLF"></div>
+      </div>
+      <div class="fg"><label>Jobs asociados (uno por línea)</label>
+        <textarea id="sv-new-jobs" rows="5" placeholder="652-50&#10;652-51" style="width:100%;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--gold);padding:8px 10px;font-family:'DM Mono',monospace;font-size:13px;outline:none;resize:vertical"></textarea>
+      </div>
+      <div class="fg"><label>Notas</label>
+        <input type="text" id="sv-new-notes" placeholder="Observaciones opcionales…"></div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-d" id="btn-sv-del" onclick="svDelete()" style="display:none">Eliminar</button>
+      <button class="btn btn-s" onclick="closeMo('mo-sv-new')">Cerrar</button>
+      <button class="btn btn-p" onclick="svSave()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- PT New / Edit -->
+<div class="mo" id="mo-pt-new">
+  <div class="md" style="max-width:560px">
+    <div class="mh"><h2 id="pt-new-title">Nuevo PT Number</h2><button class="px" onclick="closeMo('mo-pt-new')">✕</button></div>
+    <div class="mb2">
+      <div class="fr">
+        <div class="fi"><label>PT Number *</label>
+          <input type="text" id="pt-new-num" placeholder="ej. PT0001" style="font-family:'DM Mono',monospace;font-weight:700;color:var(--gold);text-transform:uppercase"></div>
+        <div class="fi"><label>PM</label>
+          <input type="text" id="pt-new-pm" placeholder="ej. Guillermo Rivera"></div>
+      </div>
+      <div class="fr">
+        <div class="fi"><label>Cliente *</label>
+          <input type="text" id="pt-new-cust" placeholder="ej. INTEVA"></div>
+        <div class="fi"><label>Programa Cliente</label>
+          <input type="text" id="pt-new-prog" placeholder="ej. C1UC / BLF"></div>
+      </div>
+      <div class="fg"><label>Jobs asociados (uno por línea)</label>
+        <textarea id="pt-new-jobs" rows="6" placeholder="652-50&#10;652-51&#10;652-52" style="width:100%;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--gold);padding:8px 10px;font-family:'DM Mono',monospace;font-size:13px;outline:none;resize:vertical"></textarea>
+      </div>
+      <div class="fg"><label>Notas</label>
+        <input type="text" id="pt-new-notes" placeholder="Observaciones opcionales…"></div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-d" id="btn-pt-del" onclick="ptDelete()" style="display:none">Eliminar</button>
+      <button class="btn btn-s" onclick="closeMo('mo-pt-new')">Cerrar</button>
+      <button class="btn btn-p" onclick="ptSave()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- PT Job Confirm (para Multi-Job Report) -->
+<div class="mo" id="mo-pt-confirm">
+  <div class="md" style="max-width:480px">
+    <div class="mh"><h2>Confirmar Jobs del PT</h2><button class="px" onclick="closeMo('mo-pt-confirm')">✕</button></div>
+    <div class="mb2">
+      <p style="font-size:12px;color:var(--muted2);margin-bottom:14px" id="pt-confirm-desc">—</p>
+      <div id="pt-confirm-jobs" style="display:flex;flex-direction:column;gap:6px"></div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-s" onclick="closeMo('mo-pt-confirm')">Cancelar</button>
+      <button class="btn btn-p" onclick="ptConfirmGenerate()">Generar Reporte →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: REFUSE ══ -->
+<div class="mo" id="mo-refuse">
+  <div class="md" style="max-width:440px">
+    <div class="mh"><h2>Rechazar Cotización</h2><button class="px" onclick="closeMo('mo-refuse')">✕</button></div>
+    <div class="mb2">
+      <div style="font-size:13px;color:var(--text);margin-bottom:14px">Cotización: <b id="refuse-qnum" style="color:var(--gold)">—</b></div>
+      <div class="fg"><label>Motivo de rechazo (opcional)</label>
+        <textarea id="refuse-reason" rows="4" placeholder="Ej. Precio fuera de mercado, cliente seleccionó otro proveedor…"
+          style="width:100%;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:8px 10px;font-size:12px;outline:none;resize:vertical"></textarea>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-s" onclick="closeMo('mo-refuse')">Cancelar</button>
+      <button class="btn btn-d" onclick="refuseConfirm()">Confirmar Rechazo</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: AWARD FLOW ══ -->
+<div class="mo" id="mo-award">
+  <div class="md" style="max-width:620px;max-height:90vh;overflow-y:auto">
+    <div class="mh"><h2>🏆 Registrar Venta</h2><button class="px" onclick="closeMo('mo-award')">✕</button></div>
+    <div class="mb2">
+      <!-- Step indicator -->
+      <div style="display:flex;gap:0;margin-bottom:20px">
+        <div class="step-ind active" id="step-ind-1">1 · Venta (CPO)</div>
+        <div class="step-ind" id="step-ind-2">2 · Job(s)</div>
+        <div class="step-ind" id="step-ind-3">3 · PT / SV</div>
+      </div>
+
+      <!-- STEP 1: CPO -->
+      <div id="award-step-1">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--red);margin-bottom:12px">Datos de la Venta</div>
+        <div style="background:rgba(255,255,255,.04);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px">
+          Q Number: <b id="award-qnum" style="color:var(--gold)">—</b> · Cliente: <span id="award-customer">—</span>
+        </div>
+        <div class="fr">
+          <div class="fi"><label>PO Number del Cliente</label><input type="text" id="aw-po-num" placeholder="ej. THQ034930"></div>
+          <div class="fi"><label>Fecha PO</label><input type="date" id="aw-po-date"></div>
+        </div>
+        <div class="fr">
+          <div class="fi"><label>Value (USD) *</label><input type="number" id="aw-value" placeholder="0.00" step="0.01" style="color:var(--green);font-weight:700"></div>
+          <div class="fi"><label>Año CPO</label><select id="aw-cpo-year"></select></div>
+        </div>
+        <div class="fr">
+          <div class="fi" style="flex:2"><label>Customer/Supplier</label><input type="text" id="aw-cs" placeholder="ej. INTEVA BLF"></div>
+          <div class="fi"><label>Est. Finalización</label><input type="date" id="aw-est-fin"></div>
+        </div>
+        <div class="fr">
+          <div class="fi"><label>PM</label><input type="text" id="aw-pm"></div>
+          <div class="fi"><label>Tipo</label>
+            <select id="aw-type" onchange="awardTypeChange(this.value)">
+              <option value="proyecto">📐 Proyecto (PT Number)</option>
+              <option value="servicio">🔧 Servicio (SV Number)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 2: Jobs -->
+      <div id="award-step-2" style="display:none">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--red);margin-bottom:12px">Definir Job(s)</div>
+        <div id="award-jobs-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px"></div>
+        <button onclick="awardAddJob()" class="btn btn-s" style="font-size:11px">+ Agregar otro Job</button>
+      </div>
+
+      <!-- STEP 3: PT/SV -->
+      <div id="award-step-3" style="display:none">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--red);margin-bottom:12px" id="award-ptsvlabel">Asignar PT Number</div>
+        <div style="display:flex;gap:8px;margin-bottom:14px">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;padding:8px 14px;border-radius:8px;border:1px solid var(--border);flex:1;justify-content:center" id="ptsv-new-lbl">
+            <input type="radio" name="ptsv-mode" value="new" checked onchange="ptsvModeChange('new')"> ✨ Crear nuevo
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;padding:8px 14px;border-radius:8px;border:1px solid var(--border);flex:1;justify-content:center">
+            <input type="radio" name="ptsv-mode" value="existing" onchange="ptsvModeChange('existing')"> 📂 Agregar a existente
+          </label>
+        </div>
+        <!-- Nuevo PT/SV -->
+        <div id="ptsv-new-panel">
+          <div style="background:rgba(200,16,46,.08);border:1px solid rgba(200,16,46,.2);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px">
+            Número generado automáticamente: <b id="ptsv-auto-num" style="color:var(--gold);font-family:'DM Mono',monospace;font-size:14px">—</b>
+          </div>
+          <div class="fr">
+            <div class="fi"><label>Programa Cliente</label><input type="text" id="ptsv-program" placeholder="ej. C1UC / BLF"></div>
+            <div class="fi"><label>PM</label><input type="text" id="ptsv-pm"></div>
+          </div>
+          <div class="fg"><label>Notas</label><input type="text" id="ptsv-notes" placeholder="Opcional…"></div>
+        </div>
+        <!-- Existente -->
+        <div id="ptsv-existing-panel" style="display:none">
+          <div class="fg"><label>Seleccionar PT/SV existente</label>
+            <select id="ptsv-existing-sel" style="width:100%;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--gold);padding:8px 10px;font-size:13px;font-family:'DM Mono',monospace;outline:none"></select>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-s" id="award-btn-back" onclick="awardBack()" style="display:none">← Atrás</button>
+      <button class="btn btn-s" onclick="closeMo('mo-award')">Cancelar</button>
+      <button class="btn btn-p" id="award-btn-next" onclick="awardNext()">Siguiente →</button>
+    </div>
+  </div>
+</div>
+
+<!-- CPO New / Edit -->
+<div class="mo" id="mo-cpo-new">
+  <div class="md">
+    <div class="mh"><h2 id="cpo-new-title">Nueva Customer PO</h2><button class="px" onclick="closeMo('mo-cpo-new')">✕</button></div>
+    <div class="mb2">
+      <div class="fr">
+        <div class="fi"><label data-i18n="lbl_year">Año</label><select id="cpo-new-year"></select></div>
+        <div class="fi"><label>Status</label>
+          <select id="cpo-new-status">
+            <option value="WIP">WIP</option>
+            <option value="SHIPPED">SHIPPED</option>
+            <option value="CANCELLED">CANCELLED</option>
+          </select></div>
+      </div>
+      <div class="fr">
+        <div class="fi"><label>PO Number *</label><input type="text" id="cpo-new-po" placeholder="ej. THQ034930"></div>
+        <div class="fi"><label>Type ID</label><input type="text" id="cpo-new-tid" placeholder="CPO"></div>
+      </div>
+      <div class="fr">
+        <div class="fi"><label>Job *</label><input type="text" id="cpo-new-job" placeholder="ej. 652-50" style="color:var(--gold);font-family:'DM Mono',monospace;font-weight:600"></div>
+        <div class="fi"><label>Value (USD) *</label><input type="number" id="cpo-new-val" placeholder="0.00" step="0.01"></div>
+      </div>
+      <div class="fr">
+        <div class="fi"><label>Customer/Supplier</label><input type="text" id="cpo-new-cs" placeholder="ej. INTEVA BLF"></div>
+        <div class="fi"><label>Customer</label><input type="text" id="cpo-new-cust" placeholder="ej. INTEVA"></div>
+      </div>
+      <div class="fr">
+        <div class="fi"><label>Date</label><input type="date" id="cpo-new-date"></div>
+        <div class="fi"><label>Est. Finalize</label><input type="date" id="cpo-new-est"></div>
+      </div>
+      <div class="fr">
+        <div class="fi" style="flex:2"><label>PM</label><input type="text" id="cpo-new-pm" placeholder="ej. Guillermo Rivera - Persico"></div>
+        <div class="fi"><label>Type Name</label><input type="text" id="cpo-new-tn" value="01_REVENUE"></div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-d" id="btn-cpo-del" onclick="cpoDelete()" style="display:none">Eliminar</button>
+      <button class="btn btn-s" onclick="closeMo('mo-cpo-new')">Cerrar</button>
+      <button class="btn btn-p" onclick="cpoSave()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- CPO Import Excel -->
+<div class="mo" id="mo-cpo-imp">
+  <div class="md">
+    <div class="mh"><h2>Importar Customer POs desde Excel</h2><button class="px" onclick="closeMo('mo-cpo-imp')">✕</button></div>
+    <div class="mb2">
+      <p style="font-size:12px;color:var(--muted2);margin-bottom:14px;line-height:1.6">
+        Sube el Excel con columnas <code style="color:var(--red)">JOB</code> y <code style="color:var(--red)">VALUE</code>.<br>
+        El año se toma de la columna <b style="color:var(--text)">YEAR</b> de cada fila, o del selector si no existe.
+      </p>
+      <div class="fr">
+        <div class="fi"><label>Año destino (fallback)</label><select id="cpo-imp-year"></select></div>
+        <div class="fi"><label>Modo</label>
+          <select id="cpo-imp-mode">
+            <option value="append">Agregar</option>
+            <option value="replace">Reemplazar todo</option>
+          </select></div>
+      </div>
+      <div class="dz-imp" id="cpo-dz-imp"
+        ondragover="event.preventDefault();document.getElementById('cpo-dz-imp').classList.add('dg')"
+        ondragleave="document.getElementById('cpo-dz-imp').classList.remove('dg')"
+        ondrop="cpoDropImport(event)">
+        <input type="file" accept=".xlsx,.xls" id="cpo-imp-file" onchange="onCpoImpFile(this)">
+        <div class="dz-icon">💼</div>
+        <div class="dz-t">Arrastra el Excel o <span>haz clic</span> para seleccionar</div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Archivo: <span id="cpo-imp-fname" style="color:var(--text)">—</span></div>
+      <div id="cpo-imp-results" style="display:none;margin-top:12px">
+        <div class="sl">Resultado</div>
+        <div class="r-chips" id="cpo-imp-chips"></div>
+        <div id="cpo-imp-errs"></div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-s" onclick="closeMo('mo-cpo-imp')">Cerrar</button>
+      <button class="btn btn-p" id="btn-cpo-imp-run" onclick="cpoRunImport()" disabled>Importar →</button>
+    </div>
+  </div>
+</div>
+
+<!-- Quote Import Excel -->
+<div class="mo" id="mo-qimp">
+  <div class="md">
+    <div class="mh"><h2>Importar Quote Register desde Excel</h2><button class="px" onclick="closeMo('mo-qimp')">✕</button></div>
+    <div class="mb2">
+      <p style="font-size:12px;color:var(--muted2);margin-bottom:14px;line-height:1.6">Sube el <b style="color:var(--text)">QUOTE_REG.xlsx / .xlsm</b> con columnas <code style="color:var(--red)">Q-NUMBER</code> y <code style="color:var(--red)">CUSTOMER</code>. La hoja debe llamarse <b style="color:var(--text)">QUOTE REGISTER</b> o ser la primera.</p>
+      <div class="fr">
+        <div class="fi"><label>Modo</label>
+          <select id="qimp-mode">
+            <option value="append">Agregar (conserva existentes)</option>
+            <option value="replace">Reemplazar todo</option>
+          </select>
+        </div>
+      </div>
+      <div class="dz-imp" id="qdz-imp"
+        ondragover="event.preventDefault();document.getElementById('qdz-imp').classList.add('dg')"
+        ondragleave="document.getElementById('qdz-imp').classList.remove('dg')"
+        ondrop="qDropImport(event)">
+        <input type="file" accept=".xlsx,.xlsm,.xls" id="qimp-file" onchange="onQimpFile(this)">
+        <div class="dz-icon">📋</div>
+        <div class="dz-t">Arrastra el Excel o <span>haz clic</span> para seleccionar</div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Archivo: <span id="qimp-fname" style="color:var(--text)">—</span></div>
+      <div id="qimp-results" style="display:none;margin-top:12px">
+        <div class="sl">Resultado</div>
+        <div class="r-chips" id="qimp-chips"></div>
+        <div id="qimp-errs"></div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-s" onclick="closeMo('mo-qimp')">Cerrar</button>
+      <button class="btn btn-p" id="btn-qimp-run" onclick="quoteRunImport()" disabled>Importar →</button>
+    </div>
+  </div>
+</div>
+
+<!-- Rate Copy Year -->
+<div class="mo" id="mo-rcopy">
+  <div class="md" style="width:380px">
+    <div class="mh"><h2>Crear nuevo año</h2><button class="px" onclick="closeMo('mo-rcopy')">✕</button></div>
+    <div class="mb2">
+      <p style="font-size:12px;color:var(--muted2);margin-bottom:14px;line-height:1.6">Crea una tabla de tarifas para un año nuevo copiando las tarifas de un año existente.</p>
+      <div class="fr">
+        <div class="fi"><label>Copiar desde</label><select id="rcopy-from"></select></div>
+        <div class="fi"><label>Año nuevo</label><input type="number" id="rcopy-to" min="2020" max="2099" placeholder="Ej. 2027" style="font-family:'DM Mono',monospace;font-size:16px"></div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-s" onclick="closeMo('mo-rcopy')">Cancelar</button>
+      <button class="btn btn-p" onclick="rateCopyYear()">Crear →</button>
+    </div>
+  </div>
+</div>
+
+<!-- PO Import -->
+<div class="mo" id="mo-po-imp">
+  <div class="md" style="width:560px">
+    <div class="mh"><h2>Cargar Purchase Orders</h2><button class="px" onclick="closeMo('mo-po-imp')">✕</button></div>
+    <div class="mb2">
+      <p style="font-size:12px;color:var(--muted2);margin-bottom:14px;line-height:1.6">
+        Sube el archivo <b style="color:var(--text)">PURCHASE_ORDERS_YYYY.xlsx</b> con las columnas estándar del sistema.<br>
+        Columnas requeridas: <code style="color:var(--red)">Clave</code> · <code style="color:var(--red)">Nombre</code> · <code style="color:var(--red)">Subtotal</code> · <code style="color:var(--red)">Estatus</code>
+      </p>
+      <div class="fr">
+        <div class="fi"><label>Año destino</label><select id="po-imp-year"></select></div>
+        <div class="fi"><label>Modo de importación</label>
+          <select id="po-imp-mode">
+            <option value="replace">Reemplazar todo</option>
+            <option value="merge">Fusionar (no borra)</option>
+          </select>
+          <div style="font-size:10px;color:var(--muted);margin-top:3px">Reemplazar: limpia la tabla. Fusionar: agrega/actualiza por Clave.</div>
+        </div>
+      </div>
+      <div class="dz-imp" id="po-dz-imp"
+           ondragover="ev=>{ev.preventDefault();document.getElementById('po-dz-imp').classList.add('dg')}"
+           ondragleave="document.getElementById('po-dz-imp').classList.remove('dg')"
+           ondrop="poDropImport(event)">
+        <input type="file" accept=".xlsx,.xls" id="po-imp-file" onchange="onPoImpFile(this)">
+        <div class="dz-icon">📊</div>
+        <div class="dz-t">Arrastra el Excel o <span>haz clic</span> para seleccionar</div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Archivo: <span id="po-imp-fname" style="color:var(--text)">—</span></div>
+      <div id="po-imp-results" style="display:none;margin-top:12px">
+        <div class="sl">Resultado</div>
+        <div class="r-chips" id="po-imp-chips"></div>
+        <div id="po-imp-errs"></div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-s" onclick="closeMo('mo-po-imp')">Cerrar</button>
+      <button class="btn btn-p" id="btn-po-imp-run" onclick="poRunImport()" disabled>Importar →</button>
+    </div>
+  </div>
+</div>
+
+<!-- Quote New -->
+<div class="mo" id="mo-qnew">
+  <div class="md">
+    <div class="mh"><h2>Nueva Cotización</h2><button class="px" onclick="closeMo('mo-qnew')">✕</button></div>
+    <div class="mb2">
+      <div class="fr">
+        <div class="fi"><label>Cliente *</label><input type="text" id="qn-c" placeholder="Nombre del cliente"></div>
+        <div class="fi"><label>RFQ Ref.</label><input type="text" id="qn-r" placeholder="Número o referencia"></div>
+      </div>
+      <div class="fr f1"><div class="fi"><label>Descripción *</label><textarea id="qn-d" rows="3" placeholder="Descripción del alcance…"></textarea></div></div>
+      <div class="fr"><div class="fi"><label data-i18n="lbl_date_recv">Fecha de recepción</label><input type="date" id="qn-recv"></div></div>
+      <div class="sl">Alcance a cotizar</div>
+      <div class="qg">
+        <div class="qi"><label>Machine</label><input type="number" id="qn-mc" min="0" placeholder="0"></div>
+        <div class="qi"><label>Tool</label><input type="number" id="qn-tl" min="0" placeholder="0"></div>
+        <div class="qi"><label>M+Tool</label><input type="number" id="qn-mt" min="0" placeholder="0"></div>
+        <div class="qi"><label>Robotic</label><input type="number" id="qn-rb" min="0" placeholder="0"></div>
+        <div class="qi"><label>Service</label><input type="number" id="qn-sv" min="0" placeholder="0"></div>
+      </div>
+      <div class="fr f1"><div class="fi"><label>Notas iniciales</label><textarea id="qn-nt" rows="2"></textarea></div></div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-s" onclick="closeMo('mo-qnew')">Cancelar</button>
+      <button class="btn btn-p" id="btn-qcreate" onclick="quoteCreate()">Crear cotización</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- WH Import Modal -->
+<div class="mo" id="mo-wh-imp">
+  <div class="md" style="width:580px">
+    <div class="mh"><h2>Cargar Work Hours</h2><button class="px" onclick="closeMo('mo-wh-imp')">✕</button></div>
+    <div class="mb2">
+      <p style="font-size:12px;color:var(--muted2);margin-bottom:14px;line-height:1.6">
+        Sube el archivo <b style="color:var(--text)">Work_Hours_List_*.xlsx</b>.<br>
+        Columnas requeridas: <code style="color:var(--red)">Employee</code> · <code style="color:var(--red)">Date Worked</code> · <code style="color:var(--red)">Hours</code>
+      </p>
+      <div class="fr">
+        <div class="fi"><label>Año destino</label><select id="wh-imp-year"></select></div>
+        <div class="fi"><label>Modo</label>
+          <select id="wh-imp-mode">
+            <option value="replace">Reemplazar todo</option>
+            <option value="merge">Fusionar (no borra)</option>
+          </select></div>
+      </div>
+      <div class="sl">Filtro de fechas a importar</div>
+      <div class="fr">
+        <div class="fi"><label data-i18n="lbl_date_from">Fecha inicial</label><input type="date" id="wh-imp-from"></div>
+        <div class="fi"><label data-i18n="lbl_date_to">Fecha final</label><input type="date" id="wh-imp-to"></div>
+      </div>
+      <p style="font-size:10px;color:var(--muted);margin-bottom:14px">Deja en blanco para importar todas las fechas del archivo.</p>
+      <div class="dz-imp" id="wh-dz-imp"
+           ondragover="ev=>{ev.preventDefault();document.getElementById('wh-dz-imp').classList.add('dg')}"
+           ondragleave="document.getElementById('wh-dz-imp').classList.remove('dg')"
+           ondrop="whDropImport(event)">
+        <input type="file" accept=".xlsx,.xls" id="wh-imp-file" onchange="onWhImpFile(this)">
+        <div class="dz-icon">⏱</div>
+        <div class="dz-t">Arrastra el Excel o <span>haz clic</span> para seleccionar</div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Archivo: <span id="wh-imp-fname" style="color:var(--text)">—</span></div>
+      <div id="wh-imp-results" style="display:none;margin-top:12px">
+        <div class="sl">Resultado</div>
+        <div class="r-chips" id="wh-imp-chips"></div>
+        <div id="wh-imp-errs"></div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-s" onclick="closeMo('mo-wh-imp')">Cerrar</button>
+      <button class="btn btn-p" id="btn-wh-imp-run" onclick="whRunImport()" disabled>Importar →</button>
+    </div>
+  </div>
+</div>
+
+<!-- IVP Import Modal -->
+<div class="mo" id="mo-ivp-imp">
+  <div class="md" style="width:560px">
+    <div class="mh"><h2>Cargar Invoiced POs</h2><button class="px" onclick="closeMo('mo-ivp-imp')">✕</button></div>
+    <div class="mb2">
+      <p style="font-size:12px;color:var(--muted2);margin-bottom:14px;line-height:1.6">
+        Sube el archivo <b style="color:var(--text)">INVOICED_POs_YYYY.xlsx</b>.<br>
+        Columnas: <code style="color:var(--red)">Clave</code> · <code style="color:var(--red)">Nombre</code> · <code style="color:var(--red)">Subtotal</code> · <code style="color:var(--red)">Estatus</code> · <code style="color:var(--red)">Fecha de pago</code>
+      </p>
+      <div class="fr">
+        <div class="fi"><label>Año destino</label><select id="ivp-imp-year"></select></div>
+        <div class="fi"><label>Modo</label>
+          <select id="ivp-imp-mode">
+            <option value="replace">Reemplazar todo</option>
+            <option value="merge">Fusionar por Clave</option>
+          </select></div>
+      </div>
+      <div class="dz-imp" id="ivp-dz-imp"
+           ondragover="ev=>{ev.preventDefault();document.getElementById('ivp-dz-imp').classList.add('dg')}"
+           ondragleave="document.getElementById('ivp-dz-imp').classList.remove('dg')"
+           ondrop="ivpDropImport(event)">
+        <input type="file" accept=".xlsx,.xls" id="ivp-imp-file" onchange="onIvpImpFile(this)">
+        <div class="dz-icon">🧾</div>
+        <div class="dz-t">Arrastra el Excel o <span>haz clic</span> para seleccionar</div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Archivo: <span id="ivp-imp-fname" style="color:var(--text)">—</span></div>
+      <div id="ivp-imp-results" style="display:none;margin-top:12px">
+        <div class="sl">Resultado</div>
+        <div class="r-chips" id="ivp-imp-chips"></div>
+        <div id="ivp-imp-errs"></div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-s" onclick="closeMo('mo-ivp-imp')">Cerrar</button>
+      <button class="btn btn-p" id="btn-ivp-imp-run" onclick="ivpRunImport()" disabled>Importar →</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- FX Import Modal -->
+<div class="mo" id="mo-fx-imp">
+  <div class="md" style="width:540px">
+    <div class="mh"><h2>Cargar Tipo de Cambio</h2><button class="px" onclick="closeMo('mo-fx-imp')">✕</button></div>
+    <div class="mb2">
+      <p style="font-size:12px;color:var(--muted2);margin-bottom:14px;line-height:1.7">
+        Sube el archivo <b style="color:var(--text)">tipoCambio.xls</b> del Banco de México.<br>
+        Columna usada: <code style="color:var(--red)">Para solventar obligaciones</code> (col D).<br>
+        Los días N/E (no hábiles) se omiten; el sistema buscará el día hábil anterior al convertir precios.<br>
+        <span style="color:var(--amber);font-size:11px">⚠ Para archivos .xls se requiere <code>xlrd==1.2.0</code> — el <b>INICIAR.bat</b> lo instala automáticamente.</span>
+      </p>
+      <div class="fr">
+        <div class="fi"><label>Modo</label>
+          <select id="fx-imp-mode">
+            <option value="merge" selected>Fusionar (acumular años)</option>
+            <option value="replace">Reemplazar año completo</option>
+          </select>
+          <div style="font-size:10px;color:var(--muted);margin-top:3px">Fusionar agrega fechas nuevas sin borrar las existentes.</div>
+        </div>
+      </div>
+      <div class="dz-imp" id="fx-dz-imp"
+           ondragover="ev=>{ev.preventDefault();document.getElementById('fx-dz-imp').classList.add('dg')}"
+           ondragleave="document.getElementById('fx-dz-imp').classList.remove('dg')"
+           ondrop="fxDropImport(event)">
+        <input type="file" accept=".xls,.xlsx" id="fx-imp-file" onchange="onFxImpFile(this)">
+        <div class="dz-icon">💱</div>
+        <div class="dz-t">Arrastra el archivo <span>.xls / .xlsx</span> o haz clic para seleccionar</div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Archivo: <span id="fx-imp-fname" style="color:var(--text)">—</span></div>
+      <div id="fx-imp-results" style="display:none;margin-top:12px">
+        <div class="sl">Resultado</div>
+        <div class="r-chips" id="fx-imp-chips"></div>
+        <div id="fx-imp-detail" style="font-size:11px;color:var(--muted2);margin-top:8px"></div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-s" onclick="closeMo('mo-fx-imp')">Cerrar</button>
+      <button class="btn btn-p" id="btn-fx-imp-run" onclick="fxRunImport()" disabled>Importar →</button>
+    </div>
+  </div>
+</div>
+
+<div class="tw2" id="toasts"></div>
+
+
+
+
+<script src="/static/app.js"></script>
+</body>
+</html>
+
+
+
+
+
