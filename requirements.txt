@@ -1,0 +1,5 @@
+flask
+openpyxl
+pdfplumber
+requests
+# xlrd==1.2.0   # opcional — acelera lectura de archivos .xls del Banco de México
