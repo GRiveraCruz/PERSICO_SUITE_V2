@@ -1,0 +1,22 @@
+{
+  "guillermo": {
+    "password_hash": "$2b$12$8AM5PWDD66I/Rw3pHmEV6.gTReC.pe5pY5PsWYABvFysVkOX8Ta1K",
+    "active": true,
+    "created_at": "2026-09-22T16:05:11.970216"
+  },
+  "luz": {
+    "password_hash": "$2b$12$bODATXhWiKF2rHOwAVK.5u59TChAyzJheDAEUDYu3e1.QOgOc9rzW",
+    "active": true,
+    "created_at": "2026-09-22T16:05:12.284438"
+  },
+  "pablo": {
+    "password_hash": "$2b$12$YwrNHvc/uUaokV1WDGjL4uCp601di7R.DWJEH6HzftiTarAxtm3.i",
+    "active": true,
+    "created_at": "2026-09-22T16:05:12.606071"
+  },
+  "omar": {
+    "password_hash": "$2b$12$upxozrHFbNqQ55WhjbGGnO/QapTIdkTzZo3EUW/aUnEjEHcI7r47W",
+    "active": true,
+    "created_at": "2026-09-22T16:05:12.929586"
+  }
+}

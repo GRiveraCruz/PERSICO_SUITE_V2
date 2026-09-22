@@ -454,6 +454,13 @@ _SCHEMA_FIXES = [
     ("apartados",        [("drop_unique_add_hash", "part_number"), ("drop", "job")]),
     ("purchase_orders",  [("drop_unique_add_hash", "year_key"), ("drop", "year_key")]),
     ("ops_capacidad_codigos", [("drop_unique_add_hash", "codigo")]),
+    # La columna "job" de estas tres tablas existía desde siempre pero _svc_save()
+    # nunca la poblaba (sólo guardaba el dato dentro de "data") — se corrigió esa
+    # función para nuevos guardados; esto rellena las filas que ya estaban en la
+    # tabla desde antes del fix, para que el filtrado por SQL (job = ...) las vea.
+    ("viaticos",         [("backfill", "job", "job")]),
+    ("gastos_viaje",     [("backfill", "job", "job")]),
+    ("envios",           [("backfill", "job", "job")]),
 ]
 
 def fix_schema_columns():
@@ -545,6 +552,18 @@ def fix_schema_columns():
                         if not ya_tiene_indice:
                             conn.execute(text(f'CREATE UNIQUE INDEX IF NOT EXISTS "ix_{tabla}_content_hash_uq" ON "{tabla}" ("content_hash")'))
                             log.append(f"{tabla}: índice único creado en 'content_hash'")
+                    elif paso[0] == "backfill":
+                        # Rellena una columna YA EXISTENTE desde data->>campo_json, sin
+                        # crear índices ni tocar restricciones (a diferencia de "add_unique").
+                        # Se usa para columnas que existían pero nunca se poblaron al guardar.
+                        _, col, campo_json = paso
+                        if col not in cols_actuales:
+                            continue  # la crea create_all() la próxima vez que corra
+                        result = conn.execute(text(
+                            f'UPDATE "{tabla}" SET "{col}" = data->>:campo WHERE "{col}" IS NULL AND data->>:campo IS NOT NULL'
+                        ), {"campo": campo_json})
+                        if result.rowcount:
+                            log.append(f"{tabla}: {result.rowcount} fila(s) rellenadas en '{col}' desde data->>'{campo_json}' (backfill)")
                     elif paso[0] == "drop":
                         _, col = paso
                         if col in cols_actuales:
@@ -556,6 +575,32 @@ def fix_schema_columns():
     if not log:
         log.append("Nada que ajustar — el esquema ya está al día.")
     return log
+
+
+def acquire_year_lock(session, table_name, year=None):
+    """Adquiere un advisory lock de Postgres para (table_name, year) — o solo
+    table_name si la colección no tiene año — sujeto a la transacción ACTUAL de
+    'session': se libera solo al hacer commit()/rollback() de esa sesión, nunca antes.
+
+    Por qué hace falta esto y no basta con el threading.Lock() que ya usa app.py:
+    ese Lock() vive en la memoria de UN proceso — con gunicorn corriendo varios
+    workers (procesos separados), cada worker tiene su PROPIO Lock(), así que no
+    impide que dos requests en DOS workers distintos hagan a la vez un
+    "borra todo el año + reinserta todo" sobre la MISMA tabla/año, pisándose el uno
+    al otro (el segundo commit gana, el primero se pierde sin aviso). El advisory
+    lock de Postgres, en cambio, vive en el propio servidor de base de datos: lo ve
+    cualquier worker, cualquier proceso, cualquier réplica — así que si dos requests
+    intentan guardar el mismo (tabla, año) al mismo tiempo, el segundo simplemente
+    espera a que el primero termine su transacción, en vez de correr en paralelo y
+    perder datos.
+
+    Se usa `pg_advisory_xact_lock` (no `pg_advisory_lock`) a propósito: la variante
+    "xact" se libera sola al terminar la transacción, así que no hay riesgo de que un
+    error deje el lock tomado para siempre — no hace falta un try/finally aparte para
+    soltarlo."""
+    from sqlalchemy import text
+    key = f"{table_name}:{year}" if year is not None else table_name
+    session.execute(text("SELECT pg_advisory_xact_lock(hashtext(:key))"), {"key": key})
 
 
 def get_session():

@@ -10,7 +10,7 @@ Ejecutar:  python app.py
 Acceso:    http://<IP-del-servidor>:5000
 """
 
-import io, json, re, datetime, shutil, hashlib
+import io, json, re, datetime, shutil, hashlib, secrets
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from flask import Flask, request, jsonify, send_from_directory, Response, session, redirect, url_for, send_file
@@ -73,7 +73,28 @@ QUOTE_MAX_ROWS = 200
 # ══════════════════════════════════════════════════════════════════
 
 app  = Flask(__name__, static_folder="static", static_url_path="/static")
-app.secret_key = _os.environ.get("SECRET_KEY", "persico-suite-secret-2026")
+
+# SECRET_KEY: antes tenía un valor de repuesto fijo y público en el código-fuente
+# ("persico-suite-secret-2026") — cualquiera que leyera el código (o este mismo
+# repositorio) podía forjar una cookie de sesión válida para CUALQUIER usuario sin
+# necesidad de contraseña, con tal de que Railway no tuviera la variable SECRET_KEY
+# configurada. Se quita ese valor de repuesto. Si la variable no está puesta, en vez
+# de fallar el arranque (lo que podría tumbar el servicio en producción si resulta
+# que Railway aún no la tiene configurada) se genera una al vuelo, distinta cada vez
+# que arranca el proceso, y se avisa fuerte en el log — el efecto notorio de NO
+# configurarla es que las sesiones no sobreviven un reinicio/redeploy (el usuario
+# tiene que volver a iniciar sesión), lo cual es una señal imposible de ignorar en
+# vez de un hueco de seguridad silencioso.
+_SECRET_KEY = _os.environ.get("SECRET_KEY")
+if not _SECRET_KEY:
+    _SECRET_KEY = secrets.token_hex(32)
+    print("[SEGURIDAD] ⚠ La variable de entorno SECRET_KEY no está configurada. "
+          "Se generó una clave temporal solo para este proceso — las sesiones NO "
+          "sobrevivirán un reinicio ni se compartirán entre workers. Configura "
+          "SECRET_KEY en Railway (Variables) con un valor largo y aleatorio "
+          "(ej. `python -c \"import secrets; print(secrets.token_hex(32))\"`) "
+          "antes de considerar esto listo para producción.")
+app.secret_key = _SECRET_KEY
 lock = Lock()
 JOB_RE = re.compile(r"^\d+-\d+$")
 
@@ -362,13 +383,27 @@ def logout():
     session.clear()
     return redirect("/login")
 
-@app.route("/emergency-reset-admin")
+@app.route("/emergency-reset-admin", methods=["POST"])
 def emergency_reset_admin():
-    """Endpoint de emergencia — regenera el superusuario desde variables de entorno."""
-    secret = request.args.get("key","")
-    expected = _os.environ.get("SECRET_KEY", "persico-suite-secret-2026")
-    if secret != expected:
-        return "Clave incorrecta", 403
+    """Endpoint de emergencia — regenera el superusuario desde variables de entorno.
+
+    Antes: (a) usaba la MISMA clave que SECRET_KEY (si alguien obtenía una filtraba
+    el secreto de sesión, de paso obtenía este también); (b) el secreto viajaba en
+    el query string de un GET, lo que lo deja expuesto en logs de acceso del
+    servidor, en historial del navegador, y en cualquier proxy intermedio; (c) tenía
+    el mismo valor de repuesto público que SECRET_KEY, así que sin configurar nada
+    en Railway, cualquiera podía resetear al administrador.
+    Ahora: requiere su PROPIA variable (EMERGENCY_ADMIN_KEY, sin valor de repuesto —
+    si no está configurada, el endpoint queda desactivado por completo), se envía
+    por POST en el cuerpo JSON (no en la URL), y ya no comparte secreto con la sesión.
+    """
+    expected = _os.environ.get("EMERGENCY_ADMIN_KEY")
+    if not expected:
+        return jsonify({"error": "Endpoint desactivado — falta configurar EMERGENCY_ADMIN_KEY en el servidor."}), 503
+    data = request.get_json(silent=True) or {}
+    secret = data.get("key", "")
+    if not secrets.compare_digest(str(secret), str(expected)):
+        return jsonify({"error": "Clave incorrecta"}), 403
     try:
         users = {}
         try:
@@ -386,9 +421,9 @@ def emergency_reset_admin():
         Path(USERS_FILE).parent.mkdir(parents=True, exist_ok=True)
         with open(USERS_FILE,"w",encoding="utf-8") as f:
             json.dump(users, f, ensure_ascii=False, indent=2)
-        return f"<h2>✅ Usuario '{admin}' restaurado como administrador.</h2><a href='/login'>Ir al login</a>"
+        return jsonify({"ok": True, "message": f"Usuario '{admin}' restaurado como administrador."})
     except Exception as e:
-        return f"Error: {e}", 500
+        return jsonify({"error": str(e)}), 500
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -487,6 +522,63 @@ def write_meta(job_number, data):
             raise
     with open(meta_path(job_number), "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2, default=str)
+
+def _filter_jobs_python(jobs, q="", status="", customer="", product_group=""):
+    def matches(j):
+        if status and j.get("status") != status: return False
+        if customer and customer.lower() not in (j.get("customer") or "").lower(): return False
+        if product_group and j.get("product_group") != product_group: return False
+        if q:
+            ql = q.lower()
+            hay = " ".join(str(j.get(k, "")) for k in ("job_number", "customer", "description", "pm")).lower()
+            if ql not in hay: return False
+        return True
+    return [j for j in jobs if matches(j)]
+
+def scan_jobs_filtered(q="", status="", customer="", product_group="", limit=None, offset=0):
+    """Como scan_jobs(), pero aplica los filtros de búsqueda como WHERE en SQL (cuando
+    hay DB) en vez de traer la tabla completa y filtrar del lado del cliente. El orden
+    final (main_index, subindex) y el recorte limit/offset se hacen en Python DESPUÉS
+    del filtro — en ese punto el conjunto ya es chico (son los jobs que matchean la
+    búsqueda), así que no hace falta complicar el ORDER BY en SQL para que esto valga
+    la pena: el ahorro real está en no traer/transferir los jobs que no matchean."""
+    result = None
+    if _orm and _orm.DB_ENABLED:
+        try:
+            from sqlalchemy import or_ as _or_
+            s = _orm.get_session()
+            try:
+                query = s.query(_orm.Job)
+                if status:
+                    query = query.filter(_orm.Job.status == status)
+                if customer:
+                    query = query.filter(_orm.Job.customer.ilike(f"%{customer}%"))
+                if product_group:
+                    query = query.filter(_orm.Job.data["product_group"].astext == product_group)
+                if q:
+                    pattern = f"%{q}%"
+                    query = query.filter(_or_(
+                        _orm.Job.job_number.ilike(pattern),
+                        _orm.Job.customer.ilike(pattern),
+                        _orm.Job.data["description"].astext.ilike(pattern),
+                        _orm.Job.data["pm"].astext.ilike(pattern),
+                    ))
+                result = [r.data for r in query.all()]
+            finally:
+                s.close()
+        except Exception as e:
+            print(f"[DB] Error filtrando jobs, usando fallback en Python: {e}")
+            result = None
+    if result is None:
+        result = _filter_jobs_python(scan_jobs(), q, status, customer, product_group)
+
+    def _sub_int(j):
+        v = str(j.get("subindex", "0"))
+        return int(v) if v.isdigit() else 0
+    result.sort(key=lambda j: (j.get("main_index", 0), _sub_int(j)))
+    if limit:
+        result = result[offset:offset + limit]
+    return result
 
 def scan_jobs():
     if _orm and _orm.DB_ENABLED:
@@ -729,6 +821,12 @@ def require_login():
     public = ("/login", "/logout")
     if request.path in public:
         return None
+    # /emergency-reset-admin tiene su propia protección (EMERGENCY_ADMIN_KEY, ver
+    # esa función) que es justamente para el caso en que NADIE pueda iniciar sesión
+    # (ej. el usuario admin quedó mal configurado) — exigir sesión aquí también
+    # anularía por completo su propósito de "rescate".
+    if request.path == "/emergency-reset-admin":
+        return None
     # Rutas usadas por el kiosco de Asistencia (server-to-server): no tienen
     # sesión de la Suite, se autentican con la llave compartida X-Sync-Key
     # (validada dentro de cada handler, ej. _require_sync_key_permisos()).
@@ -789,7 +887,18 @@ def ping():
 # ══════════════════════════════════════════════════════════════════
 @app.route("/api/jobs", methods=["GET"])
 def api_get_jobs():
-    try: return jsonify(scan_jobs())
+    try:
+        q             = request.args.get("q", "").strip()
+        status        = request.args.get("status", "").strip()
+        customer      = request.args.get("customer", "").strip()
+        product_group = request.args.get("product_group", "").strip()
+        limit         = request.args.get("limit", type=int)
+        offset        = request.args.get("offset", type=int) or 0
+        if not any([q, status, customer, product_group, limit]):
+            return jsonify(scan_jobs())  # sin filtros: mismo comportamiento que antes
+        return jsonify(scan_jobs_filtered(q=q, status=status, customer=customer,
+                                           product_group=product_group,
+                                           limit=limit, offset=offset))
     except Exception as e: return jsonify({"error": str(e)}), 500
 
 @app.route("/api/next-index", methods=["GET"])
@@ -799,6 +908,15 @@ def api_next_index():
 
 @app.route("/api/jobs", methods=["POST"])
 def api_create_job():
+    # Prueba de concepto de un problema más amplio documentado en AUDITORIA.md (D.2):
+    # esta ruta (y ~73 más que modifican datos) no verificaba permisos del lado del
+    # servidor — solo exigía estar loggeado. El botón "Nuevo Job" se ocultaba en el
+    # frontend para usuarios sin permiso, pero cualquiera con sesión activa podía
+    # llamar este endpoint directo (con curl, la consola del navegador, etc.) sin
+    # importar su rol. Se agrega aquí el mismo patrón que ya usan otras rutas como
+    # /api/personal (can(accion, modulo)) — el resto de las rutas mutantes sin este
+    # chequeo quedan listadas en AUDITORIA.md para aplicarles el mismo tratamiento.
+    if not can("create", "jobs"): return jsonify({"error": "Sin permiso"}), 403
     try:
         data = request.json
         sub  = str(data.get("subindex", "00")).zfill(2)
@@ -1254,7 +1372,20 @@ def api_export_rates(year):
 # ══════════════════════════════════════════════════════════════════
 @app.route("/api/quotes", methods=["GET"])
 def api_get_quotes():
-    try: return jsonify(read_quote_records())
+    try:
+        records = read_quote_records()  # asigna "row" = índice real en la lista completa
+        q      = request.args.get("q", "").strip().lower()
+        limit  = request.args.get("limit", type=int)
+        offset = request.args.get("offset", type=int) or 0
+        # El filtro se aplica DESPUÉS de asignar "row" (arriba), nunca antes: "row" es
+        # la posición real en la lista completa y así la usan PUT/DELETE — filtrar antes
+        # de asignarlo rompería la edición de cualquier registro que no sea el primero.
+        if q:
+            records = [r for r in records
+                       if q in " ".join(str(r.get(k, "")) for k in ("qnum", "customer", "desc", "rfq")).lower()]
+        if limit:
+            records = records[offset:offset + limit]
+        return jsonify(records)
     except Exception as e: return jsonify({"error": str(e)}), 500
 
 @app.route("/api/quotes", methods=["POST"])
@@ -1583,7 +1714,27 @@ def delete_personal_record(target_row):
 @app.route("/api/personal", methods=["GET"])
 def api_list_personal():
     if not can("view", "personal-listado"): return jsonify({"error":"Sin permiso"}), 403
-    return jsonify(read_personal_records())
+    try:
+        records = read_personal_records()  # asigna "row" = índice real en la lista completa
+        q      = request.args.get("q", "").strip().lower()
+        estado = request.args.get("estado", "").strip()
+        area   = request.args.get("area", "").strip()
+        limit  = request.args.get("limit", type=int)
+        offset = request.args.get("offset", type=int) or 0
+        # Igual que en /api/quotes: se filtra DESPUÉS de asignar "row" para no romper
+        # PUT/DELETE, que identifican al registro por su posición en la lista completa.
+        if estado:
+            records = [r for r in records if (r.get("estado") or "") == estado]
+        if area:
+            records = [r for r in records if (r.get("area") or "").lower() == area.lower()]
+        if q:
+            records = [r for r in records
+                       if q in " ".join(str(r.get(k, "")) for k in ("tid", "nombre", "puesto", "area")).lower()]
+        if limit:
+            records = records[offset:offset + limit]
+        return jsonify(records)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/api/personal", methods=["POST"])
 def api_create_personal():
@@ -4753,11 +4904,42 @@ def po_load(year):
             return []
     return []
 
+def po_load_matching(year, job_main):
+    """Como po_load(), pero trae SOLO las PO de job_main y no canceladas — filtrado
+    en SQL (year, job ILIKE, y data->>'estatus' vía JSONB) en vez de traer el año
+    completo y filtrar en Python."""
+    if _orm and _orm.DB_ENABLED:
+        try:
+            from sqlalchemy import or_ as _or_
+            s = _orm.get_session()
+            try:
+                pattern = f"%{job_main}%"
+                estatus_col = _orm.PurchaseOrder.data["estatus"].astext
+                # Sin estatus (NULL) cuenta como "no cancelada", igual que el
+                # r.get("estatus","") != "Cancelada" del filtro original en Python.
+                return [r.data for r in s.query(_orm.PurchaseOrder)
+                        .filter(_orm.PurchaseOrder.year == year,
+                                _orm.PurchaseOrder.job.ilike(pattern),
+                                _or_(estatus_col.is_(None), estatus_col != "Cancelada"))
+                        .order_by(_orm.PurchaseOrder.id.asc()).all()]
+            finally:
+                s.close()
+        except Exception as e:
+            print(f"[DB] Error leyendo purchase_orders filtradas ({year}/{job_main}), usando fallback: {e}")
+    po_raw = po_load(year)
+    return [r for r in po_raw
+            if job_main.upper() in (r.get("entregar_a") or "").upper()
+            and r.get("estatus", "") != "Cancelada"]
+
 def po_save(year, records):
     if _orm and _orm.DB_ENABLED:
         try:
             s = _orm.get_session()
             try:
+                # Advisory lock de Postgres (ver docstring de acquire_year_lock): evita
+                # que dos requests en dos workers de gunicorn distintos hagan a la vez
+                # un "borra todo + reinserta todo" sobre el mismo año de PO y se pisen.
+                _orm.acquire_year_lock(s, "purchase_orders", year)
                 s.query(_orm.PurchaseOrder).filter(_orm.PurchaseOrder.year == year).delete()
                 for r in records:
                     clave = str(r.get("clave") or "")
@@ -5229,6 +5411,27 @@ def _generic_save(root_fn, json_file_fn, year, records):
     with open(json_file_fn(year), "w", encoding="utf-8") as f:
         json.dump(records, f, ensure_ascii=False, indent=2, default=str)
 
+def wh_load_matching(year, job_main):
+    """Como wh_load(), pero trae SOLO los registros cuyo work_code corresponde a
+    job_main — filtrado en SQL (WHERE year=... AND job ILIKE ...) en vez de traer
+    el año completo y filtrar en Python. Usado por _build_report_data() para el
+    reporte de un solo Job, que es el caso común (ver /api/report/data)."""
+    if _orm and _orm.DB_ENABLED:
+        try:
+            s = _orm.get_session()
+            try:
+                pattern = f"%{job_main}%"
+                return [r.data for r in s.query(_orm.WorkHour)
+                        .filter(_orm.WorkHour.year == year,
+                                _orm.WorkHour.job.ilike(pattern))
+                        .order_by(_orm.WorkHour.id.asc()).all()]
+            finally:
+                s.close()
+        except Exception as e:
+            print(f"[DB] Error leyendo work_hours filtrados ({year}/{job_main}), usando fallback: {e}")
+    wh_raw = wh_load(year)
+    return [r for r in wh_raw if job_main.upper() in (r.get("work_code") or "").upper()]
+
 def wh_save(year, records):
     """Reemplaza el conjunto completo de Work Hours de un año — mismo contrato
     que antes. Se confirmó que todas las escrituras a WH son ocasionales
@@ -5239,6 +5442,10 @@ def wh_save(year, records):
         try:
             s = _orm.get_session()
             try:
+                # Advisory lock de Postgres — mismo motivo que en po_save(): "ocasional"
+                # no significa "nunca simultáneo" (ej. dos admins importando Excel del
+                # mismo año a la vez), y esta operación reemplaza la tabla entera.
+                _orm.acquire_year_lock(s, "work_hours", year)
                 s.query(_orm.WorkHour).filter(_orm.WorkHour.year == year).delete()
                 for r in records:
                     sid = r.get("id")
@@ -5351,6 +5558,14 @@ def api_import_wh():
         skipped  = 0
         errors   = []
 
+        # _get_canonical_employees(year) lee y parsea un JSON de tarifas desde disco
+        # en cada llamada. Antes se llamaba UNA VEZ POR FILA dentro del loop de abajo —
+        # con una importación de cientos/miles de filas, eso abre y parsea el mismo
+        # archivo cientos/miles de veces por nada, ya que el resultado no cambia entre
+        # una fila y la siguiente (depende solo de 'year', que es fijo para todo el
+        # import). Se saca del loop y se calcula una sola vez.
+        canonical = _get_canonical_employees(year)
+
         for row in ws.iter_rows(min_row=header_row + 1, values_only=True):
             row = list(row)
             def cv(idx):
@@ -5373,8 +5588,8 @@ def api_import_wh():
             except (ValueError, TypeError):
                 errors.append({"row": str(cv(ci_id)), "error": "Horas no numéricas"}); continue
 
-            # Homologar nombre al formato canónico
-            canonical = _get_canonical_employees(year)
+            # Homologar nombre al formato canónico (canonical ya se calculó una sola
+            # vez antes del loop — ver comentario arriba)
             emp_homolog = _homologar_empleado(str(emp).strip(), canonical) if canonical else                           __import__("re").sub(r"^\d+\s*", "", str(emp).strip()).upper()
 
             imported.append({
@@ -5600,18 +5815,34 @@ def api_export_ivp(year):
 #  JOB REPORT  — /api/report/*
 # ══════════════════════════════════════════════════════════════════
 
-def _build_report_data(job_number, rate_year, wh_year, po_year):
-    """Core logic: compile all report data for a Job."""
+def _build_report_data(job_number, rate_year, wh_year, po_year, *,
+                        wh_pool=None, po_pool=None, fx_all=None,
+                        ra_pool=None, rc_pool=None,
+                        via_pool=None, gv_pool=None, env_pool=None):
+    """Core logic: compile all report data for a Job.
+
+    Por defecto (sin *_pool) cada colección se trae ya filtrada por job vía SQL
+    (wh_load_matching, po_load_matching, etc.) — este es el camino que usa
+    /api/report/data para un solo Job: nunca carga una tabla completa.
+
+    Los parámetros *_pool existen para /api/report/multi: ahí SÍ conviene cargar
+    cada colección UNA vez para todo el batch de jobs (una consulta) y filtrar en
+    Python por job dentro de ese batch, en vez de repetir N consultas — ambas
+    formas terminan filtrando por job, la diferencia es si el filtro ocurre en
+    SQL (un job) o en Python sobre un pool ya en memoria (muchos jobs a la vez).
+    """
     job_meta = read_meta(job_number) if job_folder(job_number).exists() else {}
 
     rates_raw = load_rates(rate_year)
     rate_map  = {normalize_name(r["employee"]): float(r["rate"])
                  for r in rates_raw if r.get("employee")}
 
-    wh_raw   = wh_load(wh_year)
     job_main = "-".join(job_number.split("-")[:2]) if "-" in job_number else job_number
-    wh_f     = [r for r in wh_raw
+    if wh_pool is not None:
+        wh_f = [r for r in wh_pool
                 if job_main.upper() in (r.get("work_code") or "").upper()]
+    else:
+        wh_f = wh_load_matching(wh_year, job_main)
 
     emp_agg = {}
     for r in wh_f:
@@ -5637,12 +5868,15 @@ def _build_report_data(job_number, rate_year, wh_year, po_year):
     accum_hrs = round(sum(w["hours"]  for w in workers), 2)
     amount_wh = round(sum(w["amount"] for w in workers), 2)
 
-    po_raw = po_load(po_year)
-    po_f   = [r for r in po_raw
-              if job_main.upper() in (r.get("entregar_a") or "").upper()
-              and r.get("estatus","") != "Cancelada"]  # exclude cancelled
+    if po_pool is not None:
+        po_f = [r for r in po_pool
+                if job_main.upper() in (r.get("entregar_a") or "").upper()
+                and r.get("estatus", "") != "Cancelada"]  # exclude cancelled
+    else:
+        po_f = po_load_matching(po_year, job_main)
 
-    fx_all = fx_load_all()
+    if fx_all is None:
+        fx_all = fx_load_all()
     po_items = [{"clave":       r.get("clave"),
                  "nombre":      r.get("nombre", ""),
                  "subtotal":    float(r.get("subtotal", 0)),
@@ -5659,29 +5893,35 @@ def _build_report_data(job_number, rate_year, wh_year, po_year):
     revenue = cpo_rev if cpo_rev > 0 else float(job_meta.get("revenue", 0))
     # Reasignaciones
     try:
-        ra_data = reassign_load()
-        reassign_items = [
-            item for o in ra_data
-            for item in o.get("items",[])
-            if item.get("job","").upper() == job_number.upper()
-        ]
+        reassign_items = reassign_items_for_job(job_number, ra_pool=ra_pool)
         reassign_total = round(sum(float(i.get("total_cost",0)) for i in reassign_items), 2)
     except:
         reassign_items = []
         reassign_total = 0.0
     # Recovery: negative values that improve margin
     try:
-        rc_data = recovery_load()
-        recovery_items = [r for r in rc_data if r.get("job","").upper()==job_number.upper()]
+        if rc_pool is not None:
+            recovery_items = [r for r in rc_pool if (r.get("job") or "").upper() == job_number.upper()]
+        else:
+            recovery_items = recovery_load_matching(job_number)
         recovery_total = round(sum(float(r.get("total_value",0)) for r in recovery_items), 2)
     except:
         recovery_items = []
         recovery_total = 0.0
 
     # Service costs (viáticos + gastos de viaje + envíos) — all in USD
-    via_items = [r for r in _svc_load(VIATICOS_FILE) if r.get("job","").upper()==job_number.upper()]
-    gv_items  = [r for r in _svc_load(GASTOS_FILE)   if r.get("job","").upper()==job_number.upper()]
-    env_items = [r for r in _svc_load(ENVIOS_FILE)   if r.get("job","").upper()==job_number.upper()]
+    if via_pool is not None:
+        via_items = [r for r in via_pool if (r.get("job") or "").upper() == job_number.upper()]
+    else:
+        via_items = _svc_load_matching(VIATICOS_FILE, job_number)
+    if gv_pool is not None:
+        gv_items = [r for r in gv_pool if (r.get("job") or "").upper() == job_number.upper()]
+    else:
+        gv_items = _svc_load_matching(GASTOS_FILE, job_number)
+    if env_pool is not None:
+        env_items = [r for r in env_pool if (r.get("job") or "").upper() == job_number.upper()]
+    else:
+        env_items = _svc_load_matching(ENVIOS_FILE, job_number)
     svc_via   = round(sum(r.get("valor_usd",0) for r in via_items), 4)
     svc_gv    = round(sum(r.get("valor_usd",0) for r in gv_items),  4)
     svc_env   = round(sum(r.get("valor_usd",0) for r in env_items), 4)
@@ -6468,9 +6708,11 @@ def cpo_parse_date(v):
         s = str(v).strip()
         return s[:10] if s else None
 
-def cpo_revenue_for_job(job_number, year):
-    """Suma de VALUE de todas las CPOs asociadas a este job en el año dado."""
-    records = cpo_load(year)
+def cpo_revenue_for_job(job_number, year, pool=None):
+    """Suma de VALUE de todas las CPOs asociadas a este job en el año dado.
+    Si se pasa 'pool' (colección de CPOs ya cargada), se usa esa en vez de volver
+    a leer la tabla — usado por /api/report/multi para no releer cpos por cada job."""
+    records = pool if pool is not None else cpo_load(year)
     job_main = job_number.upper()
     total = sum(cpo_to_float(r.get("value")) for r in records
                 if (r.get("job") or "").upper() == job_main)
@@ -6689,15 +6931,31 @@ def api_report_multi():
         if not jobs:
             return jsonify({"error": "Se requiere al menos un job"}), 400
 
+        # Cargar cada colección UNA sola vez para todo el batch de jobs, en vez de
+        # una vez por job (antes: N jobs → N cargas completas de WH/PO/servicios/etc,
+        # multiplicando exactamente el problema descrito en la auditoría §1.1).
+        wh_pool  = wh_load(wh_year)
+        po_pool  = po_load(po_year)
+        fx_all   = fx_load_all()
+        ra_pool  = reassign_load()
+        rc_pool  = recovery_load()
+        via_pool = _svc_load(VIATICOS_FILE)
+        gv_pool  = _svc_load(GASTOS_FILE)
+        env_pool = _svc_load(ENVIOS_FILE)
+        cpo_pool = cpo_load(cpo_year)
+
         rows = []
         totals = {"revenue": 0, "amount_wh": 0, "purchasing_total": 0,
                   "cost": 0, "gross_margin": 0, "accum_hours": 0,
                   "reassign_total": 0, "recovery_total": 0,
                   "svc_total": 0, "svc_viaticos": 0, "svc_gastos": 0, "svc_envios": 0}
         for jn in jobs:
-            d = _build_report_data(jn, rate_year, wh_year, po_year)
+            d = _build_report_data(jn, rate_year, wh_year, po_year,
+                                    wh_pool=wh_pool, po_pool=po_pool, fx_all=fx_all,
+                                    ra_pool=ra_pool, rc_pool=rc_pool,
+                                    via_pool=via_pool, gv_pool=gv_pool, env_pool=env_pool)
             # Usar CPO como Revenue si hay registros
-            cpo_rev = cpo_revenue_for_job(jn, cpo_year)
+            cpo_rev = cpo_revenue_for_job(jn, cpo_year, pool=cpo_pool)
             if cpo_rev > 0:
                 d["revenue"]      = cpo_rev
                 d["cost"]         = round(d["amount_wh"] + d["purchasing_total"] + d.get("svc_total",0), 2)
@@ -8182,19 +8440,6 @@ def api_backup_all():
 # ══════════════════════════════════════════════════════════════════
 #  USER PREFERENCES — Idioma
 # ══════════════════════════════════════════════════════════════════
-@app.route("/api/me/lang", methods=["GET"])
-def api_get_lang():
-    return jsonify({"lang": session.get("lang", "es")})
-
-@app.route("/api/me/lang", methods=["POST"])
-def api_set_lang():
-    data = request.get_json()
-    lang = data.get("lang", "es")
-    if lang not in ("es", "en", "it"):
-        return jsonify({"error": "Idioma no válido"}), 400
-    session["lang"] = lang
-    session.modified = True
-    return jsonify({"ok": True, "lang": lang})
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -8222,6 +8467,24 @@ def recovery_load():
             with open(p,"r",encoding="utf-8") as f: return json.load(f)
         except: return []
     return []
+
+def recovery_load_matching(job_number):
+    """Como recovery_load(), pero trae solo las filas de este job (SQL WHERE job=...
+    en vez de traer toda la colección y filtrar en Python)."""
+    if _orm and _orm.DB_ENABLED:
+        try:
+            from sqlalchemy import func as _func
+            s = _orm.get_session()
+            try:
+                return [r.data for r in s.query(_orm.Recovery)
+                        .filter(_func.upper(_orm.Recovery.job) == job_number.upper())
+                        .order_by(_orm.Recovery.id.asc()).all()]
+            finally:
+                s.close()
+        except Exception as e:
+            print(f"[DB] Error leyendo recovery filtrado ({job_number}), usando fallback: {e}")
+    rc_data = recovery_load()
+    return [r for r in rc_data if (r.get("job") or "").upper() == job_number.upper()]
 
 def recovery_save(records):
     """Reemplaza el conjunto completo de Recovery — mismo contrato que antes
@@ -8302,6 +8565,36 @@ def reassign_load():
             with open(p,"r",encoding="utf-8") as f: return json.load(f)
         except: return []
     return []
+
+def reassign_items_for_job(job_number, ra_pool=None):
+    """Devuelve solo los items (de dentro de cada orden) que pertenecen a job_number.
+    'job' vive anidado en data->'items'[], no en una columna propia, así que el
+    filtro SQL usa EXISTS + jsonb_array_elements para traer solo las órdenes que
+    de verdad contienen ese job, en vez de la colección completa. Si se pasa
+    ra_pool (colección ya cargada, usado por el reporte multi-job) se filtra ahí
+    directo sin volver a consultar la DB."""
+    if ra_pool is not None:
+        return [item for o in ra_pool for item in o.get("items", [])
+                if (item.get("job") or "").upper() == job_number.upper()]
+    if _orm and _orm.DB_ENABLED:
+        try:
+            from sqlalchemy import text as _text
+            s = _orm.get_session()
+            try:
+                rows = (s.query(_orm.ReassignOrder)
+                        .filter(_text(
+                            "EXISTS (SELECT 1 FROM jsonb_array_elements(reassign_orders.data->'items') item "
+                            "WHERE UPPER(item->>'job') = UPPER(:job_number))"
+                        )).params(job_number=job_number).all())
+                return [item for r in rows for item in (r.data.get("items") or [])
+                        if (item.get("job") or "").upper() == job_number.upper()]
+            finally:
+                s.close()
+        except Exception as e:
+            print(f"[DB] Error leyendo reassign_orders filtrado ({job_number}), usando fallback: {e}")
+    ra_data = reassign_load()
+    return [item for o in ra_data for item in o.get("items", [])
+            if (item.get("job") or "").upper() == job_number.upper()]
 
 def reassign_save(records):
     """Reemplaza el conjunto completo de Reassign Orders — mismo contrato que antes."""
@@ -12756,6 +13049,27 @@ def _svc_load(path):
         except: return []
     return []
 
+def _svc_load_matching(path, job_number):
+    """Como _svc_load(), pero trae solo las filas de este job (SQL WHERE job=...).
+    Requiere que la columna 'job' esté poblada — ver el fix en _svc_save() y el
+    backfill 'job' en db.py para filas guardadas antes de ese fix."""
+    if _orm and _orm.DB_ENABLED:
+        modelo, _ = _svc_model_for(path)
+        if modelo:
+            try:
+                from sqlalchemy import func as _func
+                s = _orm.get_session()
+                try:
+                    return [r.data for r in s.query(modelo)
+                            .filter(_func.upper(modelo.job) == job_number.upper())
+                            .order_by(modelo.id.asc()).all()]
+                finally:
+                    s.close()
+            except Exception as e:
+                print(f"[DB] Error leyendo servicio filtrado ({path}/{job_number}), usando fallback: {e}")
+    data = _svc_load(path)
+    return [r for r in data if (r.get("job") or "").upper() == job_number.upper()]
+
 def _svc_save(path, data):
     """Reemplaza el conjunto completo de la colección en esa ruta — mismo
     contrato que antes (se llama con la lista entera ya modificada)."""
@@ -12769,7 +13083,10 @@ def _svc_save(path, data):
                     for r in data:
                         val = str(r.get("id") or "")
                         if not val: continue
-                        s.add(modelo(data=r, **{campo_llave: val}))
+                        # job se guarda también como columna indexada (antes sólo vivía
+                        # dentro de "data") para poder filtrar por job vía SQL sin traer
+                        # la colección completa — ver *_load_matching() más abajo.
+                        s.add(modelo(data=r, job=r.get("job"), **{campo_llave: val}))
                     s.commit()
                 finally:
                     s.close()

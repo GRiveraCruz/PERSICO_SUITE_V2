@@ -34022,5 +34022,2405 @@
     "work_code": "ADMINISTRACION",
     "hours": 3.0,
     "description": "ALMACEN"
+  },
+  {
+    "id": 1,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-01",
+    "work_code": "652-50",
+    "hours": 5.6,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 2,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-02",
+    "work_code": "652-50",
+    "hours": 3.0,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 3,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-03",
+    "work_code": "652-50",
+    "hours": 7.1,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 4,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-04",
+    "work_code": "652-50",
+    "hours": 6.2,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 5,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-05",
+    "work_code": "652-50",
+    "hours": 1.8,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 6,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-06",
+    "work_code": "652-50",
+    "hours": 8.1,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 7,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-07",
+    "work_code": "652-50",
+    "hours": 4.5,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 8,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-08",
+    "work_code": "652-50",
+    "hours": 6.6,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 9,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-09",
+    "work_code": "652-50",
+    "hours": 6.8,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 10,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-10",
+    "work_code": "652-50",
+    "hours": 5.7,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 11,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-11",
+    "work_code": "652-50",
+    "hours": 8.2,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 12,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-12",
+    "work_code": "652-50",
+    "hours": 1.2,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 13,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-13",
+    "work_code": "652-50",
+    "hours": 5.3,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 14,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-14",
+    "work_code": "652-50",
+    "hours": 6.5,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 15,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-15",
+    "work_code": "652-50",
+    "hours": 6.8,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 16,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-16",
+    "work_code": "652-50",
+    "hours": 2.8,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 17,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-17",
+    "work_code": "652-50",
+    "hours": 8.5,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 18,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-18",
+    "work_code": "652-50",
+    "hours": 2.9,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 19,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-19",
+    "work_code": "652-50",
+    "hours": 6.4,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 20,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-20",
+    "work_code": "652-50",
+    "hours": 8.6,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 21,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-21",
+    "work_code": "652-50",
+    "hours": 4.3,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 22,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-22",
+    "work_code": "652-50",
+    "hours": 8.4,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 23,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-23",
+    "work_code": "652-50",
+    "hours": 2.5,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 24,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-24",
+    "work_code": "652-50",
+    "hours": 7.9,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 25,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-25",
+    "work_code": "652-50",
+    "hours": 6.9,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 26,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-26",
+    "work_code": "652-50",
+    "hours": 8.8,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 27,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-27",
+    "work_code": "652-50",
+    "hours": 8.5,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 28,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-28",
+    "work_code": "652-50",
+    "hours": 5.1,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 29,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-01",
+    "work_code": "652-50",
+    "hours": 2.5,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 30,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-02",
+    "work_code": "652-50",
+    "hours": 5.7,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 31,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-03",
+    "work_code": "652-50",
+    "hours": 7.8,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 32,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-04",
+    "work_code": "652-50",
+    "hours": 4.1,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 33,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-05",
+    "work_code": "652-50",
+    "hours": 4.8,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 34,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-06",
+    "work_code": "652-50",
+    "hours": 7.4,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 35,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-07",
+    "work_code": "652-50",
+    "hours": 6.3,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 36,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-08",
+    "work_code": "652-50",
+    "hours": 5.4,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 37,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-09",
+    "work_code": "652-50",
+    "hours": 7.2,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 38,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-10",
+    "work_code": "652-50",
+    "hours": 4.0,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 39,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-11",
+    "work_code": "652-50",
+    "hours": 6.3,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 40,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-12",
+    "work_code": "652-50",
+    "hours": 7.2,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 41,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-13",
+    "work_code": "652-50",
+    "hours": 7.7,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 42,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-14",
+    "work_code": "652-50",
+    "hours": 4.9,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 43,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-15",
+    "work_code": "652-50",
+    "hours": 4.8,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 44,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-16",
+    "work_code": "652-50",
+    "hours": 6.6,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 45,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-17",
+    "work_code": "652-50",
+    "hours": 5.7,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 46,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-18",
+    "work_code": "652-50",
+    "hours": 6.2,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 47,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-19",
+    "work_code": "652-50",
+    "hours": 5.0,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 48,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-20",
+    "work_code": "652-50",
+    "hours": 7.2,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 49,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-21",
+    "work_code": "652-50",
+    "hours": 8.4,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 50,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-22",
+    "work_code": "652-50",
+    "hours": 2.9,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 51,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-23",
+    "work_code": "652-50",
+    "hours": 3.8,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 52,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-24",
+    "work_code": "652-50",
+    "hours": 3.8,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 53,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-25",
+    "work_code": "652-50",
+    "hours": 6.3,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 54,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-26",
+    "work_code": "652-50",
+    "hours": 8.7,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 55,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-27",
+    "work_code": "652-50",
+    "hours": 4.1,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 56,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-28",
+    "work_code": "652-50",
+    "hours": 5.1,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 57,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-01",
+    "work_code": "652-50",
+    "hours": 5.1,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 58,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-02",
+    "work_code": "652-50",
+    "hours": 2.6,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 59,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-03",
+    "work_code": "652-50",
+    "hours": 4.8,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 60,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-04",
+    "work_code": "652-50",
+    "hours": 5.6,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 61,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-05",
+    "work_code": "652-50",
+    "hours": 8.5,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 62,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-06",
+    "work_code": "652-50",
+    "hours": 4.9,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 63,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-07",
+    "work_code": "652-50",
+    "hours": 4.3,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 64,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-08",
+    "work_code": "652-50",
+    "hours": 5.3,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 65,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-09",
+    "work_code": "652-50",
+    "hours": 7.3,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 66,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-10",
+    "work_code": "652-50",
+    "hours": 4.7,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 67,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-11",
+    "work_code": "652-50",
+    "hours": 7.4,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 68,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-12",
+    "work_code": "652-50",
+    "hours": 2.4,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 69,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-13",
+    "work_code": "652-50",
+    "hours": 2.4,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 70,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-14",
+    "work_code": "652-50",
+    "hours": 7.4,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 71,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-15",
+    "work_code": "652-50",
+    "hours": 1.3,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 72,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-16",
+    "work_code": "652-50",
+    "hours": 1.6,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 73,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-17",
+    "work_code": "652-50",
+    "hours": 4.6,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 74,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-18",
+    "work_code": "652-50",
+    "hours": 3.0,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 75,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-19",
+    "work_code": "652-50",
+    "hours": 7.4,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 76,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-20",
+    "work_code": "652-50",
+    "hours": 3.8,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 77,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-21",
+    "work_code": "652-50",
+    "hours": 2.3,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 78,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-22",
+    "work_code": "652-50",
+    "hours": 5.2,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 79,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-23",
+    "work_code": "652-50",
+    "hours": 6.3,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 80,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-24",
+    "work_code": "652-50",
+    "hours": 6.7,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 81,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-25",
+    "work_code": "652-50",
+    "hours": 6.6,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 82,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-26",
+    "work_code": "652-50",
+    "hours": 4.8,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 83,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-27",
+    "work_code": "652-50",
+    "hours": 3.5,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 84,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-28",
+    "work_code": "652-50",
+    "hours": 4.4,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 85,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-01",
+    "work_code": "652-50",
+    "hours": 3.1,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 86,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-02",
+    "work_code": "652-50",
+    "hours": 8.2,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 87,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-03",
+    "work_code": "652-50",
+    "hours": 8.8,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 88,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-04",
+    "work_code": "652-50",
+    "hours": 4.5,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 89,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-05",
+    "work_code": "652-50",
+    "hours": 2.8,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 90,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-06",
+    "work_code": "652-50",
+    "hours": 2.2,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 91,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-07",
+    "work_code": "652-50",
+    "hours": 8.7,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 92,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-08",
+    "work_code": "652-50",
+    "hours": 6.6,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 93,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-09",
+    "work_code": "652-50",
+    "hours": 4.4,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 94,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-10",
+    "work_code": "652-50",
+    "hours": 8.8,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 95,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-11",
+    "work_code": "652-50",
+    "hours": 7.4,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 96,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-12",
+    "work_code": "652-50",
+    "hours": 4.6,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 97,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-13",
+    "work_code": "652-50",
+    "hours": 6.2,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 98,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-14",
+    "work_code": "652-50",
+    "hours": 6.4,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 99,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-15",
+    "work_code": "652-50",
+    "hours": 6.3,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 100,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-16",
+    "work_code": "652-50",
+    "hours": 1.5,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 101,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-17",
+    "work_code": "652-50",
+    "hours": 2.0,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 102,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-18",
+    "work_code": "652-50",
+    "hours": 8.0,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 103,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-19",
+    "work_code": "652-50",
+    "hours": 1.6,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 104,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-20",
+    "work_code": "652-50",
+    "hours": 3.5,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 105,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-21",
+    "work_code": "652-50",
+    "hours": 7.0,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 106,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-22",
+    "work_code": "652-50",
+    "hours": 5.5,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 107,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-23",
+    "work_code": "652-50",
+    "hours": 1.1,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 108,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-24",
+    "work_code": "652-50",
+    "hours": 5.7,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 109,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-25",
+    "work_code": "652-50",
+    "hours": 8.7,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 110,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-26",
+    "work_code": "652-50",
+    "hours": 4.7,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 111,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-27",
+    "work_code": "652-50",
+    "hours": 6.0,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 112,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-28",
+    "work_code": "652-50",
+    "hours": 4.0,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 113,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-01",
+    "work_code": "652-50",
+    "hours": 1.8,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 114,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-02",
+    "work_code": "652-50",
+    "hours": 6.4,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 115,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-03",
+    "work_code": "652-50",
+    "hours": 5.7,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 116,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-04",
+    "work_code": "652-50",
+    "hours": 1.8,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 117,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-05",
+    "work_code": "652-50",
+    "hours": 4.1,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 118,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-06",
+    "work_code": "652-50",
+    "hours": 5.0,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 119,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-07",
+    "work_code": "652-50",
+    "hours": 5.9,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 120,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-08",
+    "work_code": "652-50",
+    "hours": 8.2,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 121,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-09",
+    "work_code": "652-50",
+    "hours": 2.3,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 122,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-10",
+    "work_code": "652-50",
+    "hours": 7.5,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 123,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-11",
+    "work_code": "652-50",
+    "hours": 7.3,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 124,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-12",
+    "work_code": "652-50",
+    "hours": 4.4,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 125,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-13",
+    "work_code": "652-50",
+    "hours": 6.4,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 126,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-14",
+    "work_code": "652-50",
+    "hours": 8.5,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 127,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-15",
+    "work_code": "652-50",
+    "hours": 8.3,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 128,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-16",
+    "work_code": "652-50",
+    "hours": 5.3,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 129,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-17",
+    "work_code": "652-50",
+    "hours": 2.9,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 130,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-18",
+    "work_code": "652-50",
+    "hours": 1.3,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 131,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-19",
+    "work_code": "652-50",
+    "hours": 2.4,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 132,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-20",
+    "work_code": "652-50",
+    "hours": 2.7,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 133,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-21",
+    "work_code": "652-50",
+    "hours": 5.8,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 134,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-22",
+    "work_code": "652-50",
+    "hours": 3.9,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 135,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-23",
+    "work_code": "652-50",
+    "hours": 1.9,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 136,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-24",
+    "work_code": "652-50",
+    "hours": 7.9,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 137,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-25",
+    "work_code": "652-50",
+    "hours": 7.2,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 138,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-26",
+    "work_code": "652-50",
+    "hours": 8.1,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 139,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-27",
+    "work_code": "652-50",
+    "hours": 5.6,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 140,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-28",
+    "work_code": "652-50",
+    "hours": 3.6,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 141,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-01",
+    "work_code": "652-50",
+    "hours": 1.6,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 142,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-02",
+    "work_code": "652-50",
+    "hours": 7.6,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 143,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-03",
+    "work_code": "652-50",
+    "hours": 1.9,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 144,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-04",
+    "work_code": "652-50",
+    "hours": 7.3,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 145,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-05",
+    "work_code": "652-50",
+    "hours": 1.6,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 146,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-06",
+    "work_code": "652-50",
+    "hours": 2.8,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 147,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-07",
+    "work_code": "652-50",
+    "hours": 8.6,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 148,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-08",
+    "work_code": "652-50",
+    "hours": 8.1,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 149,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-09",
+    "work_code": "652-50",
+    "hours": 5.3,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 150,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-10",
+    "work_code": "652-50",
+    "hours": 4.7,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 151,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-11",
+    "work_code": "652-50",
+    "hours": 1.9,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 152,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-12",
+    "work_code": "652-50",
+    "hours": 7.6,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 153,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-13",
+    "work_code": "652-50",
+    "hours": 5.9,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 154,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-14",
+    "work_code": "652-50",
+    "hours": 1.7,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 155,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-15",
+    "work_code": "652-50",
+    "hours": 7.6,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 156,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-16",
+    "work_code": "652-50",
+    "hours": 2.5,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 157,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-17",
+    "work_code": "652-50",
+    "hours": 4.4,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 158,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-18",
+    "work_code": "652-50",
+    "hours": 4.6,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 159,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-19",
+    "work_code": "652-50",
+    "hours": 2.9,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 160,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-20",
+    "work_code": "652-50",
+    "hours": 7.8,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 161,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-21",
+    "work_code": "652-50",
+    "hours": 8.3,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 162,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-22",
+    "work_code": "652-50",
+    "hours": 7.5,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 163,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-23",
+    "work_code": "652-50",
+    "hours": 8.3,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 164,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-24",
+    "work_code": "652-50",
+    "hours": 5.4,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 165,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-25",
+    "work_code": "652-50",
+    "hours": 4.8,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 166,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-26",
+    "work_code": "652-50",
+    "hours": 2.7,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 167,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-27",
+    "work_code": "652-50",
+    "hours": 1.3,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 168,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-28",
+    "work_code": "652-50",
+    "hours": 7.3,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 169,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-01",
+    "work_code": "652-50",
+    "hours": 6.8,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 170,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-02",
+    "work_code": "652-50",
+    "hours": 4.6,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 171,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-03",
+    "work_code": "652-50",
+    "hours": 4.2,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 172,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-04",
+    "work_code": "652-50",
+    "hours": 8.3,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 173,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-05",
+    "work_code": "652-50",
+    "hours": 8.8,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 174,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-06",
+    "work_code": "652-50",
+    "hours": 3.0,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 175,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-07",
+    "work_code": "652-50",
+    "hours": 7.2,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 176,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-08",
+    "work_code": "652-50",
+    "hours": 7.9,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 177,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-09",
+    "work_code": "652-50",
+    "hours": 6.3,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 178,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-10",
+    "work_code": "652-50",
+    "hours": 2.5,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 179,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-11",
+    "work_code": "652-50",
+    "hours": 3.5,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 180,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-12",
+    "work_code": "652-50",
+    "hours": 3.9,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 181,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-13",
+    "work_code": "652-50",
+    "hours": 1.7,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 182,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-14",
+    "work_code": "652-50",
+    "hours": 1.7,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 183,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-15",
+    "work_code": "652-50",
+    "hours": 6.1,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 184,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-16",
+    "work_code": "652-50",
+    "hours": 4.1,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 185,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-17",
+    "work_code": "652-50",
+    "hours": 1.3,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 186,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-18",
+    "work_code": "652-50",
+    "hours": 3.5,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 187,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-19",
+    "work_code": "652-50",
+    "hours": 8.1,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 188,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-20",
+    "work_code": "652-50",
+    "hours": 3.0,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 189,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-21",
+    "work_code": "652-50",
+    "hours": 5.4,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 190,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-22",
+    "work_code": "652-50",
+    "hours": 7.5,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 191,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-23",
+    "work_code": "652-50",
+    "hours": 3.0,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 192,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-24",
+    "work_code": "652-50",
+    "hours": 7.5,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 193,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-25",
+    "work_code": "652-50",
+    "hours": 1.6,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 194,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-26",
+    "work_code": "652-50",
+    "hours": 7.9,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 195,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-27",
+    "work_code": "652-50",
+    "hours": 1.6,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 196,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-28",
+    "work_code": "652-50",
+    "hours": 1.1,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 197,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-01",
+    "work_code": "652-50",
+    "hours": 4.9,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 198,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-02",
+    "work_code": "652-50",
+    "hours": 1.8,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 199,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-03",
+    "work_code": "652-50",
+    "hours": 1.6,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 200,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-04",
+    "work_code": "652-50",
+    "hours": 2.4,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 201,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-05",
+    "work_code": "652-50",
+    "hours": 8.9,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 202,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-06",
+    "work_code": "652-50",
+    "hours": 3.4,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 203,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-07",
+    "work_code": "652-50",
+    "hours": 5.1,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 204,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-08",
+    "work_code": "652-50",
+    "hours": 3.3,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 205,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-09",
+    "work_code": "652-50",
+    "hours": 2.1,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 206,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-10",
+    "work_code": "652-50",
+    "hours": 1.3,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 207,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-11",
+    "work_code": "652-50",
+    "hours": 7.6,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 208,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-12",
+    "work_code": "652-50",
+    "hours": 7.4,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 209,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-13",
+    "work_code": "652-50",
+    "hours": 7.7,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 210,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-14",
+    "work_code": "652-50",
+    "hours": 8.9,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 211,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-15",
+    "work_code": "652-50",
+    "hours": 2.4,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 212,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-16",
+    "work_code": "652-50",
+    "hours": 5.3,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 213,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-17",
+    "work_code": "652-50",
+    "hours": 6.7,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 214,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-18",
+    "work_code": "652-50",
+    "hours": 3.0,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 215,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-19",
+    "work_code": "652-50",
+    "hours": 6.5,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 216,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-20",
+    "work_code": "652-50",
+    "hours": 7.5,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 217,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-21",
+    "work_code": "652-50",
+    "hours": 3.0,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 218,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-22",
+    "work_code": "652-50",
+    "hours": 7.8,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 219,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-23",
+    "work_code": "652-50",
+    "hours": 1.1,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 220,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-24",
+    "work_code": "652-50",
+    "hours": 2.4,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 221,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-25",
+    "work_code": "652-50",
+    "hours": 1.2,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 222,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-26",
+    "work_code": "652-50",
+    "hours": 8.5,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 223,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-27",
+    "work_code": "652-50",
+    "hours": 1.2,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 224,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-28",
+    "work_code": "652-50",
+    "hours": 3.8,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 225,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-01",
+    "work_code": "652-50",
+    "hours": 5.7,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 226,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-02",
+    "work_code": "652-50",
+    "hours": 3.1,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 227,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-03",
+    "work_code": "652-50",
+    "hours": 4.2,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 228,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-04",
+    "work_code": "652-50",
+    "hours": 2.4,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 229,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-05",
+    "work_code": "652-50",
+    "hours": 2.9,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 230,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-06",
+    "work_code": "652-50",
+    "hours": 2.4,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 231,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-07",
+    "work_code": "652-50",
+    "hours": 5.0,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 232,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-08",
+    "work_code": "652-50",
+    "hours": 8.4,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 233,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-09",
+    "work_code": "652-50",
+    "hours": 6.1,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 234,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-10",
+    "work_code": "652-50",
+    "hours": 2.9,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 235,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-11",
+    "work_code": "652-50",
+    "hours": 6.5,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 236,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-12",
+    "work_code": "652-50",
+    "hours": 6.7,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 237,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-13",
+    "work_code": "652-50",
+    "hours": 5.5,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 238,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-14",
+    "work_code": "652-50",
+    "hours": 8.3,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 239,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-15",
+    "work_code": "652-50",
+    "hours": 8.8,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 240,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-16",
+    "work_code": "652-50",
+    "hours": 1.4,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 241,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-17",
+    "work_code": "652-50",
+    "hours": 7.1,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 242,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-18",
+    "work_code": "652-50",
+    "hours": 8.0,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 243,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-19",
+    "work_code": "652-50",
+    "hours": 5.1,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 244,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-20",
+    "work_code": "652-50",
+    "hours": 3.5,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 245,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-21",
+    "work_code": "652-50",
+    "hours": 3.4,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 246,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-22",
+    "work_code": "652-50",
+    "hours": 4.0,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 247,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-23",
+    "work_code": "652-50",
+    "hours": 6.6,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 248,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-24",
+    "work_code": "652-50",
+    "hours": 5.8,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 249,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-25",
+    "work_code": "652-50",
+    "hours": 8.2,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 250,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-26",
+    "work_code": "652-50",
+    "hours": 5.6,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 251,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-27",
+    "work_code": "652-50",
+    "hours": 2.2,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 252,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-28",
+    "work_code": "652-50",
+    "hours": 2.7,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 253,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-01",
+    "work_code": "652-50",
+    "hours": 6.8,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 254,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-02",
+    "work_code": "652-50",
+    "hours": 5.0,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 255,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-03",
+    "work_code": "652-50",
+    "hours": 6.7,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 256,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-04",
+    "work_code": "652-50",
+    "hours": 4.1,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 257,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-05",
+    "work_code": "652-50",
+    "hours": 5.4,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 258,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-06",
+    "work_code": "652-50",
+    "hours": 5.2,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 259,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-07",
+    "work_code": "652-50",
+    "hours": 7.5,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 260,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-08",
+    "work_code": "652-50",
+    "hours": 1.8,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 261,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-09",
+    "work_code": "652-50",
+    "hours": 8.3,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 262,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-10",
+    "work_code": "652-50",
+    "hours": 8.8,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 263,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-11",
+    "work_code": "652-50",
+    "hours": 7.7,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 264,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-12",
+    "work_code": "652-50",
+    "hours": 6.5,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 265,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-13",
+    "work_code": "652-50",
+    "hours": 4.6,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 266,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-14",
+    "work_code": "652-50",
+    "hours": 8.8,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 267,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-15",
+    "work_code": "652-50",
+    "hours": 8.5,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 268,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-16",
+    "work_code": "652-50",
+    "hours": 4.2,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 269,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-17",
+    "work_code": "652-50",
+    "hours": 4.5,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 270,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-18",
+    "work_code": "652-50",
+    "hours": 8.3,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 271,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-19",
+    "work_code": "652-50",
+    "hours": 2.0,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 272,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-20",
+    "work_code": "652-50",
+    "hours": 5.3,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 273,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-21",
+    "work_code": "652-50",
+    "hours": 6.3,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 274,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-22",
+    "work_code": "652-50",
+    "hours": 3.0,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 275,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-23",
+    "work_code": "652-50",
+    "hours": 5.5,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 276,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-24",
+    "work_code": "652-50",
+    "hours": 5.2,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 277,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-25",
+    "work_code": "652-50",
+    "hours": 1.2,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 278,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-26",
+    "work_code": "652-50",
+    "hours": 8.8,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 279,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-27",
+    "work_code": "652-50",
+    "hours": 7.7,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 280,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-28",
+    "work_code": "652-50",
+    "hours": 2.4,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 281,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-01",
+    "work_code": "652-50",
+    "hours": 5.3,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 282,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-02",
+    "work_code": "652-50",
+    "hours": 3.5,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 283,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-03",
+    "work_code": "652-50",
+    "hours": 7.7,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 284,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-04",
+    "work_code": "652-50",
+    "hours": 7.3,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 285,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-05",
+    "work_code": "652-50",
+    "hours": 5.4,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 286,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-06",
+    "work_code": "652-50",
+    "hours": 4.4,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 287,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-07",
+    "work_code": "652-50",
+    "hours": 7.2,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 288,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-08",
+    "work_code": "652-50",
+    "hours": 8.0,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 289,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-09",
+    "work_code": "652-50",
+    "hours": 3.3,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 290,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-10",
+    "work_code": "652-50",
+    "hours": 8.2,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 291,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-11",
+    "work_code": "652-50",
+    "hours": 1.9,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 292,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-12",
+    "work_code": "652-50",
+    "hours": 1.1,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 293,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-13",
+    "work_code": "652-50",
+    "hours": 8.7,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 294,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-14",
+    "work_code": "652-50",
+    "hours": 8.8,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 295,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-15",
+    "work_code": "652-50",
+    "hours": 1.6,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 296,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-16",
+    "work_code": "652-50",
+    "hours": 5.6,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 297,
+    "employee": "LOPEZ MARIA",
+    "date_worked": "2026-01-17",
+    "work_code": "652-50",
+    "hours": 4.5,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 298,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-18",
+    "work_code": "652-50",
+    "hours": 3.9,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 299,
+    "employee": "RUIZ CARLOS",
+    "date_worked": "2026-01-19",
+    "work_code": "652-50",
+    "hours": 3.6,
+    "description": "trabajo de prueba"
+  },
+  {
+    "id": 300,
+    "employee": "PEREZ JUAN",
+    "date_worked": "2026-01-20",
+    "work_code": "652-50",
+    "hours": 4.5,
+    "description": "trabajo de prueba"
   }
 ]

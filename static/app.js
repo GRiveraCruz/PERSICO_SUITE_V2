@@ -448,7 +448,7 @@ async function jLoadFiles(jobNum){
   try{
     const files=await apiCall('GET','/files/'+jobNum);
     if(!files.length){fl.innerHTML='<div class="es" style="padding:20px 0"><span class="ei">📂</span><br>Sin documentos</div>';return;}
-    fl.innerHTML=files.map(f=>'<div class="fitem"><span class="fi-ic">'+fileIco(f.name)+'</span><div class="fi-inf"><div class="fi-nm">'+esc(f.name)+'</div><div class="fi-mt">'+fmtSz(f.size)+' · '+f.modified+'</div></div><div style="display:flex;gap:4px"><a class="fi-dl" href="/api/files/'+jobNum+'/'+encodeURIComponent(f.name)+'" download title="Descargar">⬇</a><button class="fi-del" onclick="jDelFile(\''+jobNum+'\',\''+esc(f.name)+'\')">✕</button></div></div>').join('');
+    fl.innerHTML=files.map(f=>'<div class="fitem"><span class="fi-ic">'+fileIco(f.name)+'</span><div class="fi-inf"><div class="fi-nm">'+esc(f.name)+'</div><div class="fi-mt">'+fmtSz(f.size)+' · '+f.modified+'</div></div><div style="display:flex;gap:4px"><a class="fi-dl" href="/api/files/'+jobNum+'/'+encodeURIComponent(f.name)+'" download title="Descargar">Descargar</a><button class="fi-del" onclick="jDelFile(\''+jobNum+'\',\''+esc(f.name)+'\')">Eliminar</button></div></div>').join('');
   }catch{fl.innerHTML='<div class="es">Error al listar</div>';}
 }
 
@@ -475,7 +475,7 @@ async function jLoadFilesCierre(jobNum){
   try{
     const files=await apiCall('GET','/files-cierre/'+jobNum);
     if(!files.length){fl.innerHTML='<div class="es" style="padding:20px 0"><span class="ei">📂</span><br>Sin documentos</div>';return;}
-    fl.innerHTML=files.map(f=>'<div class="fitem"><span class="fi-ic">'+fileIco(f.name)+'</span><div class="fi-inf"><div class="fi-nm">'+esc(f.name)+'</div><div class="fi-mt">'+fmtSz(f.size)+' · '+f.modified+'</div></div><div style="display:flex;gap:4px"><a class="fi-dl" href="/api/files-cierre/'+jobNum+'/'+encodeURIComponent(f.name)+'" download title="Descargar">⬇</a><button class="fi-del" onclick="jDelFileCierre(\''+jobNum+'\',\''+esc(f.name)+'\')">✕</button></div></div>').join('');
+    fl.innerHTML=files.map(f=>'<div class="fitem"><span class="fi-ic">'+fileIco(f.name)+'</span><div class="fi-inf"><div class="fi-nm">'+esc(f.name)+'</div><div class="fi-mt">'+fmtSz(f.size)+' · '+f.modified+'</div></div><div style="display:flex;gap:4px"><a class="fi-dl" href="/api/files-cierre/'+jobNum+'/'+encodeURIComponent(f.name)+'" download title="Descargar">Descargar</a><button class="fi-del" onclick="jDelFileCierre(\''+jobNum+'\',\''+esc(f.name)+'\')">Eliminar</button></div></div>').join('');
   }catch{fl.innerHTML='<div class="es">Error al listar</div>';}
 }
 
@@ -951,7 +951,7 @@ async function qLoadFiles(qnum){
   try{
     const files=await(await fetch('/api/quotes/files/'+qnum)).json();
     if(!files.length){fl.innerHTML='<div class="es"><div class="ei">📂</div><p>Sin documentos.</p></div>';return;}
-    fl.innerHTML=files.map(f=>'<div class="fitem"><span class="fi-ic">'+fileIco(f.name)+'</span><div class="fi-inf"><div class="fi-nm">'+esc(f.name)+'</div><div class="fi-mt">'+fmtSz(f.size)+' · '+f.modified+'</div></div><div style="display:flex;gap:4px"><a class="fi-dl" href="/api/quotes/files/'+qnum+'/'+encodeURIComponent(f.name)+'" download title="Descargar">⬇</a><button class="fi-del" onclick="qDelFile(\''+qnum+'\',\''+esc(f.name)+'\')">🗑</button></div></div>').join('');
+    fl.innerHTML=files.map(f=>'<div class="fitem"><span class="fi-ic">'+fileIco(f.name)+'</span><div class="fi-inf"><div class="fi-nm">'+esc(f.name)+'</div><div class="fi-mt">'+fmtSz(f.size)+' · '+f.modified+'</div></div><div style="display:flex;gap:4px"><a class="fi-dl" href="/api/quotes/files/'+qnum+'/'+encodeURIComponent(f.name)+'" download title="Descargar">Descargar</a><button class="fi-del" onclick="qDelFile(\''+qnum+'\',\''+esc(f.name)+'\')">Eliminar</button></div></div>').join('');
   }catch{fl.innerHTML='<div class="es"><div class="ei">⚠</div><p>Error al leer carpeta.</p></div>';}
 }
 
@@ -1016,8 +1016,8 @@ function areaRenderList(){
         ${a.reportaA?`<span style="font-size:10px;color:var(--muted);margin-left:8px">→ reporta a <b style="color:var(--muted2)">${esc(a.reportaA)}</b></span>`:'<span style="font-size:10px;color:var(--muted);margin-left:8px">(nivel superior)</span>'}
       </div>
       <div style="display:flex;gap:4px;flex-shrink:0">
-        <button class="fi-del" onclick="areaEditStart(${idx})" title="Editar" style="color:var(--muted2)">✏️</button>
-        <button class="fi-del" onclick="areaDelete(${idx})" title="Eliminar">🗑</button>
+        <button class="fi-del" onclick="areaEditStart(${idx})" title="Editar" style="color:var(--muted2)">Editar</button>
+        <button class="fi-del" onclick="areaDelete(${idx})" title="Eliminar">Eliminar</button>
       </div>
     </div>
   </div>`).join('');
@@ -1116,9 +1116,9 @@ function perfilRenderList(){
         ${p.area?`<span style="font-size:10px;color:var(--muted);margin-left:8px">🏢 ${esc(p.area)}</span>`:'<span style="font-size:10px;color:var(--muted);margin-left:8px">(sin área)</span>'}
       </div>
       <div style="display:flex;gap:4px;flex-shrink:0">
-        <button class="fi-del" onclick="pfOpenDocs(${idx})" title="Documentos · Perfil de Puesto" style="color:var(--muted2)">📎</button>
-        <button class="fi-del" onclick="perfilEditStart(${idx})" title="Editar" style="color:var(--muted2)">✏️</button>
-        <button class="fi-del" onclick="perfilDelete(${idx})" title="Eliminar">🗑</button>
+        <button class="fi-del" onclick="pfOpenDocs(${idx})" title="Documentos · Perfil de Puesto" style="color:var(--muted2)">Documentos · Perfil de Puesto</button>
+        <button class="fi-del" onclick="perfilEditStart(${idx})" title="Editar" style="color:var(--muted2)">Editar</button>
+        <button class="fi-del" onclick="perfilDelete(${idx})" title="Eliminar">Eliminar</button>
       </div>
     </div>
   </div>`).join('');
@@ -1189,7 +1189,7 @@ async function pfLoadFiles(pid){
   try{
     const files=await(await fetch('/api/perfiles/files/'+pid)).json();
     if(!files.length){fl.innerHTML='<div class="es"><div class="ei">📂</div><p>Sin documentos.</p></div>';return;}
-    fl.innerHTML=files.map(f=>'<div class="fitem"><span class="fi-ic">'+fileIco(f.name)+'</span><div class="fi-inf"><div class="fi-nm">'+esc(f.name)+'</div><div class="fi-mt">'+fmtSz(f.size)+' · '+f.modified+'</div></div><div style="display:flex;gap:4px"><a class="fi-dl" href="/api/perfiles/files/'+pid+'/'+encodeURIComponent(f.name)+'" download title="Descargar">⬇</a><button class="fi-del" onclick="pfDelFile(\''+pid+'\',\''+esc(f.name)+'\')">🗑</button></div></div>').join('');
+    fl.innerHTML=files.map(f=>'<div class="fitem"><span class="fi-ic">'+fileIco(f.name)+'</span><div class="fi-inf"><div class="fi-nm">'+esc(f.name)+'</div><div class="fi-mt">'+fmtSz(f.size)+' · '+f.modified+'</div></div><div style="display:flex;gap:4px"><a class="fi-dl" href="/api/perfiles/files/'+pid+'/'+encodeURIComponent(f.name)+'" download title="Descargar">Descargar</a><button class="fi-del" onclick="pfDelFile(\''+pid+'\',\''+esc(f.name)+'\')">Eliminar</button></div></div>').join('');
   }catch{fl.innerHTML='<div class="es"><div class="ei">⚠</div><p>Error al leer carpeta.</p></div>';}
 }
 async function pfUploadFiles(fileList){
@@ -1300,7 +1300,7 @@ function personalRender(){
   const display=rows.slice(0,personalVisibleCount);
   const moreRow=rows.length>personalVisibleCount?`<tr><td colspan="10" style="text-align:center;padding:12px">
     <span style="font-size:11px;color:var(--muted)">Mostrando ${display.length} de ${rows.length}</span>
-    <button onclick="personalLoadMore()" class="btn-reload" style="font-size:11px;padding:5px 14px;margin-left:10px">↓ Cargar más (+100)</button>
+    <button onclick="personalLoadMore()" class="btn-reload" style="font-size:11px;padding:5px 14px;margin-left:10px">Cargar más (+100)</button>
   </td></tr>`:'';
   tb.innerHTML=display.map(r=>{
     const rec=(r.record_disciplinario||'').trim();
@@ -1432,7 +1432,7 @@ async function tLoadFiles(tid){
   try{
     const files=await(await fetch('/api/personal/files/'+tid)).json();
     if(!files.length){fl.innerHTML='<div class="es"><div class="ei">📂</div><p>Sin documentos.</p></div>';return;}
-    fl.innerHTML=files.map(f=>'<div class="fitem"><span class="fi-ic">'+fileIco(f.name)+'</span><div class="fi-inf"><div class="fi-nm">'+esc(f.name)+'</div><div class="fi-mt">'+fmtSz(f.size)+' · '+f.modified+'</div></div><div style="display:flex;gap:4px"><a class="fi-dl" href="/api/personal/files/'+tid+'/'+encodeURIComponent(f.name)+'" download title="Descargar">⬇</a><button class="fi-del" onclick="tDelFile(\''+tid+'\',\''+esc(f.name)+'\')">🗑</button></div></div>').join('');
+    fl.innerHTML=files.map(f=>'<div class="fitem"><span class="fi-ic">'+fileIco(f.name)+'</span><div class="fi-inf"><div class="fi-nm">'+esc(f.name)+'</div><div class="fi-mt">'+fmtSz(f.size)+' · '+f.modified+'</div></div><div style="display:flex;gap:4px"><a class="fi-dl" href="/api/personal/files/'+tid+'/'+encodeURIComponent(f.name)+'" download title="Descargar">Descargar</a><button class="fi-del" onclick="tDelFile(\''+tid+'\',\''+esc(f.name)+'\')">Eliminar</button></div></div>').join('');
   }catch{fl.innerHTML='<div class="es"><div class="ei">⚠</div><p>Error al leer carpeta.</p></div>';}
 }
 async function tUploadFiles(fileList){
@@ -1636,7 +1636,7 @@ function salSueldosRender(){
       <td style="font-family:'DM Mono',monospace;letter-spacing:2px;color:var(--muted)">*****</td>
       <td style="font-family:'DM Mono',monospace;letter-spacing:2px;color:var(--muted)">*****</td>
       <td style="font-family:'DM Mono',monospace;font-weight:600;color:var(--gold)">${costoUsdTxt}</td>
-      <td><button class="btn-reload" style="font-size:11px;padding:5px 12px" onclick="salOpenUnlock('${tid}')">🔒 Ver / Editar</button></td>
+      <td><button class="btn-reload" style="font-size:11px;padding:5px 12px" onclick="salOpenUnlock('${tid}')">Ver / Editar</button></td>
     </tr>`;
   }).join('');
 }
@@ -2007,10 +2007,10 @@ function npRenderRecibos(){
       <td style="text-align:right;font-family:'DM Mono',monospace;font-weight:700;color:#1f8a4c">${clMoney(r.neto)}</td>
       <td>${npEstatusBadge(r.estatus)}</td>
       <td style="display:flex;gap:4px">
-        <button class="btn-reload" style="font-size:10px;padding:4px 8px" onclick="npOpenRecibo('${r.id}')" ${esTimbrado?'disabled':''}>✏️</button>
+        <button class="btn-reload" style="font-size:10px;padding:4px 8px" onclick="npOpenRecibo('${r.id}')" ${esTimbrado?'disabled':''}>Editar</button>
         ${esTimbrado
-          ? `<button class="btn-reload" style="font-size:10px;padding:4px 8px;color:var(--red)" onclick="npRevertirRecibo('${r.id}')">↺</button>`
-          : `<button class="btn-reload" style="font-size:10px;padding:4px 8px;color:#1f8a4c" onclick="npTimbrarRecibo('${r.id}')">✓ Timbrar</button>`}
+          ? `<button class="btn-reload" style="font-size:10px;padding:4px 8px;color:var(--red)" onclick="npRevertirRecibo('${r.id}')">Revertir</button>`
+          : `<button class="btn-reload" style="font-size:10px;padding:4px 8px;color:#1f8a4c" onclick="npTimbrarRecibo('${r.id}')">Timbrar</button>`}
       </td>
     </tr>`;
   }).join('');
@@ -2083,7 +2083,7 @@ function npRenderOtrasList(){
       <div style="flex:1;font-size:12px;font-weight:600">${esc(o.concepto)}</div>
       <div style="font-size:12px;font-family:'DM Mono',monospace">${clMoney(o.monto)}</div>
       <span class="badge ${o.gravable?'b-wip':'b-yes'}" style="font-size:9px">${o.gravable?'Gravable':'Exenta'}</span>
-      <button class="fi-del" onclick="npRemoveOtraPercepcion(${i})">🗑</button>
+      <button class="fi-del" onclick="npRemoveOtraPercepcion(${i})">Eliminar</button>
     </div>`).join('');
 }
 function npAddOtraPercepcion(){
@@ -2366,7 +2366,7 @@ async function pmLoadFiles(pid){
   try{
     const files=await(await fetch('/api/permisos/files/'+pid)).json();
     if(!files.length){fl.innerHTML='<div class="es"><div class="ei">📂</div><p>Sin documentos.</p></div>';return;}
-    fl.innerHTML=files.map(f=>'<div class="fitem"><span class="fi-ic">'+fileIco(f.name)+'</span><div class="fi-inf"><div class="fi-nm">'+esc(f.name)+'</div><div class="fi-mt">'+fmtSz(f.size)+' · '+f.modified+'</div></div><div style="display:flex;gap:4px"><a class="fi-dl" href="/api/permisos/files/'+pid+'/'+encodeURIComponent(f.name)+'" download title="Descargar">⬇</a><button class="fi-del" onclick="pmDelFile(\''+pid+'\',\''+esc(f.name)+'\')">🗑</button></div></div>').join('');
+    fl.innerHTML=files.map(f=>'<div class="fitem"><span class="fi-ic">'+fileIco(f.name)+'</span><div class="fi-inf"><div class="fi-nm">'+esc(f.name)+'</div><div class="fi-mt">'+fmtSz(f.size)+' · '+f.modified+'</div></div><div style="display:flex;gap:4px"><a class="fi-dl" href="/api/permisos/files/'+pid+'/'+encodeURIComponent(f.name)+'" download title="Descargar">Descargar</a><button class="fi-del" onclick="pmDelFile(\''+pid+'\',\''+esc(f.name)+'\')">Eliminar</button></div></div>').join('');
   }catch{fl.innerHTML='<div class="es"><div class="ei">⚠</div><p>Error al leer carpeta.</p></div>';}
 }
 async function pmUploadFiles(fileList){
@@ -2912,7 +2912,7 @@ function capLegendRenderRows(){
     <td style="padding:4px 8px!important;text-align:left!important"><input type="text" value="${esc(row.descripcion)}" placeholder="Descripción del código…" style="width:100%;background:var(--inp);border:1px solid var(--border);border-radius:4px;padding:4px 6px;font-size:11px;color:var(--text);outline:none" onchange="capLegendSave()"></td>
     <td style="padding:4px 8px!important"><input type="checkbox" ${row.esExterno?'checked':''} title="Servicio externo" style="width:18px;height:18px;cursor:pointer" onchange="capLegendSave()"></td>
     <td style="padding:4px 8px!important;text-align:left!important"><select style="width:100%;background:var(--inp);border:1px solid var(--border);border-radius:4px;padding:4px 6px;font-size:11px;color:var(--text);outline:none" onchange="capLegendSave()">${osOptions(row.osId)}</select></td>
-    <td style="padding:4px 8px!important"><button class="btn-reload" style="font-size:11px;padding:4px 8px" ${row.osId?'':'disabled'} onclick="capShowOsDetalle('${row.osId||''}')">📍 Ver</button></td>
+    <td style="padding:4px 8px!important"><button class="btn-reload" style="font-size:11px;padding:4px 8px" ${row.osId?'':'disabled'} onclick="capShowOsDetalle('${row.osId||''}')">Ver</button></td>
   </tr>`).join('');
   if(!permCanCreate('ops-capacidad')){
     tb.querySelectorAll('input,select,button').forEach(inp=>inp.disabled=true);
@@ -3177,7 +3177,7 @@ function clCalcular(){
 
   results.innerHTML=`
     <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
-      <button class="cl-pdf-btn" onclick="clExportPDF()">🖨 Descargar PDF</button>
+      <button class="cl-pdf-btn" onclick="clExportPDF()">Descargar PDF</button>
     </div>
     <div class="cl-kpis">
       <div class="cl-kpi emph"><div class="l">Sueldo Base Mensual</div><div class="v">${clMoney(mensual)}</div></div>
@@ -3365,14 +3365,23 @@ let poVisibleCount=100;
 function poRenderReset(){ poVisibleCount=100; poRender(); }
 function poLoadMore(){ poVisibleCount+=100; poRender(); }
 async function poShowAllYears(){
+  const years=[...new Set([poActiveYear,...poAvailYears])];
+  if(years.length>2 && !confirm(
+    `Esto va a cargar los ${years.length} años completos de Purchase Orders a la memoria del navegador `+
+    `(puede tardar varios segundos). ¿Continuar?`
+  )) return;
   const btn=document.getElementById('po-btn-showall');
   const orig=btn.textContent;
-  btn.disabled=true; btn.textContent='⏳ Cargando todo…';
+  btn.disabled=true;
   try{
-    const years=[...new Set([poActiveYear,...poAvailYears])];
-    const results=await Promise.all(years.map(y=>fetch('/api/po/usd-view?year='+y).then(r=>r.json())));
-    poRecords=results.flatMap(d=>d.records||[]);
-    poVisibleCount=Infinity;
+    const all=[];
+    for(let i=0;i<years.length;i++){
+      btn.textContent=`⏳ Cargando ${i+1}/${years.length}…`;
+      const d=await(await fetch('/api/po/usd-view?year='+years[i])).json();
+      all.push(...(d.records||[]));
+    }
+    poRecords=all;
+    poVisibleCount=100;   // el DOM se queda acotado; "Cargar más" sigue disponible
     document.getElementById('po-tb-year').textContent='TODOS LOS AÑOS';
     poRender(); poUpdateStats();
     toast(poRecords.length.toLocaleString()+' registros cargados (todos los años) ✓','ok',5000);
@@ -3394,7 +3403,7 @@ function poRender(){
   const display=rows.slice(0,poVisibleCount);
   const moreRow=rows.length>poVisibleCount?`<tr><td colspan="11" style="text-align:center;padding:12px">
     <span style="font-size:11px;color:var(--muted)">Mostrando ${display.length} de ${rows.length}</span>
-    <button onclick="poLoadMore()" class="btn-reload" style="font-size:11px;padding:5px 14px;margin-left:10px">↓ Cargar más (+100)</button>
+    <button onclick="poLoadMore()" class="btn-reload" style="font-size:11px;padding:5px 14px;margin-left:10px">Cargar más (+100)</button>
   </td></tr>`:'';
   tb.innerHTML=display.map((r,rowI)=>{
     const isUSD=r.moneda==='USD';
@@ -3408,20 +3417,20 @@ function poRender(){
 
     // PDF: GPO-generated records use gpo PDF, IPO-only records use IPO PDF endpoint
     const pdfBtn = r.gpo_pdf && r.gpo_number
-      ? `<button onclick="window.open('/api/gpo/${esc(r.gpo_number)}/pdf','_blank')" class="btn-reload" style="font-size:10px;padding:3px 8px">🖨 PDF</button>`
+      ? `<button onclick="window.open('/api/gpo/${esc(r.gpo_number)}/pdf','_blank')" class="btn-reload" style="font-size:10px;padding:3px 8px">PDF</button>`
       : (r.part_number || r._split_origin)
-      ? `<button onclick="window.open('/api/po/${poActiveYear}/pdf/${esc(r.clave||r.gpo_number)}?idx=${sameClaveIdx}','_blank')" class="btn-reload" style="font-size:10px;padding:3px 8px">🖨 PDF</button>`
+      ? `<button onclick="window.open('/api/po/${poActiveYear}/pdf/${esc(r.clave||r.gpo_number)}?idx=${sameClaveIdx}','_blank')" class="btn-reload" style="font-size:10px;padding:3px 8px">PDF</button>`
       : '—';
 
     const isAdm = USER_PERMS && USER_PERMS.is_admin;
     // Delete: use idx parameter so only this specific row is deleted
     const clave = r.clave || r.gpo_number || '';
     const delBtn = isAdm
-      ? `<button onclick="deleteIPORow(${poActiveYear},'${esc(clave)}',${sameClaveIdx})" class="fi-del" style="font-size:11px;margin-left:4px" title="Eliminar este registro">✕</button>`
+      ? `<button onclick="deleteIPORow(${poActiveYear},'${esc(clave)}',${sameClaveIdx})" class="fi-del" style="font-size:11px;margin-left:4px" title="Eliminar este registro">Eliminar este registro</button>`
       : '';
 
     const rowIdx = poFiltered().indexOf(r);
-    const editBtn = `<button onclick="poOpenEdit(${rowIdx})" class="btn-reload" style="font-size:10px;padding:3px 8px;margin-left:4px" title="Editar registro">✏</button>`;
+    const editBtn = `<button onclick="poOpenEdit(${rowIdx})" class="btn-reload" style="font-size:10px;padding:3px 8px;margin-left:4px" title="Editar registro">Editar registro</button>`;
     return`<tr>
       <td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--red);font-weight:600;white-space:nowrap">${esc(String(poLabel))}</td>
       <td style="color:var(--muted2)">${poFmtDate(r.fecha_doc)}</td>
@@ -3598,14 +3607,32 @@ let whVisibleCount=100;
 function whRenderReset(){ whVisibleCount=100; whRender(); }
 function whLoadMore(){ whVisibleCount+=100; whRender(); }
 async function whShowAllYears(){
+  const years=[...new Set([whActiveYear,...whAvailYears])];
+  // whRecords guarda TODO lo cargado en memoria del navegador sin límite — con varios
+  // años esto puede ser decenas de miles de registros. Se avisa antes de hacerlo y se
+  // deja cancelar, en vez de dispararlo sin más apenas se aprieta el botón.
+  if(years.length>2 && !confirm(
+    `Esto va a cargar los ${years.length} años completos de Work Hours a la memoria del navegador `+
+    `(puede ser un archivo grande y tardar varios segundos). ¿Continuar?`
+  )) return;
   const btn=document.getElementById('wh-btn-showall');
   const orig=btn.textContent;
-  btn.disabled=true; btn.textContent='⏳ Cargando todo…';
+  btn.disabled=true;
   try{
-    const years=[...new Set([whActiveYear,...whAvailYears])];
-    const results=await Promise.all(years.map(y=>fetch('/api/wh?year='+y).then(r=>r.json())));
-    whRecords=results.flatMap(d=>d.records||[]);
-    whVisibleCount=Infinity;
+    // Una petición a la vez (no todas en paralelo con Promise.all): con varios años
+    // evita mandarle al servidor N requests simultáneos de golpe, y permite mostrar
+    // progreso real en vez de solo un spinner ciego.
+    const all=[];
+    for(let i=0;i<years.length;i++){
+      btn.textContent=`⏳ Cargando ${i+1}/${years.length}…`;
+      const d=await(await fetch('/api/wh?year='+years[i])).json();
+      all.push(...(d.records||[]));
+    }
+    whRecords=all;
+    // whVisibleCount se queda acotado (igual que al cargar un solo año) — lo que crece
+    // es whRecords (para que los totales sumen bien sobre todos los años), no cuántas
+    // filas se pintan de golpe en la tabla; "Cargar más" sigue funcionando igual.
+    whVisibleCount=100;
     whBuildRateMap();
     document.getElementById('wh-tb-year').textContent='TODOS LOS AÑOS';
     whRender(); whUpdateStats();
@@ -3631,7 +3658,7 @@ function whRender(){
   const display=rows.slice(0,whVisibleCount);
   const more=rows.length>whVisibleCount?`<tr><td colspan="${colspan}" style="text-align:center;padding:12px">
     <span style="font-size:11px;color:var(--muted)">Mostrando ${display.length} de ${rows.length}</span>
-    <button onclick="whLoadMore()" class="btn-reload" style="font-size:11px;padding:5px 14px;margin-left:10px">↓ Cargar más (+100)</button>
+    <button onclick="whLoadMore()" class="btn-reload" style="font-size:11px;padding:5px 14px;margin-left:10px">Cargar más (+100)</button>
   </td></tr>`:'';
   tb.innerHTML=display.map((r,i)=>{
     const rate=whEffectiveRate(r);
@@ -3648,7 +3675,7 @@ function whRender(){
         ${hasRate?(isFixed?'🔒 ':'')+'$'+cost.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):'<span style="font-size:10px;opacity:.5">N/T</span>'}
       </td>
       <td style="color:var(--muted2);max-width:220px;overflow:hidden;text-overflow:ellipsis">${esc(r.description||'—')}</td>
-      ${isAdmin?`<td><button class="fi-del" onclick="whDeleteRecord(${r.id})" title="Eliminar registro">🗑</button></td>`:''}
+      ${isAdmin?`<td><button class="fi-del" onclick="whDeleteRecord(${r.id})" title="Eliminar registro">Eliminar registro</button></td>`:''}
     </tr>`;
   }).join('')+more;
 }
@@ -3801,14 +3828,23 @@ let ivpVisibleCount=100;
 function ivpRenderReset(){ ivpVisibleCount=100; ivpRender(); }
 function ivpLoadMore(){ ivpVisibleCount+=100; ivpRender(); }
 async function ivpShowAllYears(){
+  const years=[...new Set([ivpActiveYear,...ivpAvailYears])];
+  if(years.length>2 && !confirm(
+    `Esto va a cargar los ${years.length} años completos de Invoiced POs a la memoria del navegador `+
+    `(puede tardar varios segundos). ¿Continuar?`
+  )) return;
   const btn=document.getElementById('ivp-btn-showall');
   const orig=btn.textContent;
-  btn.disabled=true; btn.textContent='⏳ Cargando todo…';
+  btn.disabled=true;
   try{
-    const years=[...new Set([ivpActiveYear,...ivpAvailYears])];
-    const results=await Promise.all(years.map(y=>fetch('/api/ivp?year='+y).then(r=>r.json())));
-    ivpRecords=results.flatMap(d=>d.records||[]);
-    ivpVisibleCount=Infinity;
+    const all=[];
+    for(let i=0;i<years.length;i++){
+      btn.textContent=`⏳ Cargando ${i+1}/${years.length}…`;
+      const d=await(await fetch('/api/ivp?year='+years[i])).json();
+      all.push(...(d.records||[]));
+    }
+    ivpRecords=all;
+    ivpVisibleCount=100;   // el DOM se queda acotado; "Cargar más" sigue disponible
     document.getElementById('ivp-tb-year').textContent='TODOS LOS AÑOS';
     ivpRender(); ivpUpdateStats();
     toast(ivpRecords.length.toLocaleString()+' registros cargados (todos los años) ✓','ok',5000);
@@ -3833,7 +3869,7 @@ function ivpRender(){
   const display=rows.slice(0,ivpVisibleCount);
   const moreRow=rows.length>ivpVisibleCount?`<tr><td colspan="9" style="text-align:center;padding:12px">
     <span style="font-size:11px;color:var(--muted)">Mostrando ${display.length} de ${rows.length}</span>
-    <button onclick="ivpLoadMore()" class="btn-reload" style="font-size:11px;padding:5px 14px;margin-left:10px">↓ Cargar más (+100)</button>
+    <button onclick="ivpLoadMore()" class="btn-reload" style="font-size:11px;padding:5px 14px;margin-left:10px">Cargar más (+100)</button>
   </td></tr>`:'';
   tb.innerHTML=display.map(r=>{
     const isUSD=r.moneda==='USD';
@@ -5444,588 +5480,6 @@ function ptConfirmGenerate() {
 
 // Init PT on load
 
-// ════════════════════════════════════════════════════════
-//  SISTEMA DE IDIOMAS
-// ════════════════════════════════════════════════════════
-const TRANSLATIONS = {
-  es: {
-    // Nav tabs
-    nav_jobs: "Registro JOBs",
-    nav_rates: "Tarifas por Hora",
-    nav_quotes: "Registro de Cotización",
-    nav_pt: "Número de Proyecto",
-    nav_cpo: "Ventas",
-    nav_po: "Compras",
-    nav_wh: "Mano de Obra",
-    nav_ivp: "Recepciones",
-    nav_report: "Reporte por Job",
-    nav_multirpt: "Reporte Múltiple",
-    nav_fx: "Tipo de Cambio",
-    // Common
-    btn_new:       "+ Nuevo",
-    btn_save:      "Guardar",
-    btn_close:     "Cerrar",
-    btn_delete:    "Eliminar",
-    btn_reload:    "↺ Recargar",
-    btn_import:    "↑ Importar Excel",
-    btn_generate:  "⚙ Generar Reporte",
-    btn_cancel:    "Cancelar",
-    lbl_year:      "Año",
-    lbl_search:    "Buscar",
-    lbl_filter:    "Filtrar",
-    lbl_notes:     "Notas",
-    lbl_status:    "Status",
-    lbl_date:      "Fecha",
-    lbl_customer:  "Cliente",
-    lbl_mode:      "Modo",
-    lbl_name:      "Nombre",
-    // Jobs
-    jobs_title:    "Job Register",
-    jobs_sub:      "Cost Controlling",
-    jobs_total:    "Total Jobs",
-    jobs_filter_year: "Año",
-    jobs_filter_search: "Buscar job, cliente…",
-    jobs_new:      "+ Nuevo Job",
-    // Rates
-    rates_title:   "Hourly Rates",
-    rates_sub:     "Tarifas por empleado",
-    rates_employee: "Empleado",
-    rates_rate:    "Tarifa (USD/h)",
-    rates_dept:    "Departamento",
-    rates_new:     "+ Nuevo Empleado",
-    // Quotes
-    quotes_title:  "Quotation Register",
-    quotes_new:    "+ Nueva Cotización",
-    quotes_search: "Q-Number, cliente, descripción…",
-    // PT Numbers
-    pt_title:      "PT Numbers",
-    pt_sub:        "Programas · Jobs asociados",
-    pt_new:        "+ Nuevo PT",
-    pt_number:     "PT Number",
-    pt_program:    "Programa Cliente",
-    pt_pm:         "PM",
-    pt_jobs:       "Jobs",
-    // CPO
-    cpo_title:     "Customer Purchase Orders",
-    cpo_new:       "+ Nueva CPO",
-    cpo_po:        "PO Number",
-    cpo_value:     "Value (USD)",
-    cpo_est:       "Est. Finalización",
-    // PO
-    po_title:      "Purchase Orders",
-    po_new:        "+ Nueva PO",
-    // WH
-    wh_title:      "Work Hours",
-    wh_new:        "+ Nuevo Registro",
-    wh_employee:   "Empleado",
-    wh_hours:      "Horas",
-    wh_desc:       "Descripción",
-    // IVP
-    ivp_title:     "Invoiced POs",
-    ivp_new:       "+ Nueva IVP",
-    // Report
-    report_title:  "Job Report",
-    report_revenue:"REVENUE",
-    report_wh_cost:"COSTO WH",
-    report_purch:  "COMPRAS TOTAL",
-    report_gm:     "MARGEN BRUTO",
-    report_by_emp: "🔴 WH POR EMPLEADO",
-    report_pos:    "📋 PURCHASE ORDERS",
-    // Multi Report
-    mrpt_title:    "Multi-Job Report",
-    mrpt_mode_jobs:"Por Jobs",
-    mrpt_mode_pt:  "Por PT Number",
-    mrpt_label:    "Etiqueta / Programa",
-    mrpt_jobs_lbl: "Jobs (uno por línea)",
-    mrpt_pt_lbl:   "PT Number",
-    mrpt_load:     "Cargar",
-    mrpt_rate_yr:  "Año Hourly Rates",
-    mrpt_wh_yr:    "Año Work Hours",
-    mrpt_po_yr:    "Año Purchase Orders",
-    mrpt_cpo_yr:   "Año Customer POs",
-    // FX
-    fx_title:      "Tipo de Cambio",
-    fx_rate:       "Tasa (MXN/USD)",
-    // Import modal
-    imp_title:     "Importar desde Excel",
-    imp_drag:      "Arrastra el Excel o haz clic para seleccionar",
-    imp_file:      "Archivo",
-    imp_result:    "Resultado",
-    imp_imported:  "Importados",
-    imp_total:     "Total registros",
-    imp_skipped:   "Omitidos",
-    imp_append:    "Agregar (conserva existentes)",
-    imp_replace:   "Reemplazar todo",
-    // Login
-    login_title:   "Inicia sesión para continuar",
-    login_user:    "Usuario",
-    login_pass:    "Contraseña",
-    login_btn:     "Entrar",
-    login_err:     "Usuario o contraseña incorrectos",
-    lbl_filters:      "Filtros",
-    lbl_active_year:  "Año activo",
-    lbl_dept:         "Departamento",
-    lbl_search_emp:   "Buscar empleado",
-    lbl_rate_range:   "Rango de tarifa",
-    lbl_date_from:    "Fecha inicial",
-    lbl_date_to:      "Fecha final",
-    lbl_date_recv:    "Fecha de recepción",
-    lbl_search_date:  "Buscar fecha",
-    lbl_system_status:"Estado del sistema",
-    ph_search_customer:"Buscar cliente…",
-    ph_name:          "Nombre…",
-    ph_name_id:       "Nombre o ID…",
-    // Confirm PT
-    pt_confirm_title: "Confirmar Jobs del PT",
-    pt_confirm_gen:   "Generar Reporte →",
-    // Catálogos
-    cat_elec_title:   "Catálogo Eléctrico",
-    cat_mec_title:    "Catálogo Mecánico",
-    cat_svc_title:    "Catálogo de Servicios",
-    cat_search:       "Marca, No. Parte, descripción, etiqueta…",
-    cat_new:          "+ Nuevo Item",
-    // Proveedores
-    prov_title:       "Proveedores",
-    prov_sub:         "Base de proveedores",
-    prov_new:         "+ Nuevo Proveedor",
-    prov_search:      "Nombre, RFC, contacto…",
-    // GPO
-    gpo_title:        "Nueva Orden de Compra",
-    gpo_supplier:     "Proveedor",
-    gpo_job_type:     "Tipo de Job",
-    gpo_items:        "Items de la Orden",
-    gpo_subtotal:     "SUBTOTAL",
-    gpo_iva:          "IVA / VAT",
-    gpo_total:        "TOTAL",
-    gpo_emit:         "💾 Emitir Orden de Compra",
-    // Almacenes
-    stock_title:      "Stock",
-    stock_sub:        "Inventario general",
-    ing_title:        "Ingreso de Material",
-    ing_manual:       "📥 Entrada Manual",
-    ing_po:           "🛒 Entrada por OC",
-    apt_title:        "Apartados",
-    apt_sub:          "Existencias · Desglose por Job",
-    sal_title:        "Salida de Material",
-    sal_new:          "📤 Gestionar Salida de Material",
-    sal_surtir:       "⚡ Surtir",
-    mov_title:        "Mover Apartados a Stock",
-    mov_btn:          "📦 Mover a Stock",
-    // Recuperaciones
-    rcv_title:        "Recuperación de Costos",
-    rcv_mov:          "♻ Mover Apartados a Stock",
-    // Configurar Proyecto
-    pc_title:         "Configurar Proyecto",
-    pc_search:        "Buscar PT o SV Number",
-    pc_save:          "💾 Guardar Configuración",
-    pc_presup_a:      "PRESUP. A",
-    pc_presup_disp:   "PRESUP. DISPONIBLE",
-    pc_target_comp:   "Target Compras",
-    pc_target_mo:     "Target M.O.",
-    // Reports tabs
-    rpt_financiero:   "📊 Resultado Financiero",
-    rpt_operativo:    "⚙ Resultado Operativo",
-    rpt_comercial:    "🛒 Resultado Comercial",
-  },
-  en: {
-    nav_jobs: "Job Register",
-    nav_rates: "Hourly Rates",
-    nav_quotes: "Quote Register",
-    nav_pt: "PT Number",
-    nav_cpo: "Customer POs",
-    nav_po: "Purchase Orders",
-    nav_wh: "Work Hours",
-    nav_ivp: "Invoiced PO",
-    nav_report: "Job Report",
-    nav_multirpt: "Multi-Job Report",
-    nav_fx: "Exchange Rates",
-    btn_new:       "+ New",
-    btn_save:      "Save",
-    btn_close:     "Close",
-    btn_delete:    "Delete",
-    btn_reload:    "↺ Reload",
-    btn_import:    "↑ Import Excel",
-    btn_generate:  "⚙ Generate Report",
-    btn_cancel:    "Cancel",
-    lbl_year:      "Year",
-    lbl_search:    "Search",
-    lbl_filter:    "Filter",
-    lbl_notes:     "Notes",
-    lbl_status:    "Status",
-    lbl_date:      "Date",
-    lbl_customer:  "Customer",
-    lbl_mode:      "Mode",
-    lbl_name:      "Name",
-    jobs_title:    "Job Register",
-    jobs_sub:      "Cost Controlling",
-    jobs_total:    "Total Jobs",
-    jobs_filter_year: "Year",
-    jobs_filter_search: "Search job, customer…",
-    jobs_new:      "+ New Job",
-    rates_title:   "Hourly Rates",
-    rates_sub:     "Rates per employee",
-    rates_employee:"Employee",
-    rates_rate:    "Rate (USD/h)",
-    rates_dept:    "Department",
-    rates_new:     "+ New Employee",
-    quotes_title:  "Quotation Register",
-    quotes_new:    "+ New Quote",
-    quotes_search: "Q-Number, customer, description…",
-    pt_title:      "PT Numbers",
-    pt_sub:        "Programs · Associated Jobs",
-    pt_new:        "+ New PT",
-    pt_number:     "PT Number",
-    pt_program:    "Customer Program",
-    pt_pm:         "PM",
-    pt_jobs:       "Jobs",
-    cpo_title:     "Customer Purchase Orders",
-    cpo_new:       "+ New CPO",
-    cpo_po:        "PO Number",
-    cpo_value:     "Value (USD)",
-    cpo_est:       "Est. Completion",
-    po_title:      "Purchase Orders",
-    po_new:        "+ New PO",
-    wh_title:      "Work Hours",
-    wh_new:        "+ New Entry",
-    wh_employee:   "Employee",
-    wh_hours:      "Hours",
-    wh_desc:       "Description",
-    ivp_title:     "Invoiced POs",
-    ivp_new:       "+ New IVP",
-    report_title:  "Job Report",
-    report_revenue:"REVENUE",
-    report_wh_cost:"WH COST",
-    report_purch:  "PURCHASINGS TOTAL",
-    report_gm:     "GROSS MARGIN",
-    report_by_emp: "🔴 WH BY EMPLOYEE",
-    report_pos:    "📋 PURCHASE ORDERS",
-    mrpt_title:    "Multi-Job Report",
-    mrpt_mode_jobs:"By Jobs",
-    mrpt_mode_pt:  "By PT Number",
-    mrpt_label:    "Label / Program",
-    mrpt_jobs_lbl: "Jobs (one per line)",
-    mrpt_pt_lbl:   "PT Number",
-    mrpt_load:     "Load",
-    mrpt_rate_yr:  "Hourly Rates Year",
-    mrpt_wh_yr:    "Work Hours Year",
-    mrpt_po_yr:    "Purchase Orders Year",
-    mrpt_cpo_yr:   "Customer POs Year",
-    fx_title:      "Exchange Rate",
-    fx_rate:       "Rate (MXN/USD)",
-    imp_title:     "Import from Excel",
-    imp_drag:      "Drag Excel file or click to select",
-    imp_file:      "File",
-    imp_result:    "Result",
-    imp_imported:  "Imported",
-    imp_total:     "Total records",
-    imp_skipped:   "Skipped",
-    imp_append:    "Append (keep existing)",
-    imp_replace:   "Replace all",
-    login_title:   "Sign in to continue",
-    login_user:    "Username",
-    login_pass:    "Password",
-    login_btn:     "Sign In",
-    login_err:     "Invalid username or password",
-    lbl_filters:      "Filters",
-    lbl_active_year:  "Active Year",
-    lbl_dept:         "Area",
-    lbl_search_emp:   "Search Employee",
-    lbl_rate_range:   "Rate Range",
-    lbl_date_from:    "Start Date",
-    lbl_date_to:      "End Date",
-    lbl_date_recv:    "Reception Date",
-    lbl_search_date:  "Search Date",
-    lbl_system_status:"System Status",
-    ph_search_customer:"Search customer…",
-    ph_name:          "Name…",
-    ph_name_id:       "Name or ID…",
-    pt_confirm_title: "Confirm PT Jobs",
-    pt_confirm_gen:   "Generate Report →",
-    // Catalogs
-    cat_elec_title:   "Electrical Catalog",
-    cat_mec_title:    "Mechanical Catalog",
-    cat_svc_title:    "Services Catalog",
-    cat_search:       "Brand, Part No., description, label…",
-    cat_new:          "+ New Item",
-    // Suppliers
-    prov_title:       "Suppliers",
-    prov_sub:         "Supplier database",
-    prov_new:         "+ New Supplier",
-    prov_search:      "Name, tax ID, contact…",
-    // GPO
-    gpo_title:        "New Purchase Order",
-    gpo_supplier:     "Supplier",
-    gpo_job_type:     "Job Type",
-    gpo_items:        "Order Items",
-    gpo_subtotal:     "SUBTOTAL",
-    gpo_iva:          "IVA / VAT",
-    gpo_total:        "TOTAL",
-    gpo_emit:         "💾 Issue Purchase Order",
-    // Warehouse
-    stock_title:      "Stock",
-    stock_sub:        "General inventory",
-    ing_title:        "Material Receipt",
-    ing_manual:       "📥 Manual Entry",
-    ing_po:           "🛒 Entry by PO",
-    apt_title:        "Reserved Stock",
-    apt_sub:          "Inventory · Job Breakdown",
-    sal_title:        "Material Issue",
-    sal_new:          "📤 Manage Material Issue",
-    sal_surtir:       "⚡ Dispatch",
-    mov_title:        "Move to Stock",
-    mov_btn:          "📦 Move to Stock",
-    // Recoveries
-    rcv_title:        "Cost Recovery",
-    rcv_mov:          "♻ Move Reserved to Stock",
-    // Project Config
-    pc_title:         "Configure Project",
-    pc_search:        "Search PT or SV Number",
-    pc_save:          "💾 Save Configuration",
-    pc_presup_a:      "BUDGET A",
-    pc_presup_disp:   "AVAILABLE BUDGET",
-    pc_target_comp:   "Purchasing Target",
-    pc_target_mo:     "Labor Target",
-    // Report tabs
-    rpt_financiero:   "📊 Financial Result",
-    rpt_operativo:    "⚙ Operational Result",
-    rpt_comercial:    "🛒 Commercial Result",
-  },
-  it: {
-    nav_jobs: "Registro Commesse",
-    nav_rates: "Tariffe Orarie",
-    nav_quotes: "Registro Preventivi",
-    nav_pt: "Numero Progetto",
-    nav_cpo: "Ordini Cliente",
-    nav_po: "Ordini d'Acquisto",
-    nav_wh: "Ore Lavorate",
-    nav_ivp: "OdA Fatturate",
-    nav_report: "Report Commessa",
-    nav_multirpt: "Report Multi-Commessa",
-    nav_fx: "Tassi di Cambio",
-    btn_new:       "+ Nuovo",
-    btn_save:      "Salva",
-    btn_close:     "Chiudi",
-    btn_delete:    "Elimina",
-    btn_reload:    "↺ Ricarica",
-    btn_import:    "↑ Importa Excel",
-    btn_generate:  "⚙ Genera Report",
-    btn_cancel:    "Annulla",
-    lbl_year:      "Anno",
-    lbl_search:    "Cerca",
-    lbl_filter:    "Filtra",
-    lbl_notes:     "Note",
-    lbl_status:    "Stato",
-    lbl_date:      "Data",
-    lbl_customer:  "Cliente",
-    lbl_mode:      "Modalità",
-    lbl_name:      "Nome",
-    jobs_title:    "Registro Commesse",
-    jobs_sub:      "Controllo Costi",
-    jobs_total:    "Commesse Totali",
-    jobs_filter_year: "Anno",
-    jobs_filter_search: "Cerca commessa, cliente…",
-    jobs_new:      "+ Nuova Commessa",
-    rates_title:   "Tariffe Orarie",
-    rates_sub:     "Tariffe per dipendente",
-    rates_employee:"Dipendente",
-    rates_rate:    "Tariffa (USD/h)",
-    rates_dept:    "Reparto",
-    rates_new:     "+ Nuovo Dipendente",
-    quotes_title:  "Registro Preventivi",
-    quotes_new:    "+ Nuovo Preventivo",
-    quotes_search: "Numero, cliente, descrizione…",
-    pt_title:      "Numeri PT",
-    pt_sub:        "Programmi · Commesse associate",
-    pt_new:        "+ Nuovo PT",
-    pt_number:     "Numero PT",
-    pt_program:    "Programma Cliente",
-    pt_pm:         "PM",
-    pt_jobs:       "Commesse",
-    cpo_title:     "Ordini d'Acquisto Cliente",
-    cpo_new:       "+ Nuovo OdA",
-    cpo_po:        "Numero OdA",
-    cpo_value:     "Valore (USD)",
-    cpo_est:       "Completamento Stimato",
-    po_title:      "Ordini d'Acquisto",
-    po_new:        "+ Nuovo OdA",
-    wh_title:      "Ore Lavorate",
-    wh_new:        "+ Nuovo Registro",
-    wh_employee:   "Dipendente",
-    wh_hours:      "Ore",
-    wh_desc:       "Descrizione",
-    ivp_title:     "OdA Fatturate",
-    ivp_new:       "+ Nuova IVP",
-    report_title:  "Report Commessa",
-    report_revenue:"RICAVI",
-    report_wh_cost:"COSTO ORE",
-    report_purch:  "ACQUISTI TOTALE",
-    report_gm:     "MARGINE LORDO",
-    report_by_emp: "🔴 ORE PER DIPENDENTE",
-    report_pos:    "📋 ORDINI D'ACQUISTO",
-    mrpt_title:    "Report Multi-Commessa",
-    mrpt_mode_jobs:"Per Commesse",
-    mrpt_mode_pt:  "Per Numero PT",
-    mrpt_label:    "Etichetta / Programma",
-    mrpt_jobs_lbl: "Commesse (una per riga)",
-    mrpt_pt_lbl:   "Numero PT",
-    mrpt_load:     "Carica",
-    mrpt_rate_yr:  "Anno Tariffe",
-    mrpt_wh_yr:    "Anno Ore Lavorate",
-    mrpt_po_yr:    "Anno Ordini Acquisto",
-    mrpt_cpo_yr:   "Anno OdA Cliente",
-    fx_title:      "Cambio Valuta",
-    fx_rate:       "Tasso (MXN/USD)",
-    imp_title:     "Importa da Excel",
-    imp_drag:      "Trascina il file Excel o clicca per selezionare",
-    imp_file:      "File",
-    imp_result:    "Risultato",
-    imp_imported:  "Importati",
-    imp_total:     "Totale record",
-    imp_skipped:   "Ignorati",
-    imp_append:    "Aggiungi (mantieni esistenti)",
-    imp_replace:   "Sostituisci tutto",
-    login_title:   "Accedi per continuare",
-    login_user:    "Utente",
-    login_pass:    "Password",
-    login_btn:     "Accedi",
-    login_err:     "Utente o password non validi",
-    lbl_filters:      "Filtri",
-    lbl_active_year:  "Anno attivo",
-    lbl_dept:         "Area",
-    lbl_search_emp:   "Cerca dipendente",
-    lbl_rate_range:   "Fascia tariffaria",
-    lbl_date_from:    "Data iniziale",
-    lbl_date_to:      "Data finale",
-    lbl_date_recv:    "Data ricezione",
-    lbl_search_date:  "Cerca data",
-    lbl_system_status:"Stato del sistema",
-    ph_search_customer:"Cerca cliente…",
-    ph_name:          "Nome…",
-    ph_name_id:       "Nome o ID…",
-    pt_confirm_title: "Conferma Commesse PT",
-    pt_confirm_gen:   "Genera Report →",
-    // Cataloghi
-    cat_elec_title:   "Catalogo Elettrico",
-    cat_mec_title:    "Catalogo Meccanico",
-    cat_svc_title:    "Catalogo Servizi",
-    cat_search:       "Marca, N° parte, descrizione, etichetta…",
-    cat_new:          "+ Nuovo Articolo",
-    // Fornitori
-    prov_title:       "Fornitori",
-    prov_sub:         "Database fornitori",
-    prov_new:         "+ Nuovo Fornitore",
-    prov_search:      "Nome, codice fiscale, contatto…",
-    // GPO
-    gpo_title:        "Nuovo Ordine d'Acquisto",
-    gpo_supplier:     "Fornitore",
-    gpo_job_type:     "Tipo Commessa",
-    gpo_items:        "Articoli dell'Ordine",
-    gpo_subtotal:     "SUBTOTALE",
-    gpo_iva:          "IVA / VAT",
-    gpo_total:        "TOTALE",
-    gpo_emit:         "💾 Emetti Ordine d'Acquisto",
-    // Magazzino
-    stock_title:      "Stock",
-    stock_sub:        "Inventario generale",
-    ing_title:        "Ricevimento Materiale",
-    ing_manual:       "📥 Entrata Manuale",
-    ing_po:           "🛒 Entrata da OdA",
-    apt_title:        "Materiale Riservato",
-    apt_sub:          "Inventario · Suddivisione per Commessa",
-    sal_title:        "Uscita Materiale",
-    sal_new:          "📤 Gestisci Uscita Materiale",
-    sal_surtir:       "⚡ Consegna",
-    mov_title:        "Sposta a Stock",
-    mov_btn:          "📦 Sposta a Stock",
-    // Recuperi
-    rcv_title:        "Recupero Costi",
-    rcv_mov:          "♻ Sposta Riservato a Stock",
-    // Configura Progetto
-    pc_title:         "Configura Progetto",
-    pc_search:        "Cerca numero PT o SV",
-    pc_save:          "💾 Salva Configurazione",
-    pc_presup_a:      "BUDGET A",
-    pc_presup_disp:   "BUDGET DISPONIBILE",
-    pc_target_comp:   "Target Acquisti",
-    pc_target_mo:     "Target Manodopera",
-    // Tab report
-    rpt_financiero:   "📊 Risultato Finanziario",
-    rpt_operativo:    "⚙ Risultato Operativo",
-    rpt_comercial:    "🛒 Risultato Commerciale",
-  }
-};
-
-let LANG = 'es';
-
-function t(key) {
-  return (TRANSLATIONS[LANG] && TRANSLATIONS[LANG][key]) || TRANSLATIONS['es'][key] || key;
-}
-
-// Mapa de elementos del DOM con su clave de traducción
-const LANG_MAP = [
-  // Nav tabs (nav-group-btn)
-  // Module titles via data-i18n
-  { id: 'jobs_mod_title',   text: 'jobs_title' },
-  { id: 'jobs_mod_sub',     text: 'jobs_sub' },
-  { id: 'pt_mod_title',     text: 'pt_title' },
-  { id: 'pt_mod_sub',       text: 'pt_sub' },
-  { id: 'cpo_mod_title',    text: 'cpo_title' },
-  { id: 'mrpt_mod_title',   text: 'mrpt_title' },
-  { id: 'fx_mod_title',     text: 'fx_title' },
-];
-
-function applyLang() {
-  // Sidebar titles / subtitles using data-i18n
-  document.querySelectorAll('[data-i18n]').forEach(el => {
-    el.textContent = t(el.dataset.i18n);
-  });
-  // Buttons by data-i18n-btn
-  document.querySelectorAll('[data-i18n-btn]').forEach(el => {
-    el.textContent = t(el.dataset.i18nBtn);
-  });
-  // Placeholders
-  document.querySelectorAll('[data-i18n-ph]').forEach(el => {
-    el.placeholder = t(el.dataset.i18nPh);
-  });
-  // Translate report tabs
-  const tabMap = {
-    'rpt-tab-fin':  'rpt_financiero',
-    'rpt-tab-op':   'rpt_operativo',
-    'rpt-tab-com':  'rpt_comercial',
-    'mrpt-tab-fin': 'rpt_financiero',
-    'mrpt-tab-op':  'rpt_operativo',
-    'mrpt-tab-com': 'rpt_comercial',
-  };
-  Object.entries(tabMap).forEach(([id, key])=>{
-    const el = document.getElementById(id);
-    if(el) el.textContent = t(key);
-  });
-  // Highlight active lang button
-  ['es','en','it'].forEach(l => {
-    const btn = document.getElementById('lb-'+l);
-    if (btn) btn.classList.toggle('active', l === LANG);
-  });
-}
-
-async function setLang(lang) {
-  LANG = lang;
-  applyLang();
-  try {
-    await fetch('/api/me/lang', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({lang})
-    });
-  } catch(e) { console.warn('Could not persist lang:', e); }
-}
-
-async function initLang() {
-  try {
-    const d = await fetch('/api/me/lang').then(r=>r.json());
-    LANG = d.lang || 'es';
-  } catch(e) { LANG = 'es'; }
-  applyLang();
-}
 
 
 
@@ -6101,7 +5555,7 @@ function renderAdminUsers(d) {
     return `<button onclick="adminSelectUser('${esc(uname)}')" id="admin-pill-${esc(uname)}"
       class="btn" style="font-size:12px;padding:6px 18px;margin:3px;border-radius:20px;
         background:rgba(0,0,0,.055);border:1px solid var(--border);color:var(--text)">
-      ${isAdmin?'👑':'👤'} ${esc(uname)}${isCurrent?' ✓':''}
+      ${esc(uname)}${isAdmin?' (admin)':''}${isCurrent?' (tú)':''}
     </button>`;
   }).join('');
 
@@ -6899,7 +6353,7 @@ function awardJobRow(idx, customer='', desc='') {
   return `<div id="award-job-${idx}" style="background:rgba(0,0,0,.045);border-radius:8px;padding:12px;border:1px solid var(--border)">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
       <span style="font-size:11px;font-weight:700;color:var(--muted)">JOB ${idx+1}</span>
-      ${!isFirst?`<button onclick="awardRemoveJob(${idx})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:14px">✕</button>`:''}
+      ${!isFirst?`<button onclick="awardRemoveJob(${idx})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:14px">Eliminar</button>`:''}
     </div>
     ${typeSelector}
     <div class="fr">
@@ -7116,7 +6570,6 @@ document.addEventListener('click', ()=>{
   document.querySelectorAll('.nav-dropdown').forEach(d=>d.style.display='');
 });
 document.addEventListener('DOMContentLoaded', () => {
-  initLang();
   initPerms();
   loadJobs();
   loadRates();
@@ -7277,8 +6730,8 @@ async function svLoadFiles(sv_number) {
           <div class="fi-mt">${fmtSz(f.size)} · ${f.modified}</div>
         </div>
         <div style="display:flex;gap:4px">
-          <a class="fi-dl" href="/api/sv/${sv_number}/files/${encodeURIComponent(f.name)}" download title="Descargar">⬇</a>
-          <button class="fi-del" onclick="svDelFile('${sv_number}','${esc(f.name)}')">✕</button>
+          <a class="fi-dl" href="/api/sv/${sv_number}/files/${encodeURIComponent(f.name)}" download title="Descargar">Descargar</a>
+          <button class="fi-del" onclick="svDelFile('${sv_number}','${esc(f.name)}')">Eliminar</button>
         </div>
       </div>`).join('');
   } catch(e) { toast('Error cargando archivos','er'); }
@@ -7350,10 +6803,10 @@ async function loadAdminUsersList() {
           <div style="font-size:10px;color:var(--muted)">${u.role==='admin'?'Administrador':'Consulta'} · ${u.active?'Activo':'Inactivo'}</div>
         </div>
         <div style="display:flex;gap:6px">
-          <button onclick="changePassword('${esc(u.username)}')" class="btn btn-s" style="font-size:10px;padding:4px 8px">🔑 Password</button>
+          <button onclick="changePassword('${esc(u.username)}')" class="btn btn-s" style="font-size:10px;padding:4px 8px">Password</button>
           ${!u.is_admin_user?`
-          <button onclick="toggleUser('${esc(u.username)}','${u.active}')" class="btn ${u.active?'btn-s':'btn-p'}" style="font-size:10px;padding:4px 8px">${u.active?'⏸ Desactivar':'▶ Activar'}</button>
-          <button onclick="deleteUser('${esc(u.username)}')" class="btn btn-d" style="font-size:10px;padding:4px 8px">✕</button>`:''}
+          <button onclick="toggleUser('${esc(u.username)}','${u.active}')" class="btn ${u.active?'btn-s':'btn-p'}" style="font-size:10px;padding:4px 8px">${u.active?'Desactivar':'Activar'}</button>
+          <button onclick="deleteUser('${esc(u.username)}')" class="btn btn-d" style="font-size:10px;padding:4px 8px">Eliminar</button>`:''}
         </div>
       </div>`).join('');
   } catch(e) {}
@@ -7528,7 +6981,7 @@ function reqRenderTable(){
         </select>
       </td>
       <td id="req-stock-${esc(it.part_number)}" style="font-size:11px;color:var(--muted)">—</td>
-      <td><button class="fi-del" onclick="reqDeleteItem('${it.id}')">🗑</button></td>
+      <td><button class="fi-del" onclick="reqDeleteItem('${it.id}')">Eliminar</button></td>
     </tr>`).join('');
 }
 
@@ -7602,7 +7055,7 @@ function stockRender() {
   const display = rows.slice(0, stockVisibleCount);
   const moreRow = rows.length>stockVisibleCount?`<tr><td colspan="10" style="text-align:center;padding:12px">
     <span style="font-size:11px;color:var(--muted)">Mostrando ${display.length} de ${rows.length}</span>
-    <button onclick="stockLoadMore()" class="btn-reload" style="font-size:11px;padding:5px 14px;margin-left:10px">↓ Cargar más (+100)</button>
+    <button onclick="stockLoadMore()" class="btn-reload" style="font-size:11px;padding:5px 14px;margin-left:10px">Cargar más (+100)</button>
     <button onclick="stockShowAll()" class="btn-reload" style="font-size:11px;padding:5px 14px;margin-left:6px">Ver todos</button>
   </td></tr>`:'';
   document.getElementById('stk-tb').innerHTML = display.map(r=>`
@@ -7657,7 +7110,7 @@ function stockSearch(q) {
   if(!matches.length){res.style.display='none';return;}
   res.style.display='';
   res.innerHTML = matches.map(r=>`
-    <div onclick="selectStockItem('${r.id}')" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center;transition:background .15s" onmouseenter="this.style.background='rgba(0,0,0,.05)'" onmouseleave="this.style.background=''">
+    <div onclick="selectStockItem('${r.id}')" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center;transition:background .15s">
       <div style="flex:1">
         <div style="font-family:'DM Mono',monospace;color:var(--gold);font-size:12px">${esc(r.part_number)}</div>
         <div style="font-size:11px;color:var(--muted2)">${esc(r.manufacturer)} · ${esc(r.description||'')}${r.label_code?' · 🏷 '+esc(r.label_code):''}</div>
@@ -7803,7 +7256,7 @@ function raSearch(q) {
   if(!matches.length){res.style.display='none';return;}
   res.style.display='';
   res.innerHTML=matches.map(r=>`
-    <div onclick="raSelectItem('${r.id}')" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center" onmouseenter="this.style.background='rgba(0,0,0,.05)'" onmouseleave="this.style.background=''">
+    <div onclick="raSelectItem('${r.id}')" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center">
       <div style="flex:1">
         <div style="font-family:'DM Mono',monospace;color:var(--gold);font-size:12px">${esc(r.part_number)}</div>
         <div style="font-size:11px;color:var(--muted2)">${esc(r.manufacturer)} · ${esc(r.description||'')}${r.label_code?' · 🏷 '+esc(r.label_code):''}</div>
@@ -7865,7 +7318,7 @@ function renderRaItems(){
       <div style="color:var(--muted2)">${esc(i.job)}</div>
       <div style="color:var(--text)">${i.quantity} u.</div>
       <div style="color:var(--green);font-weight:700">${fmt(i.total_cost)}</div>
-      <button onclick="raItems.splice(${idx},1);renderRaItems();if(!raItems.length)document.getElementById('btn-ra-save').disabled=true;" style="background:none;border:none;color:var(--red);cursor:pointer">✕</button>
+      <button onclick="raItems.splice(${idx},1);renderRaItems();if(!raItems.length)document.getElementById('btn-ra-save').disabled=true;" style="background:none;border:none;color:var(--red);cursor:pointer">Eliminar</button>
     </div>`).join('');
   document.getElementById('ra-order-total').textContent=total.toLocaleString('en-US',{minimumFractionDigits:2});
 }
@@ -7930,7 +7383,7 @@ function recoveryRender() {
       <td style="font-family:'DM Mono',monospace;color:var(--gold);font-size:11px">${esc(r.job||'')}</td>
       <td style="text-align:right;font-weight:700;color:var(--red)">${fmt(r.total_value)}</td>
       <td style="color:var(--muted);font-size:11px">${(r.created_at||'').slice(0,10)}</td>
-      <td>${isAdm?`<button onclick="deleteRecovery('${r.id}')" class="fi-del" style="font-size:11px">✕</button>`:''}</td>
+      <td>${isAdm?`<button onclick="deleteRecovery('${r.id}')" class="fi-del" style="font-size:11px">Eliminar</button>`:''}</td>
     </tr>`).join('');
   document.getElementById('rcv-count').textContent=`${rows.length} recuperaciones`;
   document.getElementById('rcv-total').textContent=`Total: ${fmt(total)}`;
@@ -7994,7 +7447,7 @@ stockRender = function() {
       <td style="color:var(--muted)">${esc(r.section||'')}</td>
       <td style="color:var(--muted)">${esc(r.box||'')}</td>
       <td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted2)">${esc(r.recovery_job||'')}</td>
-      ${isAdm?`<td onclick="event.stopPropagation()"><button onclick="deleteStockItem('${r.id}')" class="fi-del" style="font-size:11px">✕</button></td>`:'<td></td>'}
+      ${isAdm?`<td onclick="event.stopPropagation()"><button onclick="deleteStockItem('${r.id}')" class="fi-del" style="font-size:11px">Eliminar</button></td>`:'<td></td>'}
     </tr>`).join('');
   document.getElementById('stk-count').textContent=`${rows.length} materiales`;
   document.getElementById('stk-total').textContent=`Valor total: $${total.toLocaleString('en-US',{minimumFractionDigits:2})}`;
@@ -8019,8 +7472,8 @@ loadReassign = async function() {
         <td style="color:var(--muted2)">${(o.items||[]).length} items</td>
         <td style="text-align:right;font-weight:700;color:var(--green)">${fmt(total)}</td>
         <td>
-          <button onclick="printReassignOrder('${esc(o.order_number)}')" class="btn-reload" style="font-size:10px;padding:3px 8px">🖨 PDF</button>
-          ${isAdm?`<button onclick="deleteReassignOrder('${esc(o.order_number)}')" class="fi-del" style="font-size:11px;margin-left:4px">✕</button>`:''}
+          <button onclick="printReassignOrder('${esc(o.order_number)}')" class="btn-reload" style="font-size:10px;padding:3px 8px">PDF</button>
+          ${isAdm?`<button onclick="deleteReassignOrder('${esc(o.order_number)}')" class="fi-del" style="font-size:11px;margin-left:4px">Eliminar</button>`:''}
         </td>
       </tr>`;
     }).join('');
@@ -8109,8 +7562,8 @@ async function provLoadFiles(clave) {
         <span class="fi-ic">${fileIco(f.name)}</span>
         <div class="fi-inf"><div class="fi-nm">${esc(f.name)}</div><div class="fi-mt">${fmtSz(f.size)} · ${f.modified}</div></div>
         <div style="display:flex;gap:4px">
-          <a class="fi-dl" href="/api/proveedores/${clave}/files/${encodeURIComponent(f.name)}" download>⬇</a>
-          <button class="fi-del" onclick="provDelFile(${clave},'${esc(f.name)}')">✕</button>
+          <a class="fi-dl" href="/api/proveedores/${clave}/files/${encodeURIComponent(f.name)}" download>Descargar</a>
+          <button class="fi-del" onclick="provDelFile(${clave},'${esc(f.name)}')">Eliminar</button>
         </div>
       </div>`).join('');
   } catch(e){}
@@ -8181,7 +7634,7 @@ async function provLoadPanelFiles(clave) {
       <div class="fitem">
         <span class="fi-ic">${fileIco(f.name)}</span>
         <div class="fi-inf"><div class="fi-nm">${esc(f.name)}</div></div>
-        <a class="fi-dl" href="/api/proveedores/${clave}/files/${encodeURIComponent(f.name)}" download>⬇</a>
+        <a class="fi-dl" href="/api/proveedores/${clave}/files/${encodeURIComponent(f.name)}" download>Descargar</a>
       </div>`).join('') : '<div style="font-size:11px;color:var(--muted);padding:6px 0">Sin documentos</div>';
   }catch(e){}
 }
@@ -8441,8 +7894,7 @@ async function gpoSearchSupplier(q) {
     res.style.display='';
     res.innerHTML = list.map((p,i)=>`
       <div class="gpo-sup-item" data-idx="${i}"
-        style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center"
-        onmouseenter="this.style.background='rgba(0,0,0,.05)'" onmouseleave="this.style.background=''">
+        style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center">
         <div style="flex:1">
           <div style="font-weight:700;font-size:12px">${esc(p.nombre||'')}</div>
           <div style="font-size:10px;color:var(--muted)">RFC: ${esc(p.rfc||'')} · ${esc(p.moneda||'MXN')}</div>
@@ -8580,8 +8032,7 @@ async function gpoSearchItem(q) {
   res.style.display='';
   res.innerHTML = all.map((r,i)=>`
     <div class="gpo-item-row" data-idx="${i}"
-      style="padding:7px 12px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center"
-      onmouseenter="this.style.background='rgba(0,0,0,.05)'" onmouseleave="this.style.background=''">
+      style="padding:7px 12px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center">
       <div style="flex:1">
         <div style="font-size:10px;color:var(--muted);text-transform:uppercase">${esc(r._tipo)}</div>
         <div style="font-family:'DM Mono',monospace;color:var(--gold);font-size:12px">${esc(r.part_number||'')} <span style="color:var(--muted);font-size:10px">${esc(r.code||'')}</span></div>
@@ -8733,7 +8184,7 @@ function gpoRenderItems() {
       <td style="text-align:right;font-weight:700;color:var(--green)">${fmt(i.total)}</td>
       <td style="font-family:'DM Mono',monospace;font-size:10px;color:var(--gold)">${esc(i.job||'—')}</td>
       <td style="color:var(--muted);font-size:10px">${esc(i.notes||'')}</td>
-      <td><button onclick="gpoRemoveItem(${idx})" style="background:none;border:none;color:var(--red);cursor:pointer">✕</button></td>
+      <td><button onclick="gpoRemoveItem(${idx})" style="background:none;border:none;color:var(--red);cursor:pointer">Eliminar</button></td>
     </tr>`).join('');
   document.getElementById('gpo-subtotal').textContent = fmt(total);
   document.getElementById('gpo-items-list').style.display = gpoItems.length?'':'none';
@@ -8959,8 +8410,7 @@ async function pcSearch(q) {
   res.style.display='';
   res.innerHTML = all.map((r,i) => `
     <div class="pc-res-item" data-idx="${i}"
-      style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border)"
-      onmouseenter="this.style.background='rgba(0,0,0,.05)'" onmouseleave="this.style.background=''">
+      style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border)">
       <div style="font-family:'DM Mono',monospace;font-weight:700;color:var(--gold)">${esc(r.label)}</div>
       <div style="font-size:10px;color:var(--muted)">${r.type} · ${esc(r.customer)} · ${r.jobs.length} jobs</div>
     </div>`).join('');
@@ -9302,13 +8752,12 @@ async function pcLoadSavedList() {
     const el = document.getElementById('pc-saved-list');
     if(!records.length){el.textContent='—';return;}
     el.innerHTML = records.map(r=>`
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;border-bottom:1px solid var(--border);cursor:pointer"
-        onmouseenter="this.style.background='rgba(0,0,0,.045)'" onmouseleave="this.style.background=''">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;border-bottom:1px solid var(--border);cursor:pointer">
         <div onclick="pcLoadConfig('${esc(r.ptsv)}')" style="flex:1">
           <div style="font-family:'DM Mono',monospace;font-size:12px;color:var(--gold)">${esc(r.ptsv)}</div>
           <div style="font-size:10px;color:var(--muted)">${(r.jobs||[]).length} jobs · ${(r.created_at||'').slice(0,10)}</div>
         </div>
-        <button onclick="pcDeleteConfig('${esc(r.id)}')" class="fi-del" style="font-size:10px">✕</button>
+        <button onclick="pcDeleteConfig('${esc(r.id)}')" class="fi-del" style="font-size:10px">Eliminar</button>
       </div>`).join('');
   }catch(e){}
 }
@@ -9382,7 +8831,7 @@ function ingresoRender() {
         '<span style="color:var(--green)">✓ Completo</span>':
         `<span style="color:var(--amber)">Parcial</span>`}</td>
       ${idx===0&&isAdm?`<td rowspan="${r.items.length}" style="vertical-align:top;padding-top:8px">
-        <button onclick="deleteIngreso('${esc(r.id)}')" class="fi-del" style="font-size:11px" title="Eliminar ingreso">✕</button>
+        <button onclick="deleteIngreso('${esc(r.id)}')" class="fi-del" style="font-size:11px" title="Eliminar ingreso">Eliminar ingreso</button>
       </td>`:(idx===0&&!isAdm?'<td></td>':'')}
     </tr>`)
   ).join('');
@@ -9443,7 +8892,7 @@ async function imLoadFromPDF(inp) {
         <td><input type="number" min="0" step="0.01" value="${row.unit_cost||0}" oninput="imCalcTotal()" style="${inpS};width:90px;text-align:right;color:var(--gold);font-family:'DM Mono',monospace"></td>
         <td><select style="${inpS};width:110px;color:var(--gold);font-family:'DM Mono',monospace">${jobSel}</select></td>
         <td><input type="text" placeholder="Notas" style="${inpS};width:120px;color:var(--muted2)"></td>
-        <td><button onclick="this.closest('tr').remove();imCalcTotal()" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:14px">✕</button></td>`;
+        <td><button onclick="this.closest('tr').remove();imCalcTotal()" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:14px">Eliminar</button></td>`;
       tb.appendChild(tr);
     }
 
@@ -9505,7 +8954,7 @@ async function imImportXL(inp) {
         <td><input type="number" min="0" step="0.01" value="${row.unit_cost||0}" oninput="imCalcTotal()" style="${inpS};width:90px;text-align:right;color:var(--gold);font-family:'DM Mono',monospace"></td>
         <td><select style="${inpS};width:110px;color:var(--gold);font-family:'DM Mono',monospace">${jobSel}</select></td>
         <td><input type="text" placeholder="Notas" style="${inpS};width:120px;color:var(--muted2)"></td>
-        <td><button onclick="this.closest('tr').remove();imCalcTotal()" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:14px">✕</button></td>`;
+        <td><button onclick="this.closest('tr').remove();imCalcTotal()" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:14px">Eliminar</button></td>`;
       tb.appendChild(tr);
       added++;
     }
@@ -9541,7 +8990,7 @@ function imAddRow() {
     <td><input type="text" placeholder="Notas"
       style="width:120px;background:var(--inp);border:1px solid var(--border);border-radius:4px;color:var(--muted2);padding:5px 7px;font-size:11px"></td>
     <td><button onclick="this.closest('tr').remove();imCalcTotal()"
-      style="background:none;border:none;color:var(--red);cursor:pointer;font-size:14px">✕</button></td>`;
+      style="background:none;border:none;color:var(--red);cursor:pointer;font-size:14px">Eliminar</button></td>`;
   document.getElementById('im-items-tb').appendChild(row);
 }
 
@@ -9826,7 +9275,7 @@ function apartadosRender() {
       <td style="text-align:right;font-weight:700;font-size:15px;color:${totalFiltered>0?'var(--green)':'var(--red)'}">${totalFiltered}</td>
       <td>${jobBadges}</td>
       <td style="text-align:right;white-space:nowrap" onclick="event.stopPropagation()">
-        ${isAdm?`<button onclick="aptDeletePart('${esc(r.part_number)}')" class="fi-del" title="Eliminar No. Parte completo" style="font-size:11px">✕ Parte</button>`:''}
+        ${isAdm?`<button onclick="aptDeletePart('${esc(r.part_number)}')" class="fi-del" title="Eliminar No. Parte completo" style="font-size:11px">Eliminar Parte</button>`:''}
       </td>
     </tr>
     <tr id="${detailId}" style="display:none;background:rgba(0,0,0,.03)">
@@ -9850,8 +9299,8 @@ function apartadosRender() {
               <td style="padding:7px 16px;font-size:10px;color:var(--muted)">${(j.ingresos||[]).length} ingreso(s)</td>
               ${isAdm?`<td style="padding:7px 16px;text-align:right;white-space:nowrap">
                 <button onclick="aptEditQty('${esc(r.part_number)}','${esc(j.job||'')}',${j.quantity||0},${j.unit_cost||0})"
-                  class="btn-reload" style="font-size:10px;padding:2px 8px;margin-right:4px" title="Corregir cantidad">✏ Qty</button>
-                <button onclick="aptDeleteJob('${esc(r.part_number)}','${esc(j.job||'')}')" class="fi-del" title="Eliminar este Job del apartado" style="font-size:10px;padding:2px 7px">✕ Job</button>
+                  class="btn-reload" style="font-size:10px;padding:2px 8px;margin-right:4px" title="Corregir cantidad">Editar Qty</button>
+                <button onclick="aptDeleteJob('${esc(r.part_number)}','${esc(j.job||'')}')" class="fi-del" title="Eliminar este Job del apartado" style="font-size:10px;padding:2px 7px">Eliminar Job</button>
               </td>`:''}
             </tr>`).join('')}
           </tbody>
@@ -9989,9 +9438,9 @@ function salidaRender() {
       <td style="text-align:right;font-family:'DM Mono',monospace">${fmt(it.unit_cost)}</td>
       ${idx===0?`<td rowspan="${r.items.length}" style="vertical-align:top;padding-top:8px">${statusBadge(r.status)}</td>`:''}
       ${idx===0?`<td rowspan="${r.items.length}" style="vertical-align:top;padding-top:4px;white-space:nowrap">
-        ${r.status==='Pendiente'?`<button onclick="salidaSurtir('${esc(r.id)}')" class="btn-reload" style="font-size:10px;padding:4px 10px;background:rgba(72,199,142,.15);color:var(--green);border:1px solid var(--green)">⚡ Surtir</button> `:''}
-        <button onclick="window.open('/api/salida/${esc(r.id)}/pdf','_blank')" class="btn-reload" style="font-size:10px;padding:4px 10px">🖨 PDF</button>
-        ${isAdm?`<button onclick="salidaEliminar('${esc(r.id)}')" class="fi-del" style="font-size:11px;margin-left:2px">✕</button>`:''}
+        ${r.status==='Pendiente'?`<button onclick="salidaSurtir('${esc(r.id)}')" class="btn-reload" style="font-size:10px;padding:4px 10px;background:rgba(72,199,142,.15);color:var(--green);border:1px solid var(--green)">Surtir</button> `:''}
+        <button onclick="window.open('/api/salida/${esc(r.id)}/pdf','_blank')" class="btn-reload" style="font-size:10px;padding:4px 10px">PDF</button>
+        ${isAdm?`<button onclick="salidaEliminar('${esc(r.id)}')" class="fi-del" style="font-size:11px;margin-left:2px">Eliminar</button>`:''}
       </td>`:''}
     </tr>`)
   ).join('');
@@ -10458,7 +9907,7 @@ function pcAddTimingRow(data={}) {
       value="${data.pct_facturacion||data.pct_fact||''}" placeholder="%"
       style="${inpS};width:55px;text-align:right;color:var(--gold)"></td>
     <td><button onclick="this.closest('tr').remove();pcUpdateTimingCalcs()"
-      style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px">✕</button></td>`;
+      style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px">Eliminar</button></td>`;
   tb.appendChild(tr);
 }
 
@@ -10737,7 +10186,7 @@ function pcAddPuntoRow(data={}) {
       </select>
     </td>
     <td><button onclick="this.closest('tr').remove();pcUpdatePuntosSummary()"
-      style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px">✕</button></td>`;
+      style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px">Eliminar</button></td>`;
   tb.appendChild(tr);
   pcUpdatePuntosSummary();
 }
@@ -10809,7 +10258,7 @@ function pcAddCambioRow(data={}) {
       </select>
     </td>
     <td><button onclick="this.closest('tr').remove()"
-      style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px">✕</button></td>`;
+      style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px">Eliminar</button></td>`;
   tb.appendChild(tr);
 }
 
@@ -10959,7 +10408,7 @@ function pcAddPersonaRow(data={}) {
     <div style="flex:0 0 80px;padding:0 14px;box-sizing:border-box;text-align:right;font-family:'DM Mono',monospace" id="${rowId}-rate">—</div>
     <div style="flex:0 0 90px;padding:0 14px;box-sizing:border-box;text-align:right;font-family:'DM Mono',monospace;font-weight:700" id="${rowId}-hours">0</div>
     <div style="flex:0 0 100px;padding:0 14px;box-sizing:border-box;text-align:right;font-family:'DM Mono',monospace;font-weight:700;color:var(--gold);border-right:2px solid var(--border)" id="${rowId}-amount">$0.00</div>
-    <div style="flex:0 0 32px;text-align:center"><button onclick="pcRemovePersonaRow('${rowId}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px">✕</button></div>
+    <div style="flex:0 0 32px;text-align:center"><button onclick="pcRemovePersonaRow('${rowId}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px">Eliminar</button></div>
   `;
   fxBody.appendChild(fxRow);
 
@@ -11173,7 +10622,7 @@ function viaRender() {
       <td style="text-align:right;font-weight:700;color:var(--gold);font-family:'DM Mono',monospace">${fmt(r.valor_usd)}</td>
       <td style="font-family:'DM Mono',monospace;color:var(--gold);font-size:11px">${esc(r.job||'—')}</td>
       <td style="color:var(--muted2);font-size:11px">${esc(r.notas||'')}</td>
-      <td>${isAdm?`<button onclick="viaDelete('${esc(r.id)}')" class="fi-del" style="font-size:11px">✕</button>`:''}</td>
+      <td>${isAdm?`<button onclick="viaDelete('${esc(r.id)}')" class="fi-del" style="font-size:11px">Eliminar</button>`:''}</td>
     </tr>`).join('');
   const cnt = document.getElementById('via-count');
   if(cnt) cnt.textContent = `${rows.length} registros · ${fmt(totalUSD)} USD`;
@@ -11306,7 +10755,7 @@ function gvRender() {
       <td style="text-align:right;font-weight:700;color:var(--gold);font-family:'DM Mono',monospace">${fmt(r.valor_usd)}</td>
       <td style="font-family:'DM Mono',monospace;color:var(--gold);font-size:11px">${esc(r.job||'—')}</td>
       <td style="color:var(--muted2);font-size:11px">${esc(r.notas||'')}</td>
-      <td>${isAdm?`<button onclick="gvDelete('${esc(r.id)}')" class="fi-del" style="font-size:11px">✕</button>`:''}</td>
+      <td>${isAdm?`<button onclick="gvDelete('${esc(r.id)}')" class="fi-del" style="font-size:11px">Eliminar</button>`:''}</td>
     </tr>`).join('');
   const cnt = document.getElementById('gv-count');
   if(cnt) cnt.textContent=`${rows.length} registros · ${fmt(totalUSD)} USD`;
@@ -11410,7 +10859,7 @@ function envRender() {
             <input type="file" accept="image/*,.pdf" style="display:none"
               onchange="envUploadPod('${esc(r.id)}',this)">
           </label>`}</td>
-      <td>${isAdm?`<button onclick="envDelete('${esc(r.id)}')" class="fi-del" style="font-size:11px">✕</button>`:''}</td>
+      <td>${isAdm?`<button onclick="envDelete('${esc(r.id)}')" class="fi-del" style="font-size:11px">Eliminar</button>`:''}</td>
     </tr>`).join('');
   const cnt = document.getElementById('env-count');
   if(cnt) cnt.textContent=`${rows.length} envíos · ${fmt(totalUSD)} USD`;
@@ -11618,10 +11067,10 @@ function gpoModShowPO(rec) {
     // Emitida — cancelar or nueva version
     btns.innerHTML = `
       <button onclick="gpoModCancelarDirecto()" class="btn" style="background:rgba(200,16,46,.12);border:1px solid var(--red);color:var(--red);font-size:12px;padding:10px 20px">
-        🚫 Cancelar Orden<br><span style="font-size:10px;opacity:.7">Establece todos los items en $0.00</span>
+        Cancelar Orden<br><span style="font-size:10px;opacity:.7">Establece todos los items en $0.00</span>
       </button>
       <button onclick="gpoModSelectTipo('nueva_version')" class="btn" style="background:rgba(255,193,7,.12);border:1px solid var(--gold);color:var(--gold);font-size:12px;padding:10px 20px">
-        🔄 Nueva Versión<br><span style="font-size:10px;opacity:.7">Modificar items, precios o cantidades</span>
+        Nueva Versión<br><span style="font-size:10px;opacity:.7">Modificar items, precios o cantidades</span>
       </button>`;
   }
 }
@@ -11743,7 +11192,7 @@ function gpoModPopulateItems(items) {
         ${fmt((it.quantity||0)*(it.unit_price||it.price||0))}
       </td>
       <td><button onclick="this.closest('tr').remove();gpoModRecalc()"
-        style="background:none;border:none;color:var(--muted);cursor:pointer">✕</button></td>
+        style="background:none;border:none;color:var(--muted);cursor:pointer">Eliminar</button></td>
     </tr>`).join('');
   gpoModRecalc();
 }
@@ -11760,7 +11209,7 @@ function gpoModAddItem() {
     <td><input type="number" min="0" step="1" value="1" oninput="gpoModRecalc()" style="${inpS};text-align:right;color:var(--amber)"></td>
     <td><input type="number" min="0" step="0.01" value="0" oninput="gpoModRecalc()" style="${inpS};text-align:right;color:var(--gold)"></td>
     <td class="gpo-mod-row-total" style="text-align:right;font-family:'DM Mono',monospace;font-size:11px;color:var(--gold)">$0.00</td>
-    <td><button onclick="this.closest('tr').remove();gpoModRecalc()" style="background:none;border:none;color:var(--muted);cursor:pointer">✕</button></td>`;
+    <td><button onclick="this.closest('tr').remove();gpoModRecalc()" style="background:none;border:none;color:var(--muted);cursor:pointer">Eliminar</button></td>`;
   tbody.appendChild(tr);
 }
 
@@ -11933,7 +11382,7 @@ function backupRenderRecipients(list) {
   el.innerHTML = list.map((email,i) => `
     <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:rgba(0,0,0,.045);border:1px solid var(--border);border-radius:6px">
       <span style="font-size:12px;font-family:'DM Mono',monospace;color:var(--text)">${esc(email)}</span>
-      <button onclick="backupRemoveEmail(${i})" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px">✕</button>
+      <button onclick="backupRemoveEmail(${i})" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px">Eliminar</button>
     </div>`).join('');
 }
 
@@ -12582,10 +12031,10 @@ function recRender() {
       <td style="font-family:'DM Mono',monospace">${esc(r.cpo||'—')}</td>
       <td>${esc(r.factura||'—')}</td>
       <td>${esc(r.fecha||'—')}</td>
-      <td><button class="fi-del" style="font-size:13px" title="Ver PDF" onclick="window.open('/api/recepciones/${encodeURIComponent(r.rec_number)}/pdf','_blank')">📄</button></td>
-      <td><button class="fi-del" style="font-size:13px" title="Editar" onclick="recOpenEdit('${esc(r.rec_number)}')">✎</button></td>
+      <td><button class="fi-del" style="font-size:13px" title="Ver PDF" onclick="window.open('/api/recepciones/${encodeURIComponent(r.rec_number)}/pdf','_blank')">Ver PDF</button></td>
+      <td><button class="fi-del" style="font-size:13px" title="Editar" onclick="recOpenEdit('${esc(r.rec_number)}')">Editar</button></td>
       <td>${(r.cfdi&&r.cfdi.uuid)
-        ? `<button class="fi-del" style="font-size:13px" title="Ver XML del CFDI (UUID ${esc(r.cfdi.uuid)})" onclick="window.open('/api/procesar-compra/cfdi/${encodeURIComponent(r.cfdi.uuid)}/xml','_blank')">🧾</button>`
+        ? `<button class="fi-del" style="font-size:13px" title="Ver XML del CFDI (UUID ${esc(r.cfdi.uuid)})" onclick="window.open('/api/procesar-compra/cfdi/${encodeURIComponent(r.cfdi.uuid)}/xml','_blank')">Ver XML</button>`
         : '<span style="color:var(--muted);font-size:10px">—</span>'}</td>
     </tr>`).join('');
   document.getElementById('rec-count').textContent = `${rows.length} de ${recData.length} registros`;
@@ -12877,8 +12326,7 @@ async function recBuscarProveedorDirecta(val) {
     const d = await fetch(`/api/proveedores?q=${encodeURIComponent(q)}`).then(r=>r.json());
     box.innerHTML = (d.records||[]).slice(0,8).map(p => `
       <div onclick='recSelProveedorDirecta(${JSON.stringify(p).replace(/'/g,"&apos;")})'
-        style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:4px;cursor:pointer;font-size:11px"
-        onmouseenter="this.style.background='rgba(0,0,0,.045)'" onmouseleave="this.style.background=''">
+        style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:4px;cursor:pointer;font-size:11px">
         <b>${esc(p.nombre)}</b> · ${esc(p.rfc||'—')}
       </div>`).join('') || '<div style="font-size:11px;color:var(--muted)">Sin resultados</div>';
   } catch(e) { /* silencioso */ }
@@ -13110,9 +12558,9 @@ function purRender() {
       <td style="text-align:right;font-family:'DM Mono',monospace">${fmt(r.monto)}</td>
       <td>${esc(r.fecha||'—')}</td>
       <td style="color:var(--muted2)">${esc(r.usuario||'—')}</td>
-      <td><button class="fi-del" style="font-size:13px" title="Ver PDF" onclick="window.open('/api/procesar-compra/${encodeURIComponent(r.pur_number)}/pdf','_blank')">📄</button></td>
+      <td><button class="fi-del" style="font-size:13px" title="Ver PDF" onclick="window.open('/api/procesar-compra/${encodeURIComponent(r.pur_number)}/pdf','_blank')">Ver PDF</button></td>
       <td>${(r.cfdi&&r.cfdi.uuid)
-        ? `<button class="fi-del" style="font-size:13px" title="Ver XML del CFDI (UUID ${esc(r.cfdi.uuid)})" onclick="window.open('/api/procesar-compra/cfdi/${encodeURIComponent(r.cfdi.uuid)}/xml','_blank')">🧾</button>`
+        ? `<button class="fi-del" style="font-size:13px" title="Ver XML del CFDI (UUID ${esc(r.cfdi.uuid)})" onclick="window.open('/api/procesar-compra/cfdi/${encodeURIComponent(r.cfdi.uuid)}/xml','_blank')">Ver XML</button>`
         : '<span style="color:var(--muted);font-size:10px">—</span>'}</td>
     </tr>`).join('');
   document.getElementById('pur-count').textContent = `${rows.length} de ${purData.length} registros`;
@@ -13335,7 +12783,7 @@ function cppRender() {
       <td>${pagado
         ? '<span style="font-size:10px;color:var(--green);font-weight:700">✓ Pagado</span>'
         : '<span style="font-size:10px;color:var(--amber)">Pendiente</span>'}</td>
-      <td><button class="fi-del" style="font-size:13px" title="Ver PDF" onclick="window.open('/api/cpp/${encodeURIComponent(r.cpp_number)}/pdf','_blank')">📄</button></td>
+      <td><button class="fi-del" style="font-size:13px" title="Ver PDF" onclick="window.open('/api/cpp/${encodeURIComponent(r.cpp_number)}/pdf','_blank')">Ver PDF</button></td>
     </tr>`;
   }).join('');
   document.getElementById('cpp-count').textContent = `${rows.length} de ${cppData.length} registros`;
@@ -13419,8 +12867,8 @@ function osRender(){
       <td>${osEstatusBadge(r.estatus)}</td>
       <td style="font-size:11px">${esc(r.tipo_servicio||'—')}</td>
       <td>
-        <button class="fi-del" title="PDF" onclick="event.stopPropagation();window.open('/api/ordenes-servicio/${encodeURIComponent(r.id)}/pdf','_blank')">📄</button>
-        <button class="fi-del" title="Eliminar" onclick="event.stopPropagation();osQuickDelete('${r.id}')">🗑</button>
+        <button class="fi-del" title="PDF" onclick="event.stopPropagation();window.open('/api/ordenes-servicio/${encodeURIComponent(r.id)}/pdf','_blank')">PDF</button>
+        <button class="fi-del" title="Eliminar" onclick="event.stopPropagation();osQuickDelete('${r.id}')">Eliminar</button>
       </td>
     </tr>`).join('');
 }
@@ -13495,7 +12943,7 @@ function osRenderPersonalPicker(){
     (!q || (p.nombre||'').toLowerCase().includes(q)));
   if(!activos.length){ box.innerHTML='<div style="font-size:11px;color:var(--muted);padding:6px">Sin resultados.</div>'; return; }
   box.innerHTML=activos.slice(0,30).map(p=>`
-    <div onclick="osAddPersonal('${p.tid}')" style="cursor:pointer;padding:6px 8px;border-radius:6px;font-size:12px" onmouseover="this.style.background='var(--sb)'" onmouseout="this.style.background=''">
+    <div onclick="osAddPersonal('${p.tid}')" style="cursor:pointer;padding:6px 8px;border-radius:6px;font-size:12px">
       + ${esc(p.nombre)} <span style="color:var(--muted2);font-size:10px">${esc(p.puesto||'')}</span>
     </div>`).join('');
 }
@@ -13532,7 +12980,7 @@ function osRenderAlcances(){
     <div style="display:flex;align-items:center;gap:8px;background:var(--sb);border-radius:var(--r);padding:7px 10px">
       <input type="checkbox" ${a.cumplido?'checked':''} onchange="osDraft.alcances[${i}].cumplido=this.checked" style="width:16px;height:16px">
       <span style="flex:1;font-size:12px;${a.cumplido?'text-decoration:line-through;color:var(--muted)':''}">${esc(a.texto)}</span>
-      <button class="fi-del" onclick="osDraft.alcances.splice(${i},1);osRenderAlcances()">🗑</button>
+      <button class="fi-del" onclick="osDraft.alcances.splice(${i},1);osRenderAlcances()">Eliminar</button>
     </div>`).join('');
 }
 
@@ -13552,7 +13000,7 @@ function osRenderMateriales(){
     <div style="display:flex;align-items:center;gap:8px;background:var(--sb);border-radius:var(--r);padding:7px 10px">
       <span style="flex:1;font-size:12px">${esc(m.concepto)}</span>
       <span style="font-family:'DM Mono',monospace;font-size:12px;color:var(--gold)">x${m.cantidad}</span>
-      <button class="fi-del" onclick="osDraft.materiales.splice(${i},1);osRenderMateriales()">🗑</button>
+      <button class="fi-del" onclick="osDraft.materiales.splice(${i},1);osRenderMateriales()">Eliminar</button>
     </div>`).join('');
 }
 
@@ -13583,7 +13031,7 @@ function osRenderPuntos(){
         <div style="font-size:12px;${p.resuelto?'text-decoration:line-through;color:var(--muted)':''}">${esc(p.texto)}</div>
         <div style="font-size:10px;color:var(--muted2)">${esc(p.autor||'')} · ${p.fecha?new Date(p.fecha).toLocaleDateString('es-MX'):''}</div>
       </div>
-      <button class="fi-del" onclick="osDraft.puntos_abiertos.splice(${i},1);osRenderPuntos()">🗑</button>
+      <button class="fi-del" onclick="osDraft.puntos_abiertos.splice(${i},1);osRenderPuntos()">Eliminar</button>
     </div>`).join('');
 }
 
@@ -13601,7 +13049,7 @@ function osRenderEnvios(){
   box.innerHTML=osDraft.envios.map((e,i)=>`
     <div style="display:flex;align-items:center;gap:8px;background:var(--sb);border-radius:var(--r);padding:7px 10px">
       <div style="flex:1;font-size:12px">${esc(e.descripcion)} <span style="color:var(--muted2);font-size:10px">${esc(e.fecha||'')}${e.guia?' · Guía: '+esc(e.guia):''}</span></div>
-      <button class="fi-del" onclick="osDraft.envios.splice(${i},1);osRenderEnvios()">🗑</button>
+      <button class="fi-del" onclick="osDraft.envios.splice(${i},1);osRenderEnvios()">Eliminar</button>
     </div>`).join('');
 }
 function osAddCompra(){
@@ -13619,7 +13067,7 @@ function osRenderCompras(){
     <div style="display:flex;align-items:center;gap:8px;background:var(--sb);border-radius:var(--r);padding:7px 10px">
       <div style="flex:1;font-size:12px">${esc(c.descripcion)} <span style="color:var(--muted2);font-size:10px">${esc(c.fecha||'')}</span></div>
       <span style="font-family:'DM Mono',monospace;font-size:12px;color:var(--gold)">$${(c.monto||0).toLocaleString('en-US',{minimumFractionDigits:2})}</span>
-      <button class="fi-del" onclick="osDraft.compras.splice(${i},1);osRenderCompras()">🗑</button>
+      <button class="fi-del" onclick="osDraft.compras.splice(${i},1);osRenderCompras()">Eliminar</button>
     </div>`).join('');
 }
 
@@ -13812,7 +13260,7 @@ function taRender(){
       <td style="font-family:'DM Mono',monospace;font-size:11px">${esc(r.fecha_vencimiento||'—')}</td>
       <td style="font-family:'DM Mono',monospace;font-size:12px;font-weight:600;color:${(r.avance_pct||0)>=100?'#1f8a4c':'var(--amber)'}">${r.avance_pct||0}%</td>
       <td>${taEstatusBadge(r.estatus)}</td>
-      <td><button class="fi-del" title="Eliminar" onclick="event.stopPropagation();taQuickDelete('${r.id}')">🗑</button></td>
+      <td><button class="fi-del" title="Eliminar" onclick="event.stopPropagation();taQuickDelete('${r.id}')">Eliminar</button></td>
     </tr>`;
   }).join('');
 }
@@ -13825,7 +13273,7 @@ function taRenderPersonalPicker(){
     (!q || (p.nombre||'').toLowerCase().includes(q)));
   if(!activos.length){ box.innerHTML='<div style="font-size:11px;color:var(--muted);padding:6px">Sin resultados.</div>'; return; }
   box.innerHTML=activos.slice(0,30).map(p=>`
-    <div onclick="taAddPersonal('${p.tid}')" style="cursor:pointer;padding:6px 8px;border-radius:6px;font-size:12px" onmouseover="this.style.background='var(--sb)'" onmouseout="this.style.background=''">
+    <div onclick="taAddPersonal('${p.tid}')" style="cursor:pointer;padding:6px 8px;border-radius:6px;font-size:12px">
       + ${esc(p.nombre)} <span style="color:var(--muted2);font-size:10px">${esc(p.puesto||'')}</span>
     </div>`).join('');
 }
@@ -13862,7 +13310,7 @@ function taRenderAlcances(){
     <div style="display:flex;align-items:center;gap:8px;background:var(--sb);border-radius:var(--r);padding:7px 10px">
       <input type="checkbox" ${a.cumplido?'checked':''} onchange="taDraft.alcances[${i}].cumplido=this.checked" style="width:16px;height:16px">
       <span style="flex:1;font-size:12px;${a.cumplido?'text-decoration:line-through;color:var(--muted)':''}">${esc(a.texto)}</span>
-      <button class="fi-del" onclick="taDraft.alcances.splice(${i},1);taRenderAlcances()">🗑</button>
+      <button class="fi-del" onclick="taDraft.alcances.splice(${i},1);taRenderAlcances()">Eliminar</button>
     </div>`).join('');
 }
 
@@ -13881,7 +13329,7 @@ function taRenderEntregables(){
     <div style="display:flex;align-items:center;gap:8px;background:var(--sb);border-radius:var(--r);padding:7px 10px">
       <input type="checkbox" ${a.entregado?'checked':''} onchange="taDraft.entregables[${i}].entregado=this.checked" style="width:16px;height:16px">
       <span style="flex:1;font-size:12px;${a.entregado?'text-decoration:line-through;color:var(--muted)':''}">${esc(a.texto)}</span>
-      <button class="fi-del" onclick="taDraft.entregables.splice(${i},1);taRenderEntregables()">🗑</button>
+      <button class="fi-del" onclick="taDraft.entregables.splice(${i},1);taRenderEntregables()">Eliminar</button>
     </div>`).join('');
 }
 
@@ -13903,7 +13351,7 @@ function taRenderPuntos(){
         <div style="font-size:12px;${p.resuelto?'text-decoration:line-through;color:var(--muted)':''}">${esc(p.texto)}</div>
         <div style="font-size:10px;color:var(--muted2)">${esc(p.autor||'')} · ${p.fecha?new Date(p.fecha).toLocaleDateString('es-MX'):''}</div>
       </div>
-      <button class="fi-del" onclick="taDraft.puntos_abiertos.splice(${i},1);taRenderPuntos()">🗑</button>
+      <button class="fi-del" onclick="taDraft.puntos_abiertos.splice(${i},1);taRenderPuntos()">Eliminar</button>
     </div>`).join('');
 }
 
@@ -14042,8 +13490,8 @@ function cpcRender(){
       <td>${esc(r.fecha_vencimiento||'—')}</td>
       <td style="text-align:right;font-family:'DM Mono',monospace;font-weight:600">${cpcFmt(r.total)}</td>
       <td>${cpcEstatusBadge(r.estatus_efectivo)}</td>
-      <td><button class="fi-del" style="font-size:13px" title="Ver PDF" onclick="event.stopPropagation();window.open('/api/cpc/${encodeURIComponent(r.id)}/pdf?year=${r.year}','_blank')">📄</button></td>
-      <td><button class="fi-del" style="font-size:13px" title="Eliminar" onclick="event.stopPropagation();cpcQuickDelete('${r.id}',${r.year})">🗑</button></td>
+      <td><button class="fi-del" style="font-size:13px" title="Ver PDF" onclick="event.stopPropagation();window.open('/api/cpc/${encodeURIComponent(r.id)}/pdf?year=${r.year}','_blank')">Ver PDF</button></td>
+      <td><button class="fi-del" style="font-size:13px" title="Eliminar" onclick="event.stopPropagation();cpcQuickDelete('${r.id}',${r.year})">Eliminar</button></td>
     </tr>`).join('');
   document.getElementById('cpc-count').textContent=`${rows.length} de ${cpcRecords.length} registros`;
 
@@ -14432,7 +13880,7 @@ function pagosRender() {
       <td>${r.confirmado
         ? '<span style="font-size:10px;color:var(--green);font-weight:700">✓ Confirmado</span>'
         : `<button class="btn btn-s" style="font-size:10px;padding:5px 10px" onclick="pagoConfirmar('${esc(r.pago_number)}')">Confirmar Pago</button>`}</td>
-      <td><button class="fi-del" style="font-size:13px" title="Ver PDF" onclick="window.open('/api/pagos/${encodeURIComponent(r.pago_number)}/pdf','_blank')">📄</button></td>
+      <td><button class="fi-del" style="font-size:13px" title="Ver PDF" onclick="window.open('/api/pagos/${encodeURIComponent(r.pago_number)}/pdf','_blank')">Ver PDF</button></td>
     </tr>`).join('');
   document.getElementById('pag-count').textContent = `${rows.length} de ${pagosData.length} registros`;
 }
@@ -14522,7 +13970,7 @@ function esqRender() {
       <td style="text-align:right;font-family:'DM Mono',monospace">${pct(r.isr_retenido)}</td>
       <td style="text-align:right;font-family:'DM Mono',monospace">${pct(r.iva_retenido)}</td>
       <td style="text-align:right;font-family:'DM Mono',monospace">${pct(r.ieps)}</td>
-      <td><button class="fi-del" style="font-size:13px" title="Editar" onclick="esqOpenEdit('${esc(r.folio)}')">✎</button></td>
+      <td><button class="fi-del" style="font-size:13px" title="Editar" onclick="esqOpenEdit('${esc(r.folio)}')">Editar</button></td>
     </tr>`).join('');
   document.getElementById('esq-count').textContent = `${rows.length} de ${esqData.length} registros`;
 }
