@@ -7444,7 +7444,7 @@ async function runStkImport(){
     const d=await fetch('/api/stock/import',{method:'POST',body:fd}).then(r=>r.json());
     if(d.error){toast(d.error,'er');return;}
     const res=document.getElementById('stk-imp-result');
-    res.style.display='';res.textContent=`✓ ${d.imported} items importados · Total: ${d.total}`;
+    res.style.display='';res.textContent=(d.created!=null?`✓ ${d.imported} filas procesadas · ${d.updated} actualizados · ${d.created} nuevos · Total en stock: ${d.total}`:`✓ ${d.imported} items importados · Total: ${d.total}`);
     await loadStock();toast(d.imported+' materiales importados ✓','ok',5000);
   }catch(e){toast('Error: '+e.message,'er');}
   finally{btn.disabled=false;btn.textContent='Importar →';}

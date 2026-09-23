@@ -9352,14 +9352,20 @@ def api_import_stock():
         mode = request.form.get("mode","append")
         wb = openpyxl.load_workbook(io.BytesIO(f.read()), read_only=True, data_only=True)
         ws = wb.active
+        # Encabezados normalizados: sin acentos, mayúsculas, espacios colapsados,
+        # para que "DESCRIPCIÓN" / "Sección" / "Último costo" también se reconozcan.
+        import unicodedata
+        def _norm_hdr(v):
+            v = unicodedata.normalize("NFKD", str(v)).encode("ascii","ignore").decode()
+            return " ".join(v.strip().upper().split())
         headers = {}
         for cell in list(ws.iter_rows(min_row=1,max_row=1))[0]:
             if cell.value:
-                headers[str(cell.value).strip().upper()] = cell.column-1
+                headers[_norm_hdr(cell.value)] = cell.column-1
         def col(*aliases):
             for a in aliases:
                 if a.upper() in headers: return headers[a.upper()]
-        return None
+            return None
         ci_mfr  = col("FABRICANTE","MANUFACTURER","MARCA")
         ci_pnum = col("NUMERO DE PARTE","PART NUMBER","PART_NUMBER","NO. PARTE")
         ci_desc = col("DESCRIPCION","DESCRIPTION","DESC")
@@ -9370,41 +9376,67 @@ def api_import_stock():
         ci_box  = col("CAJA","BOX")
         ci_rec  = col("RECUPERACION","RECOVERY","RECOVERY_JOB")
         ci_label = col("ETIQUETA","LABEL","QR","CODIGO DE BARRAS","BARCODE","COD. ETIQUETA")
-        imported = 0
+        missing = [n for n,c in (("FABRICANTE",ci_mfr),("NUMERO DE PARTE",ci_pnum),("EXISTENCIA",ci_qty)) if c is None]
+        if missing:
+            return jsonify({"error": "Faltan columnas requeridas en la primera fila de la hoja activa: " + ", ".join(missing)}), 400
+        def cell(row, ci):
+            if ci is None or ci >= len(row): return None
+            v = row[ci]
+            if v is None: return None
+            v = str(v).strip()
+            return v or None
+        imported = created = updated = 0
+        now = datetime.datetime.now()
+        # Prefijo único por corrida: antes era f"STK-imp-{imported}", que en modo
+        # Acumular repetía IDs ya existentes (STK-imp-0, STK-imp-1, ...) de
+        # importaciones anteriores, y PUT/DELETE por id pegaban al artículo equivocado.
+        id_prefix = f"STK-imp-{now.strftime('%Y%m%d%H%M%S')}"
         with lock:
             records = stock_load() if mode=="append" else []
             for row in ws.iter_rows(min_row=2, values_only=True):
-                pnum = str(row[ci_pnum]).strip().upper() if ci_pnum is not None and row[ci_pnum] else ""
-                if not pnum or pnum in ("NONE","","#N/A"): continue
-                mfr = str(row[ci_mfr]).strip().upper() if ci_mfr is not None and row[ci_mfr] else ""
+                pnum = (cell(row, ci_pnum) or "").upper()
+                if not pnum or pnum in ("NONE","#N/A"): continue
+                mfr = (cell(row, ci_mfr) or "").upper()
                 existing = next((r for r in records
                     if r.get("part_number","")==pnum and r.get("manufacturer","")==mfr), None)
-                try: cost = float(row[ci_cost]) if ci_cost is not None and row[ci_cost] else 0.0
+                try: cost = float(cell(row, ci_cost)) if cell(row, ci_cost) else 0.0
                 except: cost = 0.0
-                try: qty = int(float(str(row[ci_qty]))) if ci_qty is not None and row[ci_qty] else 0
+                try: qty = int(float(cell(row, ci_qty))) if cell(row, ci_qty) else 0
                 except: qty = 0
-                label = str(row[ci_label]).strip().upper() if ci_label is not None and row[ci_label] else ""
+                label   = (cell(row, ci_label) or "").upper()
+                desc    = cell(row, ci_desc) or ""
+                unit    = cell(row, ci_unit) or ""
+                section = cell(row, ci_sec) or ""
+                box     = cell(row, ci_box) or ""
                 if existing:
                     existing["quantity"]   = qty
                     existing["last_cost"]  = cost
-                    if label: existing["label_code"] = label
-                    existing["updated_at"] = datetime.datetime.now().isoformat()
+                    if label:   existing["label_code"] = label
+                    # Ubicación/unidad del conteo físico: se actualizan solo si vienen
+                    # en el archivo, para no borrar datos con celdas vacías.
+                    if unit:    existing["unit"]    = unit
+                    if section: existing["section"] = section
+                    if box:     existing["box"]     = box
+                    if desc and not existing.get("description"): existing["description"] = desc
+                    existing["updated_at"] = now.isoformat()
+                    updated += 1
                 else:
                     records.append({
-                        "id":           f"STK-imp-{imported}",
+                        "id":           f"{id_prefix}-{created}",
                         "manufacturer": mfr, "part_number": pnum,
-                        "description":  str(row[ci_desc]).strip() if ci_desc is not None and row[ci_desc] else "",
+                        "description":  desc,
                         "last_cost": cost, "quantity": qty,
-                        "unit":         str(row[ci_unit]).strip() if ci_unit is not None and row[ci_unit] else "Pieza",
-                        "section":      str(row[ci_sec]).strip() if ci_sec is not None and row[ci_sec] else "",
-                        "box":          str(row[ci_box]).strip() if ci_box is not None and row[ci_box] else "",
-                        "recovery_job": str(row[ci_rec]).strip() if ci_rec is not None and row[ci_rec] else "",
+                        "unit":         unit or "Pieza",
+                        "section":      section,
+                        "box":          box,
+                        "recovery_job": cell(row, ci_rec) or "",
                         "label_code":   label,
-                        "created_at":   datetime.datetime.now().isoformat(),
+                        "created_at":   now.isoformat(),
                     })
+                    created += 1
                 imported += 1
             stock_save(records)
-        return jsonify({"ok":True,"imported":imported,"total":len(records)})
+        return jsonify({"ok":True,"imported":imported,"created":created,"updated":updated,"total":len(records)})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -10906,7 +10938,7 @@ def api_import_pt():
         def col(*aliases):
             for a in aliases:
                 if a.lower() in headers: return headers[a.lower()]
-        return None
+            return None
         ci_pt   = col("pt_number", "pt number", "pt")
         ci_cust = col("customer", "cliente")
         ci_prog = col("customer_program", "customer program", "programa")
