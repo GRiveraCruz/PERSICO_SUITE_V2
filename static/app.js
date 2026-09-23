@@ -3272,7 +3272,7 @@ function clExportPDF(){
 // ════════════════════════════════════════════════════════
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){
-    const mods=['mo-jnew','mo-jimp','mo-rnew','mo-rimp','mo-rcopy','mo-qnew','mo-qimp','mo-pt-new','mo-pt-confirm','mo-sv-new','mo-stk-imp','mo-stk-ing','mo-reassign','mo-prov-new','mo-prov-imp','mo-cat-new','mo-cat-imp','mo-cpo-new','mo-cpo-imp','mo-po-imp','mo-wh-imp','mo-ivp-imp','mo-fx-imp','mo-refuse','mo-award','mo-tnew','mo-timp','mo-vac-add','mo-asis-link','mo-pm-new','mo-sal-unlock','mo-ctrl-export','mo-sal-import-excel','mo-sal-export-excel','mo-isr-import','mo-np-periodo','mo-np-generar','mo-np-recibo','mo-cpc-new','mo-os','mo-ta','mo-cap-os-detalle','mo-req-upload','mo-req-stock'];
+    const mods=['mo-jnew','mo-jimp','mo-rnew','mo-rimp','mo-rcopy','mo-qnew','mo-qimp','mo-pt-new','mo-pt-confirm','mo-sv-new','mo-stk-imp','mo-stk-ing','mo-reassign','mo-prov-new','mo-prov-imp','mo-cat-new','mo-cat-imp','mo-cpo-new','mo-cpo-imp','mo-po-imp','mo-wh-imp','mo-ivp-imp','mo-fx-imp','mo-refuse','mo-award','mo-tnew','mo-timp','mo-vac-add','mo-asis-link','mo-pm-new','mo-sal-unlock','mo-ctrl-export','mo-sal-import-excel','mo-sal-export-excel','mo-isr-import','mo-np-periodo','mo-np-generar','mo-np-recibo','mo-cpc-new','mo-os','mo-ta','mo-cap-os-detalle','mo-req-upload','mo-req-stock','mo-csg-imp','mo-csg-ing','mo-csg-reassign'];
     const open=mods.find(m=>document.getElementById(m).classList.contains('on'));
     if(open)closeMo(open); else if(_currentPanel)closePanel();
   }
@@ -3957,7 +3957,7 @@ function ivpExportCSV(){ window.open('/api/ivp/export/'+ivpActiveYear,'_blank');
 // ════════════════════════════════════════════════════════
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){
-    const mods=['mo-jnew','mo-jimp','mo-rnew','mo-rimp','mo-rcopy','mo-qnew','mo-qimp','mo-pt-new','mo-pt-confirm','mo-sv-new','mo-stk-imp','mo-stk-ing','mo-reassign','mo-prov-new','mo-prov-imp','mo-cat-new','mo-cat-imp','mo-cpo-new','mo-cpo-imp','mo-po-imp','mo-wh-imp','mo-ivp-imp','mo-fx-imp','mo-refuse','mo-award','mo-tnew','mo-timp','mo-vac-add','mo-asis-link','mo-pm-new','mo-sal-unlock','mo-ctrl-export','mo-sal-import-excel','mo-sal-export-excel','mo-isr-import','mo-np-periodo','mo-np-generar','mo-np-recibo','mo-cpc-new','mo-os','mo-ta','mo-cap-os-detalle','mo-req-upload','mo-req-stock'];
+    const mods=['mo-jnew','mo-jimp','mo-rnew','mo-rimp','mo-rcopy','mo-qnew','mo-qimp','mo-pt-new','mo-pt-confirm','mo-sv-new','mo-stk-imp','mo-stk-ing','mo-reassign','mo-prov-new','mo-prov-imp','mo-cat-new','mo-cat-imp','mo-cpo-new','mo-cpo-imp','mo-po-imp','mo-wh-imp','mo-ivp-imp','mo-fx-imp','mo-refuse','mo-award','mo-tnew','mo-timp','mo-vac-add','mo-asis-link','mo-pm-new','mo-sal-unlock','mo-ctrl-export','mo-sal-import-excel','mo-sal-export-excel','mo-isr-import','mo-np-periodo','mo-np-generar','mo-np-recibo','mo-cpc-new','mo-os','mo-ta','mo-cap-os-detalle','mo-req-upload','mo-req-stock','mo-csg-imp','mo-csg-ing','mo-csg-reassign'];
     const open=mods.find(m=>document.getElementById(m).classList.contains('on'));
     if(open)closeMo(open); else if(_currentPanel)closePanel();
   }
@@ -4282,7 +4282,9 @@ async function rptRenderOperativo(d) {
   const targetComp  = jobCfg?.target_compras ?? null;
   const targetMO    = jobCfg?.target_mo ?? null;
   const base        = presDisp !== null ? presDisp : d.revenue;
-  const grossOp     = base - d.amount_wh - d.purchasing_total - (d.reassign_total||0) + (d.recovery_total||0);
+  // Mismo criterio que el Multi-Job Report, el PDF del Job Report y el Dashboard PM:
+  // también se restan los servicios (viáticos + gastos de viaje + envíos).
+  const grossOp     = base - d.amount_wh - d.purchasing_total - (d.svc_total||0) - (d.reassign_total||0) + (d.recovery_total||0);
   const gmPctOp     = base > 0 ? (grossOp / base * 100) : 0;
 
   // First render full report (workers + PO tables + cost bar)
@@ -5638,6 +5640,12 @@ function adminSelectUser(uname) {
         <label for="admin-sal-${uname}" style="font-size:12px;font-weight:600;cursor:pointer">🔒 Puede ver/editar Salarios (Sueldos y Salarios)</label>
         ${isAdmin?'<span style="font-size:10px;color:var(--muted);margin-left:auto">Los administradores siempre pueden</span>':''}
       </div>
+      ${role==='PROJECT MANAGER'?`<div id="admin-pm-${esc(uname)}" style="background:rgba(0,0,0,.03);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:14px">
+        <div style="display:flex;align-items:center;margin-bottom:6px"><b style="font-size:12px">PM en los Jobs ligado a este usuario</b>
+          <button onclick="adminPreviewPM('${esc(uname)}')" class="btn-reload" style="margin-left:auto;font-size:10px">Ver su dashboard</button></div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px 14px">${(d.pm_names||[]).map(n=>`<label style="font-size:11px;display:flex;gap:5px;align-items:center;cursor:pointer">
+          <input type="checkbox" value="${esc(n)}" ${(info.pm_names||[]).includes(n)?'checked':''} onchange="adminSetPmNames('${esc(uname)}')">${esc(n)}</label>`).join('')||'<span style="font-size:11px;color:var(--muted)">Ningún Job tiene PM capturado</span>'}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:6px">Se puede marcar más de uno si el mismo PM está escrito distinto en algunos Jobs.</div></div>`:''}
       <table style="width:100%;border-collapse:collapse">
         <thead><tr>
           <th style="padding:4px 10px;text-align:left;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Módulo</th>
@@ -6620,9 +6628,91 @@ async function initHomeDashboard(){
     const me = await fetch('/api/me/perms').then(r=>r.json());
     if(me.role === 'GENERAL MANAGEMENT' || me.is_admin){
       await loadGMDashboard();
+    } else if(me.role === 'PROJECT MANAGER'){
+      await loadPMDashboard();
     }
   }catch(e){ /* si falla, se queda la bienvenida de siempre — nunca romper el inicio */ }
 }
+
+// ── Dashboard PROJECT MANAGER: Jobs Open/WIP del PM ligado al usuario.
+//    previewUser: solo admin (vista previa desde Config → Administrador).
+async function loadPMDashboard(previewUser){
+  const wrap = document.getElementById('home-dashboard');
+  const dflt = document.getElementById('home-default');
+  if(!wrap) return;
+  dflt.style.display='none'; wrap.style.display='block';
+  wrap.innerHTML = '<div style="text-align:center;padding:60px;color:var(--muted)">Calculando resultados…</div>';
+  try{
+    const d = await fetch('/api/dashboard/project-manager'+(previewUser?`?user=${encodeURIComponent(previewUser)}`:'')).then(r=>r.json());
+    if(d.error){ wrap.innerHTML = `<div style="text-align:center;padding:60px;color:var(--red)">⚠ ${esc(d.error)}</div>`; return; }
+    renderPMDashboard(d, previewUser);
+  }catch(e){
+    wrap.innerHTML = '<div style="text-align:center;padding:60px;color:var(--red)">⚠ No se pudo cargar el dashboard. <button onclick="loadPMDashboard()" class="btn-reload" style="margin-left:8px">Reintentar</button></div>';
+  }
+}
+
+function renderPMDashboard(d, previewUser){
+  const wrap = document.getElementById('home-dashboard');
+  const card = 'background:#fff;border-radius:14px;box-shadow:0 4px 18px rgba(0,0,0,.08);padding:18px 20px;min-width:0';
+  const fdate = v => v ? new Date(v.slice(0,10)+'T12:00:00').toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}) : '<span style="color:var(--muted)">—</span>';
+  const money = v => (v<0?'-':'')+'$'+Math.abs(Number(v||0)).toLocaleString('en-US',{maximumFractionDigits:0});
+  const hora = d.now ? new Date(d.now).toLocaleString('es-MX',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '';
+  const head = `<div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+      <div><div style="font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted)">Dashboard · Project Manager${previewUser?' · vista previa':''}</div>
+      <div style="font-size:22px;font-weight:700">${esc((d.pm_names||[]).join(' / ')||d.user)}</div></div>
+      <div style="margin-left:auto;font-size:11px;color:var(--muted)">Calculado: ${esc(hora)}
+      <button onclick="loadPMDashboard(${previewUser?`'${esc(previewUser)}'`:''})" class="btn-reload" style="margin-left:8px;font-size:10px">Actualizar</button></div></div>`;
+  if(!d.linked){
+    wrap.innerHTML = head + `<div style="${card};text-align:center;color:var(--muted);padding:40px">Tu usuario todavía no está ligado a un Project Manager de los Jobs.<br>Pide al administrador que lo ligue en <b>Config → Administrador</b>.</div>`;
+    return;
+  }
+  const jobs = d.jobs||[];
+  const vencidos = jobs.filter(j=>j.envio_vencido).length;
+  const sinCfg = jobs.filter(j=>j.internal_target==null).length;
+  const totRO = jobs.reduce((s,j)=>s+(j.resultado_operativo||0),0);
+  const totBase = jobs.reduce((s,j)=>s+(j.base||0),0);
+  const kpi = (lbl,val,clr,sub='') => `<div style="${card};flex:1;min-width:180px">
+      <div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted)">${lbl}</div>
+      <div style="font-size:30px;font-weight:800;color:${clr};margin-top:4px">${val}</div>${sub?`<div style="font-size:11px;color:var(--muted)">${sub}</div>`:''}</div>`;
+  const kpis = `<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px">
+      ${kpi('Jobs Open / WIP', jobs.length, 'var(--text)')}
+      ${kpi('Envío vencido', (vencidos?'⚠ ':'')+vencidos, vencidos?'var(--red)':'var(--green)', 'fecha de envío anterior a hoy')}
+      ${kpi('Internal Target', money(totBase), 'var(--text)', sinCfg?`${sinCfg} Job(s) sin configurar: se usa su revenue`:'suma de presupuestos disponibles')}
+      ${kpi('Resultado operativo', money(totRO), totRO<0?'var(--red)':'var(--green)', totBase?`${(totRO/totBase*100).toFixed(1)}% vs Internal Target`:'')}
+    </div>`;
+  const th = t => `<th style="padding:8px 10px;text-align:${t[1]||'left'};font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border)">${t[0]}</th>`;
+  const rows = jobs.map(j=>{
+    const ro = j.resultado_operativo;
+    const warn = j.envio_vencido ? `<span title="La fecha de envío ya pasó y el Job sigue ${esc(j.status)}" style="color:var(--red);font-size:15px;margin-right:4px">⚠</span>` : '';
+    return `<tr style="border-bottom:1px solid rgba(0,0,0,.05)">
+      <td style="padding:9px 10px;font-family:'DM Mono',monospace;color:var(--gold);font-weight:700">${esc(j.job_number)}</td>
+      <td style="padding:9px 10px">${esc(j.customer||'')}<div style="font-size:10px;color:var(--muted)">${esc(j.description||'')}</div></td>
+      <td style="padding:9px 10px"><span class="badge">${esc(j.status)}</span></td>
+      <td style="padding:9px 10px">${fdate(j.runoff_cliente)}</td>
+      <td style="padding:9px 10px;${j.envio_vencido?'color:var(--red);font-weight:700':''}" title="${esc(j.fecha_envio_origen?'Fuente: '+j.fecha_envio_origen:'')}">${warn}${fdate(j.fecha_envio)}</td>
+      <td style="padding:9px 10px;text-align:right">${j.internal_target!=null?`<b>${money(j.internal_target)}</b>`:`<span style="color:var(--amber)" title="Sin Configurar Proyecto: el resultado se calcula contra el revenue">Sin config.</span><div style="font-size:10px;color:var(--muted)">revenue ${money(j.base)}</div>`}
+        ${(j.target_compras||j.target_mo)?`<div style="font-size:10px;color:var(--muted)">${j.target_compras?'Compras '+money(j.target_compras):''}${j.target_compras&&j.target_mo?' · ':''}${j.target_mo?'M.O. '+money(j.target_mo):''}</div>`:''}</td>
+      <td style="padding:9px 10px;text-align:right;font-weight:700;color:${ro==null?'var(--muted)':(ro<0?'var(--red)':'var(--green)')}">${j.error?`<span title="${esc(j.error)}">error</span>`:money(ro)}
+        ${j.resultado_pct!=null&&Math.abs(j.resultado_pct)<1000?`<div style="font-size:10px;font-weight:400;color:var(--muted)">${j.resultado_pct}% vs target</div>`:''}</td>
+    </tr>`;}).join('');
+  wrap.innerHTML = head + kpis + `<div style="${card};overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr>
+      ${[['Job'],['Cliente / Descripción'],['Estatus'],['Run Off Cliente'],['Fecha de envío'],['Internal Target','right'],['Resultado operativo','right']].map(th).join('')}
+    </tr></thead><tbody>${rows||'<tr><td colspan="7" style="padding:30px;text-align:center;color:var(--muted)">Sin Jobs Open o WIP asignados</td></tr>'}</tbody></table>
+    <div style="font-size:10px;color:var(--muted);margin-top:10px">Resultado operativo = presupuesto disponible (o revenue) − mano de obra − compras − servicios (viáticos, gastos de viaje, envíos) − reasignaciones + recuperaciones, igual que el Job Report.</div></div>`;
+}
+
+// ── Admin: ligar usuario PROJECT MANAGER con el/los nombres de PM de los Jobs
+async function adminSetPmNames(uname){
+  const names = [...document.querySelectorAll(`#admin-pm-${CSS.escape(uname)} input:checked`)].map(i=>i.value);
+  try{
+    const r = await fetch('/api/admin/users/'+encodeURIComponent(uname),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({pm_names:names})}).then(r=>r.json());
+    if(r.error){ toast(r.error,'er'); return; }
+    if(_adminUsersData?.users?.[uname]) _adminUsersData.users[uname].pm_names = names;
+    toast(`${uname} ligado a: ${names.join(', ')||'ningún PM'}`,'ok',3000);
+  }catch(e){ toast('Error guardando la liga de PM','er'); }
+}
+function adminPreviewPM(uname){ switchMenu('home', null); loadPMDashboard(uname); }
 
 function fmtMoney(n){ return '$' + Number(n||0).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0}); }
 function fmtPct(n){ return (n>0?'+':'') + n.toFixed(0) + '%'; }
@@ -7242,7 +7332,7 @@ function reqRenderTable(){
     <tr>
       <td>${esc(it.brand||'—')}</td>
       <td style="font-family:'DM Mono',monospace;color:var(--gold)">${esc(it.part_number||'')}</td>
-      <td style="color:var(--muted2)">${esc(it.description||'')}</td>
+      <td style="color:var(--muted2)"><div title="${esc(it.description||'')}" style="max-width:min(420px,32vw);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(it.description||'')}</div></td>
       <td style="text-align:right">${it.quantity ?? 0}</td>
       <td>
         <select onchange="reqUpdateStatus('${it.id}',this.value)" style="font-size:11px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;background:var(--inp);color:var(--text)">
@@ -7283,20 +7373,90 @@ async function reqBuscarStock(){
     const r = await apiCall('POST','/requisiciones/buscar-stock',{items});
     if(r.error){ box.innerHTML = `<span style="color:var(--red)">${esc(r.error)}</span>`; return; }
     const colorFor = e => e==='Existencia total' ? '#1f8a4c' : (e==='Existencia parcial' ? 'var(--amber)' : 'var(--red)');
-    box.innerHTML = r.resultados.map(res=>`
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+    const badge = (txt, e) => `<span class="badge" style="background:${colorFor(e)}22;color:${colorFor(e)}">${esc(txt)}</span>`;
+    const conCsg = !!r.incluye_consignacion;
+    // ¿La consignación cambia el resultado? (Stock no alcanza, pero Stock + Consignación sí o mejora)
+    const ayudaCsg = res => conCsg && res.quantity_en_consignacion>0 && res.estatus!=='Existencia total';
+    const aviso = r.aviso ? `<div style="font-size:11px;color:var(--amber);padding:6px 0">${esc(r.aviso)}</div>` : '';
+    box.innerHTML = aviso + r.resultados.map(res=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
         <div>
           <div style="font-family:'DM Mono',monospace;font-size:12px;color:var(--gold)">${esc(res.part_number)}</div>
-          <div style="font-size:10px;color:var(--muted)">Requerido: ${res.quantity_requerida} · En Stock: ${res.quantity_en_stock}</div>
+          <div style="font-size:10px;color:var(--muted)">Requerido: ${res.quantity_requerida} · En Stock: ${res.quantity_en_stock}${conCsg?` · <span style="color:var(--amber)">En Consignación: ${res.quantity_en_consignacion}</span>`:''}</div>
         </div>
-        <span class="badge" style="background:${colorFor(res.estatus)}22;color:${colorFor(res.estatus)}">${esc(res.estatus)}</span>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+          ${badge('Stock: '+res.estatus, res.estatus)}
+          ${ayudaCsg(res)?badge('Con consignación: '+res.estatus_con_consignacion, res.estatus_con_consignacion):''}
+        </div>
       </div>`).join('');
+    reqRenderReasignar(r.resultados);
     // También reflejar el resultado directo en la columna "En Stock" de la tabla
     r.resultados.forEach(res=>{
       const cell = document.getElementById('req-stock-'+res.part_number);
-      if(cell) cell.innerHTML = `<span style="color:${colorFor(res.estatus)}">${esc(res.estatus)}</span>`;
+      if(!cell) return;
+      let html = `<span style="color:${colorFor(res.estatus)}">${esc(res.estatus)}</span>`;
+      if(conCsg && res.quantity_en_consignacion>0)
+        html += `<div style="font-size:10px;color:var(--amber)">+ Consig.: ${res.quantity_en_consignacion}${ayudaCsg(res)?` → ${esc(res.estatus_con_consignacion)}`:''}</div>`;
+      cell.innerHTML = html;
     });
   }catch(e){ box.innerHTML = 'Error: '+e; }
+}
+
+// ── Reasignar a este Job lo que sí hay en Stock (una orden RA nueva)
+function reqRenderReasignar(resultados){
+  const box = document.getElementById('req-stock-result');
+  const puede = USER_PERMS && (USER_PERMS.is_admin || ['create','full'].includes((USER_PERMS.permissions||{}).reassign));
+  // renglones con algo en Stock (reqItems y resultados vienen en el mismo orden)
+  const filas = resultados.map((res,i)=>({res, it:reqItems[i]})).filter(x=>x.it && x.res.quantity_en_stock>0 && x.it.status!=='Reasignado');
+  if(!filas.length || !reqCurrentJob) return;
+  if(!puede){ box.insertAdjacentHTML('beforeend','<div style="font-size:11px;color:var(--muted);margin-top:12px">Hay material en Stock, pero tu usuario no tiene permiso para crear reasignaciones.</div>'); return; }
+  box.insertAdjacentHTML('beforeend', `
+    <div id="req-ra-box" style="margin-top:16px;border:1px solid var(--border);border-radius:8px;padding:12px">
+      <div style="font-weight:700;font-size:12px;margin-bottom:8px">Generar reasignación al Job ${esc(reqCurrentJob)} con lo que hay en Stock</div>
+      ${filas.map(({res,it})=>{ const max=Math.floor(Math.min(res.quantity_requerida,res.quantity_en_stock)); return `
+      <label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:11px">
+        <input type="checkbox" class="req-ra-chk" data-id="${esc(it.id)}" checked>
+        <span style="flex:1;font-family:'DM Mono',monospace;color:var(--gold)">${esc(it.part_number)}</span>
+        <span style="color:var(--muted)">pide ${res.quantity_requerida} · Stock ${res.quantity_en_stock}</span>
+        <input type="number" class="req-ra-qty" data-id="${esc(it.id)}" min="1" max="${max}" value="${max}" style="width:70px;padding:3px 6px;font-size:11px">
+      </label>`;}).join('')}
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+        <span style="font-size:10px;color:var(--muted)">Se crea una orden RA nueva y se descuenta de Stock. Los renglones cubiertos completos quedan como "Reasignado".</span>
+        <button class="btn btn-p" id="btn-req-ra" onclick="reqGenerarReasignacion()" style="font-size:11px;white-space:nowrap;flex-shrink:0;margin-left:10px">Reasignar</button>
+      </div>
+    </div>`);
+}
+
+async function reqGenerarReasignacion(){
+  const items = [...document.querySelectorAll('.req-ra-chk:checked')].map(chk=>{
+    const it = reqItems.find(x=>String(x.id)===chk.dataset.id);
+    const inp = document.querySelector(`.req-ra-qty[data-id="${CSS.escape(chk.dataset.id)}"]`);
+    const q = Math.min(parseInt(inp.value)||0, parseInt(inp.max)||0);
+    return it && q>0 ? {item_id:it.id, part_number:it.part_number, brand:it.brand||'', quantity:q} : null;
+  }).filter(Boolean);
+  if(!items.length){ toast('Selecciona al menos un material con cantidad','er'); return; }
+  if(!confirm(`¿Crear una orden de reasignación con ${items.length} material(es) para el Job ${reqCurrentJob}?`)) return;
+  const btn=document.getElementById('btn-req-ra'); btn.disabled=true; btn.textContent='Generando…';
+  try{
+    const resp = await fetch('/api/requisiciones/reasignar-stock',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({job:reqCurrentJob, items})});
+    const d = (resp.headers.get('content-type')||'').includes('json') ? await resp.json() : {error:`Error ${resp.status} del servidor`};
+    if(d.error){ toast(d.error,'er'); return; }
+    // Marcar "Reasignado" los renglones cuya cantidad pedida quedó cubierta completa
+    let completos=0, parciales=0;
+    for(const res of d.resultado||[]){
+      const it = reqItems.find(x=>x.id===res.item_id); if(!it) continue;
+      if(res.asignado >= (parseFloat(it.quantity)||0) && res.asignado>0){
+        const u = await apiCall('PUT','/requisiciones/'+it.id,{status:'Reasignado'});
+        if(!u.error){ it.status='Reasignado'; completos++; }
+      }
+      else if(res.asignado>0) parciales++;
+    }
+    closeMo('mo-req-stock');
+    reqRenderTable();
+    if(typeof loadStock==='function') loadStock();
+    toast(`Orden ${d.order_number} creada · $${Number(d.total||0).toLocaleString('en-US',{minimumFractionDigits:2})} · ${completos} renglón(es) Reasignado${parciales?` · ${parciales} parcial(es): siguen como estaban`:''}`,'ok',7000);
+  }catch(e){ toast('Error: '+e.message,'er'); }
+  finally{ btn.disabled=false; btn.textContent='Reasignar'; }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -7598,8 +7758,8 @@ function renderRaItems(){
 async function saveReassignOrder(){
   if(!raItems.length){toast('Agrega al menos un material','er');return;}
   const isNew = document.querySelector('input[name="ra-type"]:checked').value==='new';
-  const orderNum = isNew ? raNextNum : document.getElementById('ra-existing-num').value.trim().toUpperCase();
-  if(!orderNum){toast('Ingresa el número de orden','er');return;}
+  const orderNum = isNew ? '' : document.getElementById('ra-existing-num').value.trim().toUpperCase();  // nueva: el servidor asigna el folio
+  if(!isNew && !orderNum){toast('Ingresa el número de orden','er');return;}
   const btn=document.getElementById('btn-ra-save');btn.disabled=true;btn.textContent='Guardando…';
   try{
     const d=await fetch('/api/reassign',{method:'POST',headers:{'Content-Type':'application/json'},

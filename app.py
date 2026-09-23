@@ -478,6 +478,23 @@ def jobs_root(): return Path(JOBS_FOLDER)
 def job_folder(job_number): return jobs_root() / job_number
 def meta_path(job_number): return job_folder(job_number) / "job_info.json"
 
+def job_exists(job_number):
+    """¿Existe el Job? Con PostgreSQL los Jobs viven en la tabla `jobs` y su carpeta
+    en disco puede no existir (Railway no conserva el disco, y los Jobs migrados
+    nunca la tuvieron). Antes varias rutas preguntaban solo por la carpeta y
+    respondían "Job no encontrado" aunque el Job sí estaba en la base."""
+    if _orm and _orm.DB_ENABLED:
+        try:
+            s = _orm.get_session()
+            try:
+                if s.query(_orm.Job.id).filter(_orm.Job.job_number == job_number).first() is not None:
+                    return True
+            finally:
+                s.close()
+        except Exception as e:
+            print(f"[DB] Error verificando job {job_number}, revisando carpeta: {e}")
+    return job_folder(job_number).exists()
+
 def read_meta(job_number):
     if _orm and _orm.DB_ENABLED:
         try:
@@ -613,20 +630,32 @@ def scan_jobs():
     return result
 
 def next_main_index():
-    root = jobs_root()
-    if not root.exists(): return 100
+    """Siguiente índice principal de Job. Usa all_job_numbers() (carpetas + tabla
+    jobs) — antes solo contaba carpetas, así que con PostgreSQL y sin carpetas
+    podía reiniciar en 100 o repetir un número que ya existía en la base."""
     indices = []
-    for item in root.iterdir():
-        if item.is_dir() and JOB_RE.match(item.name):
-            try: indices.append(int(item.name.split("-")[0]))
-            except ValueError: pass
+    for jn in all_job_numbers():
+        try: indices.append(int(str(jn).split("-")[0]))
+        except ValueError: pass
     return max(indices) + 1 if indices else 100
 
 def all_job_numbers():
+    """Números de Job existentes: carpetas en disco + filas de la tabla jobs (con DB),
+    para que crear un Job detecte duplicados aunque no tenga carpeta."""
+    nums = set()
     root = jobs_root()
-    if not root.exists(): return set()
-    return {item.name for item in root.iterdir()
-            if item.is_dir() and JOB_RE.match(item.name)}
+    if root.exists():
+        nums = {item.name for item in root.iterdir() if item.is_dir() and JOB_RE.match(item.name)}
+    if _orm and _orm.DB_ENABLED:
+        try:
+            s = _orm.get_session()
+            try:
+                nums |= {r[0] for r in s.query(_orm.Job.job_number).all() if r[0]}
+            finally:
+                s.close()
+        except Exception as e:
+            print(f"[DB] Error listando job numbers: {e}")
+    return nums
 
 def extract_customer(full_addr):
     if not full_addr: return ""
@@ -983,7 +1012,7 @@ def api_update_job(job_number):
     try:
         data = request.json
         with lock:
-            if not job_folder(job_number).exists():
+            if not job_exists(job_number):
                 return jsonify({"error": "Job no encontrado"}), 404
             meta = read_meta(job_number)
             for k in ["customer","pm","description","product_group","product_subgroup",
@@ -5851,7 +5880,7 @@ def _build_report_data(job_number, rate_year, wh_year, po_year, *,
     formas terminan filtrando por job, la diferencia es si el filtro ocurre en
     SQL (un job) o en Python sobre un pool ya en memoria (muchos jobs a la vez).
     """
-    job_meta = read_meta(job_number) if job_folder(job_number).exists() else {}
+    job_meta = read_meta(job_number) if job_exists(job_number) else {}
 
     rates_raw = load_rates(rate_year)
     rate_map  = {normalize_name(r["employee"]): float(r["rate"])
@@ -6965,6 +6994,86 @@ def _year_of(record):
     v = (record or {}).get("created_at") or ""
     return v[:4] if len(v) >= 4 else None
 
+def _norm_pm(v):
+    import unicodedata
+    v = unicodedata.normalize("NFKD", str(v or "")).encode("ascii", "ignore").decode()
+    return " ".join(v.lower().split())
+
+PM_DASH_STATUS = ("OPEN", "WIP")
+
+@app.route("/api/dashboard/project-manager", methods=["GET"])
+def api_dashboard_project_manager():
+    """Dashboard de inicio para el perfil PROJECT MANAGER: Jobs Open/WIP cuyo
+    campo "pm" coincide con los nombres ligados al usuario (users[u]["pm_names"]).
+    El resultado operativo se calcula en el momento, con la misma fórmula que la
+    pestaña Operativo del Job Report:
+        base (presupuesto disponible de Configurar Proyecto, o revenue)
+        − mano de obra − compras − servicios − reasignaciones + recuperaciones.
+    Un admin puede ver el de cualquier usuario con ?user=<username>."""
+    me = session.get("user")
+    info = get_user_perms(me) if me else {}
+    target = me
+    if request.args.get("user") and is_admin():
+        target = request.args.get("user")
+    elif not (is_admin() or info.get("role") == "PROJECT MANAGER"):
+        return jsonify({"error": "Sin permiso"}), 403
+    try:
+        u = users_load().get(target, {})
+        names = u.get("pm_names") or []
+        out = {"user": target, "pm_names": names, "now": datetime.datetime.now().isoformat(timespec="minutes"),
+               "jobs": [], "linked": bool(names)}
+        if not names:
+            return jsonify(out)
+        wanted = {_norm_pm(n) for n in names}
+        jobs = [j for j in scan_jobs()
+                if _norm_pm(j.get("pm")) in wanted and (j.get("status") or "").strip().upper() in PM_DASH_STATUS]
+        cfg_by_job = {}
+        for cfg in projcfg_load():
+            for jc in cfg.get("jobs") or []:
+                cfg_by_job.setdefault((jc.get("job_number") or "").strip().upper(), jc)
+        today = datetime.date.today().isoformat()
+        pools_by_year = {}
+        def pools(y):
+            if y not in pools_by_year:     # una carga por año, compartida por todos los jobs de ese año
+                pools_by_year[y] = dict(
+                    wh_pool=wh_load(y), po_pool=po_load(y), fx_all=fx_load_all(),
+                    ra_pool=reassign_load(), rc_pool=recovery_load(),
+                    via_pool=_svc_load(VIATICOS_FILE), gv_pool=_svc_load(GASTOS_FILE), env_pool=_svc_load(ENVIOS_FILE),
+                    cra_pool=_consig.load("orders") if (_consig and CONSIG_EN_COSTO_JOB) else None,
+                    crc_pool=_consig.load("recovery") if (_consig and CONSIG_EN_COSTO_JOB) else None)
+            return pools_by_year[y]
+        for j in sorted(jobs, key=lambda x: x.get("job_number", "")):
+            jn = j["job_number"]
+            y = int(_year_of(j) or CURRENT_YEAR)
+            jc = cfg_by_job.get(jn.strip().upper(), {})
+            row = {"job_number": jn, "customer": j.get("customer", ""), "description": j.get("description", ""),
+                   "status": j.get("status", ""), "pm": j.get("pm", ""),
+                   "runoff_cliente": jc.get("runoff_cliente") or "",
+                   "fecha_envio": jc.get("fecha_envio") or j.get("ship_date") or "",
+                   "fecha_envio_origen": "Configurar Proyecto" if jc.get("fecha_envio") else ("Job" if j.get("ship_date") else "")}
+            row["envio_vencido"] = bool(row["fecha_envio"]) and row["fecha_envio"][:10] < today
+            _num = lambda v: float(v) if v not in (None, "") else None
+            # Targets de Configurar Proyecto (mismos que muestra el Job Report)
+            row["internal_target"] = _num(jc.get("presupuesto_disponible"))
+            row["target_compras"]  = _num(jc.get("target_compras"))
+            row["target_mo"]       = _num(jc.get("target_mo"))
+            try:
+                d = _build_report_data(jn, y, y, y, **pools(y))
+                pres = jc.get("presupuesto_disponible")
+                base = float(pres) if pres not in (None, "") else float(d.get("revenue") or 0)
+                ro = (base - d["amount_wh"] - d["purchasing_total"] - (d.get("svc_total") or 0)
+                      - (d.get("reassign_total") or 0) + (d.get("recovery_total") or 0))
+                row.update(base=round(base, 2), amount_wh=d["amount_wh"], purchasing_total=d["purchasing_total"],
+                           svc_total=d.get("svc_total") or 0,
+                           reassign_total=d.get("reassign_total") or 0, recovery_total=d.get("recovery_total") or 0,
+                           resultado_operativo=round(ro, 2), resultado_pct=round(ro / base * 100, 1) if base else None)
+            except Exception as e:
+                row["error"] = str(e)
+            out["jobs"].append(row)
+        return jsonify(out)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/api/dashboard/general-management", methods=["GET"])
 def api_dashboard_general_management():
     """Dashboard de inicio para el perfil GENERAL MANAGEMENT.
@@ -7290,11 +7399,9 @@ def api_pt_jobs(pt_number):
             return jsonify({"error": "PT no encontrado"}), 404
         jobs_info = []
         for jn in pt.get("jobs", []):
-            info_path = job_folder(jn) / "job_info.json"
-            if info_path.exists():
+            if job_exists(jn):
                 try:
-                    with open(info_path, "r", encoding="utf-8") as f:
-                        ji = json.load(f)
+                    ji = read_meta(jn)
                     jobs_info.append({"job_number": jn,
                                       "customer": ji.get("customer",""),
                                       "description": ji.get("description",""),
@@ -8136,7 +8243,11 @@ def api_admin_get_users():
             if uname not in users:
                 role = "admin" if uname == ADMIN_USER else "viewer"
                 users[uname] = {"role": role, "permissions": _default_perms(role)}
-    return jsonify({"users": users, "modules": MODULES,
+    try:
+        _pm_names = sorted({(j.get("pm") or "").strip() for j in scan_jobs()} - {""}, key=str.lower)
+    except Exception:
+        _pm_names = []
+    return jsonify({"users": users, "modules": MODULES, "pm_names": _pm_names,
                     "current_user": session.get("user"), "admin_user": ADMIN_USER})
 
 @app.route("/api/admin/users/<username>", methods=["PUT"])
@@ -8153,6 +8264,10 @@ def api_admin_update_user(username):
     users[username]["role"] = new_role
     if "puede_ver_salarios" in data:
         users[username]["puede_ver_salarios"] = bool(data["puede_ver_salarios"])
+    if "pm_names" in data:
+        # Nombres de PM (tal como aparecen en el campo "pm" de los Jobs) ligados a
+        # este usuario — alimentan su Dashboard de Project Manager.
+        users[username]["pm_names"] = [str(n).strip() for n in (data["pm_names"] or []) if str(n).strip()]
     if "permissions" in data:
         # Merge single-module update into existing permissions
         existing = users[username].get("permissions", _default_perms(new_role))
@@ -8290,11 +8405,9 @@ def api_get_sv_one(sv_number):
             return jsonify({"error": "SV no encontrado"}), 404
         jobs_info = []
         for jn in rec.get("jobs", []):
-            info_path = job_folder(jn) / "job_info.json"
-            if info_path.exists():
+            if job_exists(jn):
                 try:
-                    with open(info_path, "r", encoding="utf-8") as f:
-                        ji = json.load(f)
+                    ji = read_meta(jn)
                     jobs_info.append({"job_number": jn,
                                       "customer": ji.get("customer",""),
                                       "description": ji.get("description",""),
@@ -9261,7 +9374,15 @@ def reassign_save(records):
     _cache_set("reassign", records)
 
 def reassign_next_number():
+    """Asigna (consume) el siguiente folio RA. Solo se llama al GUARDAR una orden nueva."""
     return _doc_next_number("RA")
+
+def reassign_peek_number():
+    """Siguiente folio RA SIN consumirlo — lo que se muestra en pantalla antes de
+    guardar. Antes, GET /api/reassign llamaba a reassign_next_number() y cada
+    vez que alguien abría o filtraba la lista se gastaba un folio (huecos)."""
+    n = int(_doc_counter_load().get("RA", 0) or 0) + 1
+    return f"RA-{str(n).zfill(10)}"
 
 @app.route("/api/stock", methods=["GET"])
 def api_get_stock():
@@ -9496,55 +9617,68 @@ def api_get_reassign():
             orders = [o for o in orders if any(
                 i.get("job","").upper()==job for i in o.get("items",[]))]
         return jsonify({"orders": orders, "total": len(orders),
-                        "next_number": reassign_next_number()})
+                        "next_number": reassign_peek_number()})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+def _reassign_create_order(order_number, is_new, items):
+    """Crea una orden RA nueva (folio asignado aquí) o agrega items a una existente,
+    descontando Stock. Regresa (dict, http_status). Lo usan POST /api/reassign y
+    la reasignación desde Requisición de Compra. Llamar SIN tener tomado `lock`."""
+    with lock:
+        orders  = reassign_load()
+        records = stock_load()
+        if is_new:
+            # El folio lo asigna siempre el servidor al guardar (el que muestra la
+            # pantalla es solo una vista previa: si dos personas guardan a la vez,
+            # cada una recibe el suyo). Si el contador quedara atrás de una orden
+            # ya existente, se salta hasta el primer folio libre.
+            existentes = {o["order_number"] for o in orders}
+            order_number = reassign_next_number()
+            for _ in range(1000):
+                if order_number not in existentes: break
+                order_number = reassign_next_number()
+            else:
+                return {"error":"No se pudo asignar un folio RA libre"}, 500
+            order = {"order_number": order_number,
+                     "created_at": datetime.datetime.now().isoformat(), "items": []}
+            orders.append(order)
+        else:
+            order = next((o for o in orders if o["order_number"]==order_number), None)
+            if not order: return {"error":"Orden no encontrada"}, 404
+        for item in items:
+            pnum = str(item.get("part_number","")).strip().upper()
+            mfr  = str(item.get("manufacturer","")).strip().upper()
+            qty  = int(item.get("quantity",0))
+            cost = float(item.get("unit_cost",0))
+            stk  = next((r for r in records
+                if r.get("part_number","")==pnum and r.get("manufacturer","")==mfr), None)
+            if stk:
+                stk["quantity"]   = max(0, stk["quantity"] - qty)
+                stk["updated_at"] = datetime.datetime.now().isoformat()
+            order["items"].append({
+                "part_number": pnum, "manufacturer": mfr,
+                "description": str(item.get("description","")).strip(),
+                "label_code":  str(item.get("label_code") or (stk.get("label_code","") if stk else "")).strip().upper(),
+                "job":         str(item.get("job","")).strip().upper(),
+                "unit_cost":   cost, "quantity": qty,
+                "total_cost":  round(cost*qty, 2),
+                "added_at":    datetime.datetime.now().isoformat(),
+            })
+        order["updated_at"] = datetime.datetime.now().isoformat()
+        reassign_save(orders)
+        stock_save(records)
+    return {"ok":True,"order_number":order_number,"order":order}, 200
 
 @app.route("/api/reassign", methods=["POST"])
 def api_create_reassign():
     try:
         data = request.get_json()
-        order_number = str(data.get("order_number","")).strip().upper()
-        is_new = data.get("is_new", True)
         items  = data.get("items", [])
         if not items: return jsonify({"error":"Sin items"}), 400
-        with lock:
-            orders  = reassign_load()
-            records = stock_load()
-            if is_new:
-                if not order_number:
-                    order_number = reassign_next_number()
-                if any(o["order_number"]==order_number for o in orders):
-                    return jsonify({"error":f"{order_number} ya existe"}), 409
-                order = {"order_number": order_number,
-                         "created_at": datetime.datetime.now().isoformat(), "items": []}
-                orders.append(order)
-            else:
-                order = next((o for o in orders if o["order_number"]==order_number), None)
-                if not order: return jsonify({"error":"Orden no encontrada"}), 404
-            for item in items:
-                pnum = str(item.get("part_number","")).strip().upper()
-                mfr  = str(item.get("manufacturer","")).strip().upper()
-                qty  = int(item.get("quantity",0))
-                cost = float(item.get("unit_cost",0))
-                stk  = next((r for r in records
-                    if r.get("part_number","")==pnum and r.get("manufacturer","")==mfr), None)
-                if stk:
-                    stk["quantity"]   = max(0, stk["quantity"] - qty)
-                    stk["updated_at"] = datetime.datetime.now().isoformat()
-                order["items"].append({
-                    "part_number": pnum, "manufacturer": mfr,
-                    "description": str(item.get("description","")).strip(),
-                    "label_code":  str(item.get("label_code") or (stk.get("label_code","") if stk else "")).strip().upper(),
-                    "job":         str(item.get("job","")).strip().upper(),
-                    "unit_cost":   cost, "quantity": qty,
-                    "total_cost":  round(cost*qty, 2),
-                    "added_at":    datetime.datetime.now().isoformat(),
-                })
-            order["updated_at"] = datetime.datetime.now().isoformat()
-            reassign_save(orders)
-            stock_save(records)
-        return jsonify({"ok":True,"order_number":order_number,"order":order})
+        body, code = _reassign_create_order(str(data.get("order_number","")).strip().upper(),
+                                            data.get("is_new", True), items)
+        return jsonify(body), code
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -9983,7 +10117,8 @@ def api_requisiciones_upload():
 
         def g(row, ci):
             if ci is None or row[ci] is None: return ""
-            v = str(row[ci]).strip()
+            v = re.sub(r"<[^>]*>", " ", str(row[ci]))      # "<br>TL-POE160S" → "TL-POE160S"
+            v = " ".join(v.split())
             return "" if v in ("None", "nan", "#N/A") else v
 
         nuevos = []
@@ -10061,35 +10196,105 @@ def api_requisiciones_delete(item_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+def _req_pn(v):
+    """No. de parte normalizado para comparar requisición vs Stock (sin HTML ni espacios extra)."""
+    return " ".join(re.sub(r"<[^>]*>", " ", str(v or "")).split()).upper()
+
+@app.route("/api/requisiciones/reasignar-stock", methods=["POST"])
+def api_requisiciones_reasignar_stock():
+    """Genera UNA orden RA nueva hacia el Job de la requisición con el material que sí
+    hay en Stock. Recibe {job, items:[{item_id, part_number, brand, quantity}]}.
+    Por renglón toma existencia de los registros de Stock con ese No. de parte,
+    primero los de la misma marca y luego los de mayor existencia, sin pasar de lo
+    pedido ni de lo disponible. Regresa lo asignado por renglón para que la pantalla
+    marque como "Reasignado" los que quedaron completos."""
+    if not can("create", "reassign"): return jsonify({"error": "Sin permiso para crear reasignaciones"}), 403
+    try:
+        data = request.json or {}
+        job = str(data.get("job") or "").strip().upper()
+        items = data.get("items") or []
+        if not job or not items:
+            return jsonify({"error": "Falta el Job o los materiales"}), 400
+        stock = stock_load()
+        disponible = {id(r): int(r.get("quantity") or 0) for r in stock}
+        ra_items, resultado = [], []
+        for it in items:
+            pn = _req_pn(it.get("part_number"))
+            pedido = int(float(it.get("quantity") or 0))
+            marca = str(it.get("brand") or "").strip().upper()
+            cands = [r for r in stock if _req_pn(r.get("part_number")) == pn and disponible[id(r)] > 0]
+            cands.sort(key=lambda r: (r.get("manufacturer", "").upper() != marca, -disponible[id(r)]))
+            asignado = 0
+            for r in cands:
+                if asignado >= pedido: break
+                q = min(pedido - asignado, disponible[id(r)])
+                disponible[id(r)] -= q; asignado += q
+                ra_items.append({"part_number": r.get("part_number", ""), "manufacturer": r.get("manufacturer", ""),
+                                 "description": r.get("description", ""), "label_code": r.get("label_code", ""),
+                                 "job": job, "quantity": q, "unit_cost": float(r.get("last_cost") or 0)})
+            resultado.append({"item_id": it.get("item_id"), "part_number": it.get("part_number"),
+                              "pedido": pedido, "asignado": asignado})
+        if not ra_items:
+            return jsonify({"error": "Ninguno de los materiales tiene existencia en Stock"}), 400
+        body, code = _reassign_create_order("", True, ra_items)
+        if code != 200:
+            return jsonify(body), code
+        body["resultado"] = resultado
+        body["total"] = round(sum(i["quantity"] * i["unit_cost"] for i in ra_items), 2)
+        return jsonify(body)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/api/requisiciones/buscar-stock", methods=["POST"])
 def api_requisiciones_buscar_stock():
     """Recibe una lista de {part_number, quantity} y regresa, por cada uno,
-    si está en Stock (total, parcial, o sin existencia)."""
+    la existencia en Stock y, por separado, la existencia en Consignación.
+
+    - estatus: solo Stock (mismo significado que antes).
+    - quantity_en_consignacion / estatus_con_consignacion: se agregan si el usuario
+      tiene al menos nivel "ver" en Consignación. estatus_con_consignacion evalúa
+      Stock + Consignación juntos, para saber si la consignación completa lo que falta."""
     if not can("view", "compras-requisicion"): return jsonify({"error": "Sin permiso"}), 403
     data = request.json or {}
     items = data.get("items", [])
-    stock = stock_load()
-    stock_by_pn = {}
-    for r in stock:
-        pn = (r.get("part_number") or "").strip().upper()
-        if not pn: continue
-        stock_by_pn.setdefault(pn, 0)
-        stock_by_pn[pn] += float(r.get("quantity") or 0)
+
+    def _por_pn(records):
+        out = {}
+        for r in records:
+            pn = _req_pn(r.get("part_number"))
+            if not pn: continue
+            out[pn] = out.get(pn, 0) + float(r.get("quantity") or 0)
+        return out
+
+    def _estatus(disp, req):
+        if disp <= 0:     return "Sin existencia"
+        if disp >= req:   return "Existencia total"
+        return "Existencia parcial"
+
+    stock_by_pn = _por_pn(stock_load())
+    ver_consig = _consig is not None and can("view", "consignacion")
+    consig_by_pn = {}
+    consig_error = None
+    if ver_consig:
+        try:
+            consig_by_pn = _por_pn(_consig.load("items"))
+        except Exception as e:
+            consig_error = f"No se pudo consultar Consignación: {e}"
 
     resultado = []
     for it in items:
-        pn = (it.get("part_number") or "").strip().upper()
+        pn = _req_pn(it.get("part_number"))
         qty_req = float(it.get("quantity") or 0)
         qty_stock = stock_by_pn.get(pn, 0)
-        if qty_stock <= 0:
-            estatus = "Sin existencia"
-        elif qty_stock >= qty_req:
-            estatus = "Existencia total"
-        else:
-            estatus = "Existencia parcial"
-        resultado.append({"part_number": it.get("part_number"), "quantity_requerida": qty_req,
-                           "quantity_en_stock": qty_stock, "estatus": estatus})
-    return jsonify({"resultados": resultado})
+        row = {"part_number": it.get("part_number"), "quantity_requerida": qty_req,
+               "quantity_en_stock": qty_stock, "estatus": _estatus(qty_stock, qty_req)}
+        if ver_consig and consig_error is None:
+            qty_consig = consig_by_pn.get(pn, 0)
+            row["quantity_en_consignacion"] = qty_consig
+            row["estatus_con_consignacion"] = _estatus(qty_stock + qty_consig, qty_req)
+        resultado.append(row)
+    return jsonify({"resultados": resultado, "incluye_consignacion": ver_consig and consig_error is None,
+                    "aviso": consig_error})
 
 @app.route("/api/proveedores/<int:clave>/files/<filename>", methods=["GET"])
 def api_download_prov_file(clave, filename):
