@@ -7383,6 +7383,7 @@ async function reqBuscarStock(){
         <div>
           <div style="font-family:'DM Mono',monospace;font-size:12px;color:var(--gold)">${esc(res.part_number)}</div>
           <div style="font-size:10px;color:var(--muted)">Requerido: ${res.quantity_requerida} · En Stock: ${res.quantity_en_stock}${conCsg?` · <span style="color:var(--amber)">En Consignación: ${res.quantity_en_consignacion}</span>`:''}</div>
+          ${(res.por_etiqueta||[]).length||(res.por_etiqueta_consignacion||[]).length?`<div style="font-size:10px;color:var(--blue,#2563eb)">🏷 Encontrado por etiqueta: ${esc([...(res.por_etiqueta||[]),...(res.por_etiqueta_consignacion||[]).map(x=>x+' (consig.)')].join(', '))}</div>`:''}
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
           ${badge('Stock: '+res.estatus, res.estatus)}

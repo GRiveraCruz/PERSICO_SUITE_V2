@@ -10196,6 +10196,25 @@ def api_requisiciones_delete(item_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+def _req_match_index(records):
+    """Índice para buscar registros de Stock/Consignación por No. de parte O por
+    etiqueta (label_code). Regresa una función que, para un código de la requisición,
+    da los registros que coinciden por cualquiera de los dos, sin repetir un registro
+    que coincide por ambos, y marca cuáles coincidieron solo por etiqueta."""
+    by_pn, by_label = {}, {}
+    for r in records:
+        pn, lb = _req_pn(r.get("part_number")), _req_pn(r.get("label_code"))
+        if pn: by_pn.setdefault(pn, []).append(r)
+        if lb: by_label.setdefault(lb, []).append(r)
+    def find(code):
+        code = _req_pn(code)
+        if not code: return [], []
+        hits = list(by_pn.get(code, []))
+        ids = {id(r) for r in hits}
+        por_etiqueta = [r for r in by_label.get(code, []) if id(r) not in ids]
+        return hits + por_etiqueta, por_etiqueta
+    return find
+
 def _req_pn(v):
     """No. de parte normalizado para comparar requisición vs Stock (sin HTML ni espacios extra)."""
     return " ".join(re.sub(r"<[^>]*>", " ", str(v or "")).split()).upper()
@@ -10216,13 +10235,14 @@ def api_requisiciones_reasignar_stock():
         if not job or not items:
             return jsonify({"error": "Falta el Job o los materiales"}), 400
         stock = stock_load()
+        stock_find = _req_match_index(stock)
         disponible = {id(r): int(r.get("quantity") or 0) for r in stock}
         ra_items, resultado = [], []
         for it in items:
             pn = _req_pn(it.get("part_number"))
             pedido = int(float(it.get("quantity") or 0))
             marca = str(it.get("brand") or "").strip().upper()
-            cands = [r for r in stock if _req_pn(r.get("part_number")) == pn and disponible[id(r)] > 0]
+            cands = [r for r in stock_find(pn)[0] if disponible[id(r)] > 0]   # No. de parte O etiqueta
             cands.sort(key=lambda r: (r.get("manufacturer", "").upper() != marca, -disponible[id(r)]))
             asignado = 0
             for r in cands:
@@ -10249,6 +10269,8 @@ def api_requisiciones_reasignar_stock():
 def api_requisiciones_buscar_stock():
     """Recibe una lista de {part_number, quantity} y regresa, por cada uno,
     la existencia en Stock y, por separado, la existencia en Consignación.
+    Un registro coincide si su No. de parte O su etiqueta (label_code) es igual al
+    No. de parte del renglón (cada registro cuenta una sola vez).
 
     - estatus: solo Stock (mismo significado que antes).
     - quantity_en_consignacion / estatus_con_consignacion: se agregan si el usuario
@@ -10258,26 +10280,18 @@ def api_requisiciones_buscar_stock():
     data = request.json or {}
     items = data.get("items", [])
 
-    def _por_pn(records):
-        out = {}
-        for r in records:
-            pn = _req_pn(r.get("part_number"))
-            if not pn: continue
-            out[pn] = out.get(pn, 0) + float(r.get("quantity") or 0)
-        return out
-
     def _estatus(disp, req):
         if disp <= 0:     return "Sin existencia"
         if disp >= req:   return "Existencia total"
         return "Existencia parcial"
 
-    stock_by_pn = _por_pn(stock_load())
+    stock_find = _req_match_index(stock_load())
     ver_consig = _consig is not None and can("view", "consignacion")
-    consig_by_pn = {}
+    consig_find = None
     consig_error = None
     if ver_consig:
         try:
-            consig_by_pn = _por_pn(_consig.load("items"))
+            consig_find = _req_match_index(_consig.load("items"))
         except Exception as e:
             consig_error = f"No se pudo consultar Consignación: {e}"
 
@@ -10285,11 +10299,16 @@ def api_requisiciones_buscar_stock():
     for it in items:
         pn = _req_pn(it.get("part_number"))
         qty_req = float(it.get("quantity") or 0)
-        qty_stock = stock_by_pn.get(pn, 0)
+        s_hits, s_lbl = stock_find(pn)
+        qty_stock = sum(float(r.get("quantity") or 0) for r in s_hits)
         row = {"part_number": it.get("part_number"), "quantity_requerida": qty_req,
-               "quantity_en_stock": qty_stock, "estatus": _estatus(qty_stock, qty_req)}
+               "quantity_en_stock": qty_stock, "estatus": _estatus(qty_stock, qty_req),
+               # registros encontrados por etiqueta (no por No. de parte), para mostrarlo en pantalla
+               "por_etiqueta": [f'{r.get("manufacturer","")} {r.get("part_number","")}'.strip() for r in s_lbl]}
         if ver_consig and consig_error is None:
-            qty_consig = consig_by_pn.get(pn, 0)
+            c_hits, c_lbl = consig_find(pn) if consig_find else ([], [])
+            qty_consig = sum(float(r.get("quantity") or 0) for r in c_hits)
+            row["por_etiqueta_consignacion"] = [f'{r.get("manufacturer","")} {r.get("part_number","")}'.strip() for r in c_lbl]
             row["quantity_en_consignacion"] = qty_consig
             row["estatus_con_consignacion"] = _estatus(qty_stock + qty_consig, qty_req)
         resultado.append(row)
