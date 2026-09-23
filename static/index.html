@@ -449,6 +449,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
             <button onclick="switchMenu('po','ng-compras')">Órdenes de Compra</button>
             <button onclick="switchMenu('ivp','ng-compras')">Recepciones</button>
             <button onclick="switchMenu('reassign','ng-compras')">Reasignaciones</button>
+            <button onclick="switchMenu('consig-reassign','ng-compras')">Reasignaciones Consignación</button>
           </div>
         </div>
       </div>
@@ -458,6 +459,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
       <button class="nav-tab nav-group-btn" id="ng-almacenes">Almacenes ▾</button>
       <div class="nav-dropdown">
         <button onclick="switchMenu('stock','ng-almacenes')">Stock</button>
+        <button onclick="switchMenu('consignacion','ng-almacenes')">Consignación</button>
         <button onclick="switchMenu('ingreso','ng-almacenes')">Ingreso de Material</button>
         <button onclick="switchMenu('apartados','ng-almacenes')">Apartados</button>
         <button onclick="switchMenu('salida','ng-almacenes')">Salida de Material</button>
@@ -3626,7 +3628,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
         <div style="overflow-x:auto">
           <table style="width:100%;border-collapse:collapse">
             <thead><tr>
-              <th style="padding:6px 10px;text-align:left;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:1px solid var(--border)">Orden RA</th>
+              <th style="padding:6px 10px;text-align:left;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:1px solid var(--border)">Orden</th>
               <th style="padding:6px 10px;text-align:left;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:1px solid var(--border)">No. Parte</th>
               <th style="padding:6px 10px;text-align:left;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:1px solid var(--border)">Fabricante</th>
               <th style="padding:6px 10px;text-align:left;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:1px solid var(--border)">Descripción</th>
@@ -4340,6 +4342,102 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
 </div>
 
 <!-- ══════════════════════════════════════════════════
+     MODULE: CONSIGNACIÓN
+══════════════════════════════════════════════════ -->
+<div class="module" id="mod-consignacion">
+  <aside class="sidebar">
+    <div class="sb-head">
+      <div class="mod-title">Consignación</div>
+      <div class="mod-sub">Material en consignación · Base separada</div>
+      <div class="bar"></div>
+    </div>
+    <div class="sb-flt">
+      <div class="fg"><label>Buscar</label>
+        <div class="sw"><span class="si">⌕</span>
+          <input type="text" id="csg-gs" placeholder="Marca, No. Parte, descripción, etiqueta…" oninput="csgRenderReset()">
+        </div>
+      </div>
+    </div>
+    <div class="sb-btns">
+      <button class="btn-new" onclick="openIngressCsg()">Ingresar a Consignación</button>
+      <button class="btn-sec" onclick="openCsgReassign()">Reasignar Material</button>
+      <button class="btn-sec" onclick="openCsgImport()">Importar Excel</button>
+    </div>
+  </aside>
+  <div class="main-content" style="position:relative;overflow:hidden">
+    <div class="bar-top">
+      <h1>Consignación</h1>
+      <span style="font-size:10px;font-weight:700;letter-spacing:.6px;color:var(--amber);border:1px solid var(--amber);border-radius:10px;padding:2px 8px">BASE SEPARADA</span>
+      <button class="btn-reload" onclick="loadCsg()">Recargar</button>
+      <div style="display:flex;gap:4px">
+        <a class="btn-reload" style="text-decoration:none;font-size:10px" href="#" onclick="dlBackup('consignacion','xlsx');return false">Excel</a>
+        <a class="btn-reload" style="text-decoration:none;font-size:10px" href="#" onclick="dlBackup('consignacion','csv');return false">CSV</a>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted)">
+        <div class="conn-dot" id="csg-dot"></div><span id="csg-lbl">—</span>
+      </div>
+    </div>
+    <div style="overflow-x:auto;flex:1">
+      <table class="tbl">
+        <thead><tr>
+          <th>Fabricante</th><th>No. Parte</th><th>Descripción</th>
+          <th>Etiqueta</th>
+          <th style="text-align:right">Últ. Costo</th>
+          <th style="text-align:right">Existencia</th>
+          <th>Unidad</th><th>Sección</th><th>Caja</th><th>Job Origen</th><th></th>
+        </tr></thead>
+        <tbody id="csg-tb"></tbody>
+      </table>
+    </div>
+    <div class="bar-bot">
+      <span id="csg-count" style="font-size:11px;color:var(--muted)">—</span>
+      <span id="csg-total" style="margin-left:auto;font-size:12px;color:var(--green);font-weight:600"></span>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     MODULE: REASIGNACIÓN — CONSIGNACIÓN
+══════════════════════════════════════════════════ -->
+<div class="module" id="mod-consig-reassign">
+  <aside class="sidebar">
+    <div class="sb-head">
+      <div class="mod-title">Reasignación Consignación</div>
+      <div class="mod-sub">Órdenes CRA · Material en consignación</div>
+      <div class="bar"></div>
+    </div>
+    <div class="sb-flt">
+      <div class="fg"><label>Filtrar por Job</label>
+        <input type="text" id="cra-job-flt" placeholder="ej. 680-00" oninput="loadCsgReassign()">
+      </div>
+    </div>
+    <div class="sb-btns">
+      <button class="btn-new" onclick="openCsgReassign()">+ Nueva Orden</button>
+    </div>
+  </aside>
+  <div class="main-content">
+    <div class="bar-top">
+      <h1>Reasignaciones — Consignación</h1>
+      <button class="btn-reload" onclick="loadCsgReassign()">Recargar</button>
+      <div style="display:flex;gap:4px">
+        <a class="btn-reload" style="text-decoration:none;font-size:10px" href="#" onclick="dlBackup('consig-reassign','xlsx');return false">Excel</a>
+        <a class="btn-reload" style="text-decoration:none;font-size:10px" href="#" onclick="dlBackup('consig-reassign','csv');return false">CSV</a>
+      </div>
+    </div>
+    <div style="overflow-x:auto;flex:1">
+      <table class="tbl">
+        <thead><tr>
+          <th>Orden CRA</th><th>Fecha</th><th>Items</th><th style="text-align:right">Total USD</th><th></th>
+        </tr></thead>
+        <tbody id="cra-tb"></tbody>
+      </table>
+    </div>
+    <div class="bar-bot"><span id="cra-count" style="font-size:11px;color:var(--muted)">—</span></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
      MODULE: RECUPERACIÓN
 ══════════════════════════════════════════════════ -->
 <div class="module" id="mod-recovery">
@@ -4384,7 +4482,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
           <th style="text-align:right">Cantidad</th>
           <th>Unidad</th><th>Job Origen</th>
           <th style="text-align:right">Valor Total</th>
-          <th>Fecha</th><th></th>
+          <th>Fecha</th><th>Origen</th><th></th>
         </tr></thead>
         <tbody id="rcv-tb"></tbody>
       </table>
@@ -6077,6 +6175,161 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
     <div class="mf">
       <button class="btn btn-s" onclick="closeMo('mo-reassign')">Cancelar</button>
       <button class="btn btn-p" id="btn-ra-save" onclick="saveReassignOrder()" disabled>Guardar Orden</button>
+    </div>
+  </div>
+</div>
+
+<!-- Consignación Import Modal -->
+<div class="mo" id="mo-csg-imp">
+  <div class="md" style="max-width:500px">
+    <div class="mh"><h2>Importar Consignación desde Excel</h2><button class="px" onclick="closeMo('mo-csg-imp')">Cerrar</button></div>
+    <div class="mb2">
+      <p style="font-size:12px;color:var(--muted2);margin-bottom:14px;line-height:1.6">
+        Columnas requeridas: <code style="color:var(--red)">FABRICANTE, NUMERO DE PARTE, EXISTENCIA</code><br>Opcionales: <code>DESCRIPCION, ULTIMO COSTO (USD), UNIDAD, SECCION, CAJA, ETIQUETA, RECUPERACION</code>
+      </p>
+      <div class="fr">
+        <div class="fi"><label>Modo</label>
+          <select id="csg-imp-mode">
+            <option value="append" selected>Acumular</option>
+            <option value="replace">Reemplazar todo</option>
+          </select>
+        </div>
+      </div>
+      <div class="dz-imp" id="csg-dz-imp"
+        ondragover="event.preventDefault();document.getElementById('csg-dz-imp').classList.add('dg')"
+        ondragleave="document.getElementById('csg-dz-imp').classList.remove('dg')"
+        ondrop="csgDropImport(event)">
+        <input type="file" accept=".xlsx,.xls" id="csg-imp-file" onchange="onCsgImpFile(this)">
+        <div class="dz-icon">📦</div>
+        <div class="dz-t">Arrastra el Excel o <span>haz clic</span></div>
+      </div>
+      <div style="font-size:11px;color:var(--muted)">Archivo: <span id="csg-imp-fname" style="color:var(--text)">—</span></div>
+      <div id="csg-imp-result" style="display:none;margin-top:10px;font-size:12px;color:var(--green)"></div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-s" onclick="closeMo('mo-csg-imp')">Cerrar</button>
+      <button class="btn btn-p" id="btn-csg-imp-run" onclick="runCsgImport()" disabled>Importar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Consignación Ingress Modal -->
+<div class="mo" id="mo-csg-ing">
+  <div class="md" style="max-width:580px">
+    <div class="mh"><h2 id="csg-ing-title">Ingresar a Consignación</h2><button class="px" onclick="closeMo('mo-csg-ing')">Cerrar</button></div>
+    <div class="mb2">
+      <div class="sl">Buscar material existente</div>
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <input type="text" id="csg-search" placeholder="Fabricante o No. Parte…"
+          style="flex:1;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:8px 10px;font-size:12px;outline:none"
+          oninput="csgSearch(this.value)">
+      </div>
+      <div id="csg-search-results" style="display:none;max-height:140px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:12px"></div>
+      <div class="sl">Datos del Material</div>
+      <input type="hidden" id="csg-ing-id">
+      <div class="fr">
+        <div class="fi"><label>Fabricante *</label><input type="text" id="csg-ing-mfr" placeholder="ej. BOSCH" style="text-transform:uppercase"></div>
+        <div class="fi"><label>No. Parte *</label><input type="text" id="csg-ing-pnum" placeholder="ej. 0-001-223-010" style="text-transform:uppercase;font-family:'DM Mono',monospace;color:var(--gold)"></div>
+      </div>
+      <div class="fg"><label>Descripción</label><input type="text" id="csg-ing-desc" placeholder="Descripción del material"></div>
+      <div class="fr">
+        <div class="fi"><label>Etiqueta (QR / Código de Barras)</label><input type="text" id="csg-ing-label" placeholder="ej. QR-00123" style="text-transform:uppercase;font-family:'DM Mono',monospace"></div>
+      </div>
+      <div class="fr">
+        <div class="fi">
+          <label>Existencia Actual</label>
+          <input type="number" id="csg-ing-qty" readonly
+            style="font-weight:700;color:var(--muted);background:rgba(0,0,0,.045);cursor:not-allowed">
+        </div>
+        <div class="fi">
+          <label style="color:var(--green)">Nuevos Ingresos *</label>
+          <input type="number" id="csg-ing-new-qty" min="0" placeholder="0"
+            style="font-weight:700;color:var(--green)" oninput="csgUpdateTotal()">
+        </div>
+        <div class="fi">
+          <label>Total resultante</label>
+          <input type="number" id="csg-ing-total-qty" readonly
+            style="font-weight:700;color:var(--gold);background:rgba(0,0,0,.045);cursor:not-allowed">
+        </div>
+      </div>
+      <div class="fr">
+        <div class="fi"><label>Último Costo (USD)</label><input type="number" id="csg-ing-cost" min="0" step="0.01" placeholder="0.00"></div>
+        <div class="fi"><label>Unidad</label>
+          <select id="csg-ing-unit">
+            <option>Pieza</option><option>Metro</option><option>Paquete</option>
+            <option>Galón</option><option>Bote</option><option>Litro</option><option>ND</option>
+          </select>
+        </div>
+      </div>
+      <div class="fr">
+        <div class="fi"><label>Sección</label><input type="text" id="csg-ing-sec" placeholder="ej. A"></div>
+        <div class="fi"><label>Caja</label><input type="text" id="csg-ing-box" placeholder="ej. 3"></div>
+      </div>
+      <div class="fg"><label>Job de Origen (Recuperación)</label>
+        <select id="csg-ing-rec" style="width:100%;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--gold);padding:8px 10px;font-size:12px;outline:none;font-family:'DM Mono',monospace"></select>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-s" onclick="closeMo('mo-csg-ing')">Cancelar</button>
+      <button class="btn btn-p" onclick="saveCsgIngress()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Consignación Reassign Modal -->
+<div class="mo" id="mo-csg-reassign">
+  <div class="md" style="max-width:620px;max-height:90vh;overflow-y:auto">
+    <div class="mh"><h2>Reasignar Material — Consignación</h2><button class="px" onclick="closeMo('mo-csg-reassign')">Cerrar</button></div>
+    <div class="mb2">
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;padding:7px 14px;border-radius:8px;border:1px solid var(--border);flex:1;justify-content:center">
+          <input type="radio" name="cra-type" value="new" checked onchange="craTypeChange('new')"> ✨ Nueva Orden
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;padding:7px 14px;border-radius:8px;border:1px solid var(--border);flex:1;justify-content:center">
+          <input type="radio" name="cra-type" value="existing" onchange="craTypeChange('existing')"> 📂 Orden Existente
+        </label>
+      </div>
+      <div id="cra-new-panel">
+        <div style="background:rgba(200,16,46,.08);border:1px solid rgba(200,16,46,.2);border-radius:8px;padding:10px 14px;font-size:12px;margin-bottom:12px">
+          Folio (se asigna al guardar): <b id="cra-auto-num" style="color:var(--gold);font-family:'DM Mono',monospace;font-size:14px">—</b>
+        </div>
+      </div>
+      <div id="cra-existing-panel" style="display:none">
+        <div class="fg"><label>Número de Orden</label>
+          <input type="text" id="cra-existing-num" placeholder="ej. CRA-0000000001"
+            style="width:100%;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--gold);padding:8px 10px;font-size:13px;font-family:'DM Mono',monospace;font-weight:700;outline:none;text-transform:uppercase">
+        </div>
+      </div>
+      <div class="sl">Buscar y agregar material</div>
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <input type="text" id="cra-search" placeholder="Fabricante o No. Parte…"
+          style="flex:1;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:8px 10px;font-size:12px;outline:none"
+          oninput="craSearch(this.value)">
+      </div>
+      <div id="cra-search-results" style="display:none;max-height:140px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:10px"></div>
+      <div id="cra-item-form" style="display:none;background:rgba(0,0,0,.035);border-radius:8px;padding:12px;border:1px solid var(--border);margin-bottom:10px">
+        <div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:8px">MATERIAL SELECCIONADO</div>
+        <div style="font-family:'DM Mono',monospace;color:var(--gold);font-size:13px;font-weight:700" id="cra-sel-info">—</div>
+        <div style="font-size:11px;color:var(--green);margin-bottom:10px">Existencia disponible: <b id="cra-sel-qty">0</b></div>
+        <div class="fr">
+          <div class="fi"><label>Job destino *</label>
+            <select id="cra-item-job" style="width:100%;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--gold);padding:7px 10px;font-size:12px;outline:none;font-family:'DM Mono',monospace"></select>
+          </div>
+          <div class="fi"><label>Cantidad *</label><input type="number" id="cra-item-qty" min="1" placeholder="0" oninput="craCalcTotal()"></div>
+          <div class="fi"><label>Costo unitario</label><input type="number" id="cra-item-cost" step="0.01" placeholder="0.00" oninput="craCalcTotal()"></div>
+        </div>
+        <div style="text-align:right;font-size:12px;color:var(--green);font-weight:700">Total: $<span id="cra-item-total">0.00</span></div>
+        <button class="btn btn-p" onclick="craAddItem()" style="margin-top:8px;width:100%;font-size:12px">+ Agregar a la orden</button>
+      </div>
+      <div id="cra-items-list" style="display:none">
+        <div class="sl">Items en esta orden</div>
+        <div id="cra-items-tb"></div>
+        <div style="text-align:right;font-size:13px;font-weight:700;color:var(--green);margin-top:8px">Total orden: $<span id="cra-order-total">0.00</span></div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-s" onclick="closeMo('mo-csg-reassign')">Cancelar</button>
+      <button class="btn btn-p" id="btn-cra-save" onclick="saveCsgReassignOrder()" disabled>Guardar Orden</button>
     </div>
   </div>
 </div>

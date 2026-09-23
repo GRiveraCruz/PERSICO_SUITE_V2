@@ -119,6 +119,8 @@ function switchMenu(mod, groupId) {
   if(mod==='personal-areas') { setTimeout(loadAreas,100); }
   if(mod==='personal-perfiles') { setTimeout(loadPerfiles,100); }
   if(mod==='personal-listado') { setTimeout(loadPersonal,100); }
+  if(mod==='consignacion') { setTimeout(loadCsg,50); }
+  if(mod==='consig-reassign') { setTimeout(loadCsgReassign,50); }
 }
 
 function switchModule(mod, btn){
@@ -4605,7 +4607,7 @@ function rptRender(d){
       raSection.style.display='';
       raTb.innerHTML = d.reassign_items.map((i,idx)=>`
         <tr class="rpt-tr" style="${idx%2?'background:rgba(0,0,0,.03)':''}">
-          <td class="rpt-td" style="font-family:'DM Mono',monospace;color:var(--gold);font-size:11px">${esc(i.order_number||'')}</td>
+          <td class="rpt-td" style="font-family:'DM Mono',monospace;color:var(--gold);font-size:11px">${esc(i.order_number||'')}${i.origen==='Consignación'?' <span style="font-family:inherit;font-size:9px;font-weight:700;color:var(--amber);border:1px solid var(--amber);border-radius:8px;padding:0 5px">CONSIG.</span>':''}</td>
           <td class="rpt-td" style="font-family:'DM Mono',monospace;color:var(--text);font-size:11px">${esc(i.part_number||'')}</td>
           <td class="rpt-td" style="color:var(--text);font-size:11px">${esc(i.manufacturer||'')}</td>
           <td class="rpt-td" style="color:var(--muted2);font-size:11px">${esc(i.description||'')}</td>
@@ -4633,7 +4635,7 @@ function rptRender(d){
       rcSection.style.display='';
       rcTb.innerHTML = d.recovery_items.map((i,idx)=>`
         <tr class="rpt-tr" style="${idx%2?'background:rgba(0,0,0,.03)':''}">
-          <td class="rpt-td" style="font-family:'DM Mono',monospace;color:var(--gold);font-size:11px">${esc(i.part_number||'')}</td>
+          <td class="rpt-td" style="font-family:'DM Mono',monospace;color:var(--gold);font-size:11px">${esc(i.part_number||'')}${i.origen==='Consignación'?' <span style="font-family:inherit;font-size:9px;font-weight:700;color:var(--amber);border:1px solid var(--amber);border-radius:8px;padding:0 5px">CONSIG.</span>':''}</td>
           <td class="rpt-td" style="color:var(--text);font-size:11px">${esc(i.manufacturer||'')}</td>
           <td class="rpt-td" style="color:var(--muted2);font-size:11px">${esc(i.description||'')}</td>
           <td class="rpt-td" style="text-align:right">${i.quantity||0}</td>
@@ -5503,6 +5505,7 @@ const MODULE_LABELS = {
   'gpo':'Órdenes de Compra (GPO)', 'po':'Purchase Orders', 'ivp':'Invoiced POs',
   // Almacenes
   'stock':'Stock', 'recovery':'Recuperaciones', 'reassign':'Reasignaciones',
+  'consignacion':'Consignación', 'consig-reassign':'Reasignaciones Consignación',
   'ingreso':'Ingreso de Material (⚡ Solo Control Total)', 'apartados':'Apartados', 'salida':'Salida de Material',
   // Servicio
   'viaticos':'Viáticos', 'gastos-viaje':'Gastos de Viaje', 'envios':'Envíos de Mensajería',
@@ -5534,8 +5537,8 @@ const MODULE_GROUPS = [
   { label: '🤝 Ventas',               mods: ['cpo'] },
   { label: '⚡ Catálogos',            mods: ['cat-electrico','cat-mecanico','cat-servicios'] },
   { label: '🏭 Proveedores',          mods: ['proveedores'] },
-  { label: '📄 Documentos de Compra', mods: ['gpo','po','ivp','reassign','recovery'] },
-  { label: '🏬 Almacenes',            mods: ['stock','ingreso','apartados','salida'] },
+  { label: '📄 Documentos de Compra', mods: ['gpo','po','ivp','reassign','consig-reassign','recovery'] },
+  { label: '🏬 Almacenes',            mods: ['stock','consignacion','ingreso','apartados','salida'] },
   { label: '✈ Servicio',             mods: ['viaticos','gastos-viaje','envios'] },
   { label: '📊 Reportes y Config',    mods: ['wh','report','multirpt','fx','projconfig'] },
   { label: '💹 Finanzas',             mods: ['fin-recepciones','fin-procesarcompra','fin-cpp','fin-pagos','fin-esquemas'] },
@@ -5722,6 +5725,8 @@ function applyPermsToDom(d) {
     'po':            ["switchMenu('po'"],
     'ivp':           ["switchMenu('ivp'"],
     'stock':         ["switchMenu('stock'"],
+    'consignacion':  ["switchMenu('consignacion'"],
+    'consig-reassign':["switchMenu('consig-reassign'"],
     'ingreso':       ["switchMenu('ingreso'"],
     'apartados':     ["switchMenu('apartados'"],
     'salida':        ["switchMenu('salida'"],
@@ -5820,6 +5825,13 @@ function applyPermsToDom(d) {
     // Stock
     { pat:'openIngressStock(', mod:'stock',       need:'create' },
     { pat:'stkOpenImport(',   mod:'stock',        need:'full' },
+    { pat:'openStockImport(', mod:'stock',        need:'full' },
+    // Consignación
+    { pat:'openIngressCsg(',  mod:'consignacion', need:'create' },
+    { pat:'openCsgImport(',   mod:'consignacion', need:'full' },
+    { pat:'deleteCsgItem(',   mod:'consignacion', need:'full' },
+    { pat:'openCsgReassign(', mod:'consig-reassign', need:'create' },
+    { pat:'deleteCsgReassignOrder(', mod:'consig-reassign', need:'full' },
     { pat:'deleteStockItem(', mod:'stock',        need:'full' },
     // Ingreso — solo Control Total (full)
     { pat:'ingresoOpenManual(', mod:'ingreso',   need:'full' },
@@ -5978,6 +5990,8 @@ function applyPermsToDom(d) {
   const createOnlyMods = Object.keys(perms).filter(m => lvl(m) === 'create');
   const deletePatterns = [
     { pat:'deleteStockItem(', mod:'stock' },
+    { pat:'deleteCsgItem(',   mod:'consignacion' },
+    { pat:'deleteCsgReassignOrder(', mod:'consig-reassign' },
     { pat:'deleteRecovery(',  mod:'recovery' },
     { pat:'deleteReassign(',  mod:'reassign' },
     { pat:'deletePt(',        mod:'pt' },
@@ -6053,6 +6067,9 @@ function applyPermsToDom(d) {
 
   if(viewOnlyMods.includes('stock')) {
     window.editStockItem = function() { return; };
+  }
+  if(viewOnlyMods.includes('consignacion')) {
+    window.editCsgItem = function() { return; };
   }
 
   // ── Hide Resultado Financiero tab for non-full report users (Comercial always visible)
@@ -7441,7 +7458,10 @@ async function runStkImport(){
   const btn=document.getElementById('btn-stk-imp-run');btn.disabled=true;btn.textContent='Importando…';
   const fd=new FormData();fd.append('file',stkImpFile);fd.append('mode',document.getElementById('stk-imp-mode').value);
   try{
-    const d=await fetch('/api/stock/import',{method:'POST',body:fd}).then(r=>r.json());
+    const resp=await fetch('/api/stock/import',{method:'POST',body:fd});
+    const ct=resp.headers.get('content-type')||'';
+    if(!ct.includes('application/json')){toast(`Error ${resp.status} del servidor al importar (respuesta no JSON). Revisa los logs del servidor.`,'er',8000);return;}
+    const d=await resp.json();
     if(d.error){toast(d.error,'er');return;}
     const res=document.getElementById('stk-imp-result');
     res.style.display='';res.textContent=(d.created!=null?`✓ ${d.imported} filas procesadas · ${d.updated} actualizados · ${d.created} nuevos · Total en stock: ${d.total}`:`✓ ${d.imported} items importados · Total: ${d.total}`);
@@ -7606,10 +7626,14 @@ let recoveryData = [];
 async function loadRecovery() {
   try {
     const job = document.getElementById('rcv-job-flt')?.value.trim()||'';
-    const url  = '/api/recovery'+(job?`?job=${job}`:'');
-    const d    = await fetch(url).then(r=>r.json());
+    const qs   = job?`?job=${encodeURIComponent(job)}`:'';
+    const [d, dc] = await Promise.all([
+      fetch('/api/recovery'+qs).then(r=>r.json()),
+      fetch('/api/consignacion/recuperaciones'+qs).then(r=>r.ok?r.json():{records:[]}).catch(()=>({records:[]}))
+    ]);
     if(d.error){toast(d.error,'er');return;}
-    recoveryData = d.records;
+    recoveryData = (d.records||[]).map(r=>({...r,_origen:'Stock'}))
+      .concat(((dc&&dc.records)||[]).map(r=>({...r,_origen:'Consignación'})));
     recoveryRender();
     document.getElementById('rcv-dot').style.background='var(--green)';
     document.getElementById('rcv-lbl').textContent=`${recoveryData.length} registros`;
@@ -7635,16 +7659,18 @@ function recoveryRender() {
       <td style="font-family:'DM Mono',monospace;color:var(--gold);font-size:11px">${esc(r.job||'')}</td>
       <td style="text-align:right;font-weight:700;color:var(--red)">${fmt(r.total_value)}</td>
       <td style="color:var(--muted);font-size:11px">${(r.created_at||'').slice(0,10)}</td>
-      <td>${isAdm?`<button onclick="deleteRecovery('${r.id}')" class="fi-del" style="font-size:11px">Eliminar</button>`:''}</td>
+      <td style="font-size:11px;color:${r._origen==='Consignación'?'var(--amber)':'var(--muted)'}">${esc(r._origen||'Stock')}</td>
+      <td>${isAdm?`<button onclick="deleteRecovery('${r.id}','${r._origen==='Consignación'?'consig':'stock'}')" class="fi-del" style="font-size:11px">Eliminar</button>`:''}</td>
     </tr>`).join('');
   document.getElementById('rcv-count').textContent=`${rows.length} recuperaciones`;
   document.getElementById('rcv-total').textContent=`Total: ${fmt(total)}`;
 }
 
-async function deleteRecovery(id) {
+async function deleteRecovery(id, origen) {
   if(!confirm('¿Eliminar este registro de recuperación?')) return;
   try {
-    const d = await fetch(`/api/recovery/${id}`,{method:'DELETE'}).then(r=>r.json());
+    const url = origen==='consig' ? `/api/consignacion/recuperaciones/${encodeURIComponent(id)}` : `/api/recovery/${id}`;
+    const d = await fetch(url,{method:'DELETE'}).then(r=>r.json());
     if(d.error){toast(d.error,'er');return;}
     await loadRecovery();
     toast('Registro eliminado','ok');
@@ -7732,6 +7758,362 @@ loadReassign = async function() {
     document.getElementById('ra-count').textContent=`${d.orders.length} órdenes`;
   }catch(e){toast('Error cargando reasignaciones','er');}
 };
+
+
+// ════════════════════════════════════════════════════════
+//  CONSIGNACIÓN — Almacenes ▸ Consignación
+//  Mismas funciones que Stock + Reasignación, contra /api/consignacion
+//  (datos en base separada por cuestiones fiscales). Carga diferida: se
+//  consulta al abrir el módulo, no al iniciar la suite.
+// ════════════════════════════════════════════════════════
+let csgData = [], csgLoaded = false, csgImpFile = null, craItems = [], craSelItem = null, craNextNum = '';
+let csgVisibleCount = 100;
+
+async function csgFetchJSON(url, opts){
+  const resp = await fetch(url, opts);
+  const ct = resp.headers.get('content-type')||'';
+  if(!ct.includes('application/json')) throw new Error(`Error ${resp.status} del servidor (respuesta no JSON)`);
+  return resp.json();
+}
+const csgFmt = v => v!=null ? '$'+Number(v).toLocaleString('en-US',{minimumFractionDigits:2}) : '—';
+
+async function loadCsg(){
+  try{
+    const d = await csgFetchJSON('/api/consignacion');
+    if(d.error){toast(d.error,'er');return;}
+    csgData = d.records||[]; csgLoaded = true;
+    csgRender();
+    document.getElementById('csg-dot').style.background='var(--green)';
+    document.getElementById('csg-lbl').textContent=`${csgData.length} items`;
+  }catch(e){toast('Error cargando consignación: '+e.message,'er');}
+}
+
+function csgRenderReset(){ csgVisibleCount=100; csgRender(); }
+function csgLoadMore(){ csgVisibleCount+=100; csgRender(); }
+function csgShowAll(){ csgVisibleCount=Infinity; csgRender(); }
+
+function csgRender(){
+  const gs = (document.getElementById('csg-gs').value||'').toLowerCase();
+  const rows = csgData.filter(r=>[r.manufacturer,r.part_number,r.description,r.label_code].join(' ').toLowerCase().includes(gs));
+  const total = rows.reduce((s,r)=>s+(parseFloat(r.last_cost)||0)*(parseInt(r.quantity)||0),0);
+  const isAdm = USER_PERMS && USER_PERMS.is_admin;
+  const display = rows.slice(0, csgVisibleCount);
+  const moreRow = rows.length>csgVisibleCount?`<tr><td colspan="11" style="text-align:center;padding:12px">
+    <span style="font-size:11px;color:var(--muted)">Mostrando ${display.length} de ${rows.length}</span>
+    <button onclick="csgLoadMore()" class="btn-reload" style="font-size:11px;padding:5px 14px;margin-left:10px">Cargar más (+100)</button>
+    <button onclick="csgShowAll()" class="btn-reload" style="font-size:11px;padding:5px 14px;margin-left:6px">Ver todos</button>
+  </td></tr>`:'';
+  document.getElementById('csg-tb').innerHTML = display.map(r=>`
+    <tr class="tr-hover" onclick="editCsgItem('${esc(r.id)}')">
+      <td><b style="color:var(--text)">${esc(r.manufacturer||'')}</b></td>
+      <td style="font-family:'DM Mono',monospace;color:var(--gold)">${esc(r.part_number||'')}</td>
+      <td style="color:var(--muted2)">${esc(r.description||'')}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted2)">${esc(r.label_code||'—')}</td>
+      <td style="text-align:right">${csgFmt(r.last_cost)}</td>
+      <td style="text-align:right;font-weight:700;color:${r.quantity>0?'var(--green)':'var(--red)'}">${r.quantity||0}</td>
+      <td style="color:var(--muted)">${esc(r.unit||'')}</td>
+      <td style="color:var(--muted)">${esc(r.section||'')}</td>
+      <td style="color:var(--muted)">${esc(r.box||'')}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted2)">${esc(r.recovery_job||'')}</td>
+      ${isAdm?`<td onclick="event.stopPropagation()"><button onclick="deleteCsgItem('${esc(r.id)}')" class="fi-del" style="font-size:11px">Eliminar</button></td>`:'<td></td>'}
+    </tr>`).join('')+moreRow;
+  document.getElementById('csg-count').textContent=`${rows.length} materiales${rows.length>csgVisibleCount?` (mostrando ${display.length})`:''}`;
+  document.getElementById('csg-total').textContent=`Valor total: $${total.toLocaleString('en-US',{minimumFractionDigits:2})}`;
+}
+
+async function openIngressCsg(){
+  if(!csgLoaded) await loadCsg();
+  document.getElementById('csg-ing-id').value='';
+  document.getElementById('csg-ing-title').textContent='Ingresar a Consignación';
+  ['csg-ing-mfr','csg-ing-pnum','csg-ing-desc','csg-ing-sec','csg-ing-box','csg-ing-label'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('csg-ing-qty').value='0';
+  document.getElementById('csg-ing-new-qty').value='';
+  document.getElementById('csg-ing-total-qty').value='0';
+  document.getElementById('csg-ing-cost').value='';
+  document.getElementById('csg-ing-unit').value='Pieza';
+  document.getElementById('csg-search').value='';
+  document.getElementById('csg-search-results').style.display='none';
+  await populateJobSelector('csg-ing-rec', true);
+  document.getElementById('mo-csg-ing').classList.add('on');
+}
+
+function csgMatches(q){
+  q = (q||'').toLowerCase();
+  return csgData.filter(r=>
+    (r.manufacturer||'').toLowerCase().includes(q)||
+    (r.part_number||'').toLowerCase().includes(q)||
+    (r.label_code||'').toLowerCase().includes(q)).slice(0,8);
+}
+function csgResultsHTML(matches, onPick){
+  return matches.map(r=>`
+    <div onclick="${onPick}('${esc(r.id)}')" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center">
+      <div style="flex:1">
+        <div style="font-family:'DM Mono',monospace;color:var(--gold);font-size:12px">${esc(r.part_number)}</div>
+        <div style="font-size:11px;color:var(--muted2)">${esc(r.manufacturer)} · ${esc(r.description||'')}${r.label_code?' · 🏷 '+esc(r.label_code):''}</div>
+      </div>
+      <div style="font-size:11px;font-weight:700;color:${r.quantity>0?'var(--green)':'var(--red)'}">${r.quantity} ${esc(r.unit||'')}</div>
+    </div>`).join('');
+}
+
+function csgSearch(q){
+  const res = document.getElementById('csg-search-results');
+  if(!q||q.length<2){res.style.display='none';return;}
+  const m = csgMatches(q);
+  if(!m.length){res.style.display='none';return;}
+  res.style.display=''; res.innerHTML = csgResultsHTML(m,'selectCsgItem');
+}
+
+function selectCsgItem(id){
+  const r = csgData.find(x=>x.id===id); if(!r) return;
+  document.getElementById('csg-ing-id').value        = r.id;
+  document.getElementById('csg-ing-mfr').value       = r.manufacturer||'';
+  document.getElementById('csg-ing-pnum').value      = r.part_number||'';
+  document.getElementById('csg-ing-desc').value      = r.description||'';
+  document.getElementById('csg-ing-label').value     = r.label_code||'';
+  document.getElementById('csg-ing-qty').value       = r.quantity||0;
+  document.getElementById('csg-ing-new-qty').value   = '';
+  document.getElementById('csg-ing-total-qty').value = r.quantity||0;
+  document.getElementById('csg-ing-cost').value      = r.last_cost||0;
+  document.getElementById('csg-ing-unit').value      = r.unit||'Pieza';
+  document.getElementById('csg-ing-sec').value       = r.section||'';
+  document.getElementById('csg-ing-box').value       = r.box||'';
+  document.getElementById('csg-ing-rec').value       = r.recovery_job||'';
+  document.getElementById('csg-search-results').style.display='none';
+  document.getElementById('csg-ing-title').textContent='Actualizar Consignación';
+}
+
+async function editCsgItem(id){
+  await populateJobSelector('csg-ing-rec', true);
+  selectCsgItem(id);
+  document.getElementById('csg-search').value='';
+  document.getElementById('mo-csg-ing').classList.add('on');
+}
+
+function csgUpdateTotal(){
+  const current = parseInt(document.getElementById('csg-ing-qty').value)||0;
+  const newQty  = parseInt(document.getElementById('csg-ing-new-qty').value)||0;
+  document.getElementById('csg-ing-total-qty').value = current + newQty;
+}
+
+async function saveCsgIngress(){
+  const pnum = document.getElementById('csg-ing-pnum').value.trim().toUpperCase();
+  const mfr  = document.getElementById('csg-ing-mfr').value.trim().toUpperCase();
+  if(!pnum||!mfr){toast('Fabricante y No. Parte son requeridos','er');return;}
+  const newQty = parseInt(document.getElementById('csg-ing-new-qty').value)||0;
+  if(newQty < 0){ toast('Los nuevos ingresos no pueden ser negativos','er'); return; }
+  const payload = {
+    manufacturer: mfr, part_number: pnum,
+    description:  document.getElementById('csg-ing-desc').value.trim(),
+    label_code:   document.getElementById('csg-ing-label').value.trim().toUpperCase(),
+    new_quantity: newQty,
+    last_cost:    parseFloat(document.getElementById('csg-ing-cost').value)||0,
+    unit:         document.getElementById('csg-ing-unit').value,
+    section:      document.getElementById('csg-ing-sec').value.trim(),
+    box:          document.getElementById('csg-ing-box').value.trim(),
+    recovery_job: document.getElementById('csg-ing-rec').value,
+  };
+  try{
+    const d = await csgFetchJSON('/api/consignacion',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    if(d.error){toast(d.error,'er');return;}
+    closeMo('mo-csg-ing');
+    await loadCsg();
+    const msg = d.action==='updated'
+      ? `Consignación actualizada ✓ · Ingreso: +${d.new_qty||0} · Total: ${(d.record&&d.record.quantity)||0}`
+      : `Material ingresado a consignación ✓ · Existencia inicial: ${d.new_qty||0}`;
+    toast(msg,'ok',4000);
+  }catch(e){toast('Error: '+e.message,'er');}
+}
+
+async function deleteCsgItem(id){
+  if(!confirm('¿Eliminar este material de Consignación?')) return;
+  try{
+    const d = await csgFetchJSON(`/api/consignacion/${encodeURIComponent(id)}`,{method:'DELETE'});
+    if(d.error){toast(d.error,'er');return;}
+    await loadCsg(); toast('Material eliminado','ok');
+  }catch(e){toast('Error: '+e.message,'er');}
+}
+
+// ── Importar Excel (mismo formato que Stock)
+function openCsgImport(){
+  csgImpFile=null;
+  document.getElementById('csg-imp-file').value='';
+  document.getElementById('csg-imp-fname').textContent='—';
+  document.getElementById('csg-imp-result').style.display='none';
+  document.getElementById('btn-csg-imp-run').disabled=true;
+  document.getElementById('mo-csg-imp').classList.add('on');
+}
+function onCsgImpFile(inp){ if(inp.files.length){ csgImpFile=inp.files[0]; document.getElementById('csg-imp-fname').textContent=csgImpFile.name; document.getElementById('btn-csg-imp-run').disabled=false; } }
+function csgDropImport(e){ e.preventDefault(); document.getElementById('csg-dz-imp').classList.remove('dg'); const f=e.dataTransfer.files[0]; if(f){ csgImpFile=f; document.getElementById('csg-imp-fname').textContent=f.name; document.getElementById('btn-csg-imp-run').disabled=false; } }
+async function runCsgImport(){
+  if(!csgImpFile) return;
+  const btn=document.getElementById('btn-csg-imp-run'); btn.disabled=true; btn.textContent='Importando…';
+  const fd=new FormData(); fd.append('file',csgImpFile); fd.append('mode',document.getElementById('csg-imp-mode').value);
+  try{
+    const d = await csgFetchJSON('/api/consignacion/import',{method:'POST',body:fd});
+    if(d.error){toast(d.error,'er');return;}
+    const res=document.getElementById('csg-imp-result');
+    res.style.display=''; res.textContent=`✓ ${d.imported} filas procesadas · ${d.updated} actualizados · ${d.created} nuevos · Total en consignación: ${d.total}`;
+    await loadCsg(); toast(d.imported+' materiales importados a consignación ✓','ok',5000);
+  }catch(e){toast('Error: '+e.message,'er');}
+  finally{ btn.disabled=false; btn.textContent='Importar'; }
+}
+
+// ── Reasignaciones de consignación (órdenes CRA)
+async function loadCsgReassign(){
+  const job = document.getElementById('cra-job-flt')?.value.trim()||'';
+  try{
+    const d = await csgFetchJSON('/api/consignacion/reasignaciones'+(job?`?job=${encodeURIComponent(job)}`:''));
+    if(d.error){toast(d.error,'er');return;}
+    craNextNum = d.next_number;
+    const fmt = v=>'$'+Number(v||0).toLocaleString('en-US',{minimumFractionDigits:2});
+    const isAdm = USER_PERMS && USER_PERMS.is_admin;
+    document.getElementById('cra-tb').innerHTML = (d.orders||[]).slice().reverse().map(o=>{
+      const total = (o.items||[]).reduce((s,i)=>s+parseFloat(i.total_cost||0),0);
+      const jobsTxt = [...new Set((o.items||[]).map(i=>i.job).filter(Boolean))].join(', ');
+      return `<tr>
+        <td><b style="color:var(--gold);font-family:'DM Mono',monospace">${esc(o.order_number)}</b></td>
+        <td style="color:var(--muted)">${esc((o.created_at||'').slice(0,10))}</td>
+        <td style="color:var(--muted2)">${(o.items||[]).length} items${jobsTxt?` · ${esc(jobsTxt)}`:''}</td>
+        <td style="text-align:right;font-weight:700;color:var(--green)">${fmt(total)}</td>
+        <td>
+          <button onclick="printCsgReassignOrder('${esc(o.order_number)}')" class="btn-reload" style="font-size:10px;padding:3px 8px">PDF</button>
+          ${isAdm?`<button onclick="deleteCsgReassignOrder('${esc(o.order_number)}')" class="fi-del" style="font-size:11px;margin-left:4px">Eliminar</button>`:''}
+        </td>
+      </tr>`;
+    }).join('');
+    document.getElementById('cra-count').textContent=`${(d.orders||[]).length} órdenes`;
+  }catch(e){toast('Error cargando reasignaciones de consignación: '+e.message,'er');}
+}
+
+async function openCsgReassign(){
+  await loadCsg();                  // existencias frescas antes de reasignar
+  craItems=[]; craSelItem=null;
+  document.querySelector('input[name="cra-type"][value="new"]').checked=true;
+  craTypeChange('new');
+  document.getElementById('cra-auto-num').textContent='Cargando…';
+  document.getElementById('cra-existing-num').value='';
+  document.getElementById('cra-search').value='';
+  document.getElementById('cra-search-results').style.display='none';
+  document.getElementById('cra-item-form').style.display='none';
+  document.getElementById('cra-items-list').style.display='none';
+  document.getElementById('cra-items-tb').innerHTML='';
+  document.getElementById('btn-cra-save').disabled=true;
+  await populateJobSelector('cra-item-job');
+  try{ const d=await csgFetchJSON('/api/consignacion/reasignaciones'); craNextNum=d.next_number; document.getElementById('cra-auto-num').textContent=d.next_number; }catch(e){ document.getElementById('cra-auto-num').textContent='—'; }
+  document.getElementById('mo-csg-reassign').classList.add('on');
+}
+
+function craTypeChange(type){
+  document.getElementById('cra-new-panel').style.display      = type==='new'      ? '' : 'none';
+  document.getElementById('cra-existing-panel').style.display = type==='existing' ? '' : 'none';
+}
+
+// Existencia disponible = existencia menos lo ya agregado a esta orden
+function craAvailable(r){
+  const used = craItems.filter(i=>i.part_number===r.part_number && i.manufacturer===r.manufacturer).reduce((s,i)=>s+i.quantity,0);
+  return (parseInt(r.quantity)||0) - used;
+}
+
+function craSearch(q){
+  const res=document.getElementById('cra-search-results');
+  if(!q||q.length<2){res.style.display='none';return;}
+  const m = csgMatches(q);
+  if(!m.length){res.style.display='none';return;}
+  res.style.display=''; res.innerHTML = csgResultsHTML(m,'craSelectItem');
+}
+
+function craSelectItem(id){
+  const r=csgData.find(x=>x.id===id); if(!r) return;
+  const avail = craAvailable(r);
+  if(avail<=0){toast('Sin existencia disponible','er');return;}
+  craSelItem=r;
+  document.getElementById('cra-search-results').style.display='none';
+  document.getElementById('cra-search').value=`${r.manufacturer} — ${r.part_number}`;
+  document.getElementById('cra-sel-info').textContent=`${r.part_number} · ${r.manufacturer} · ${r.description||''}`;
+  document.getElementById('cra-sel-qty').textContent=`${avail} ${r.unit||''}`;
+  document.getElementById('cra-item-qty').value='';
+  document.getElementById('cra-item-cost').value=r.last_cost||0;
+  document.getElementById('cra-item-total').textContent='0.00';
+  document.getElementById('cra-item-form').style.display='';
+}
+
+function craCalcTotal(){
+  const qty=parseInt(document.getElementById('cra-item-qty').value)||0;
+  const cost=parseFloat(document.getElementById('cra-item-cost').value)||0;
+  document.getElementById('cra-item-total').textContent=(qty*cost).toLocaleString('en-US',{minimumFractionDigits:2});
+}
+
+function craAddItem(){
+  if(!craSelItem){toast('Selecciona un material','er');return;}
+  const qty=parseInt(document.getElementById('cra-item-qty').value)||0;
+  const cost=parseFloat(document.getElementById('cra-item-cost').value)||0;
+  const job=document.getElementById('cra-item-job').value;
+  const avail=craAvailable(craSelItem);
+  if(!qty||qty<1){toast('Ingresa una cantidad válida','er');return;}
+  if(qty>avail){toast(`Existencia insuficiente (máx. ${avail})`,'er');return;}
+  if(!job){toast('Selecciona el Job destino','er');return;}
+  craItems.push({
+    part_number: craSelItem.part_number, manufacturer: craSelItem.manufacturer,
+    description: craSelItem.description||'', label_code: craSelItem.label_code||'',
+    job, unit_cost:cost, quantity:qty, total_cost: Math.round(qty*cost*100)/100
+  });
+  renderCraItems();
+  document.getElementById('cra-item-form').style.display='none';
+  document.getElementById('cra-search').value='';
+  craSelItem=null;
+  document.getElementById('btn-cra-save').disabled=false;
+}
+
+function craRemoveItem(idx){
+  craItems.splice(idx,1); renderCraItems();
+  if(!craItems.length) document.getElementById('btn-cra-save').disabled=true;
+}
+
+function renderCraItems(){
+  const fmt=v=>'$'+Number(v||0).toLocaleString('en-US',{minimumFractionDigits:2});
+  document.getElementById('cra-items-list').style.display=craItems.length?'':'none';
+  const total=craItems.reduce((s,i)=>s+i.total_cost,0);
+  document.getElementById('cra-items-tb').innerHTML=craItems.map((i,idx)=>`
+    <div style="display:flex;gap:8px;align-items:center;padding:7px 10px;background:rgba(0,0,0,.035);border-radius:6px;margin-bottom:4px;font-size:11px">
+      <div style="flex:1;font-family:'DM Mono',monospace;color:var(--gold)">${esc(i.part_number)}</div>
+      <div style="color:var(--muted2)">${esc(i.job)}</div>
+      <div style="color:var(--text)">${i.quantity} u.</div>
+      <div style="color:var(--green);font-weight:700">${fmt(i.total_cost)}</div>
+      <button onclick="craRemoveItem(${idx})" style="background:none;border:none;color:var(--red);cursor:pointer">Eliminar</button>
+    </div>`).join('');
+  document.getElementById('cra-order-total').textContent=total.toLocaleString('en-US',{minimumFractionDigits:2});
+}
+
+async function saveCsgReassignOrder(){
+  if(!craItems.length){toast('Agrega al menos un material','er');return;}
+  const isNew = document.querySelector('input[name="cra-type"]:checked').value==='new';
+  const orderNum = isNew ? '' : document.getElementById('cra-existing-num').value.trim().toUpperCase();
+  if(!isNew && !orderNum){toast('Ingresa el número de orden','er');return;}
+  const btn=document.getElementById('btn-cra-save'); btn.disabled=true; btn.textContent='Guardando…';
+  try{
+    const d = await csgFetchJSON('/api/consignacion/reasignaciones',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({order_number:orderNum,is_new:isNew,items:craItems})});
+    if(d.error){toast(d.error,'er');return;}
+    closeMo('mo-csg-reassign');
+    const n = craItems.length; craItems=[];
+    await loadCsg(); await loadCsgReassign();
+    toast(`Orden ${d.order_number} guardada ✓ (${n} items)`,'ok',5000);
+  }catch(e){toast('Error: '+e.message,'er');}
+  finally{ btn.disabled=false; btn.textContent='Guardar Orden'; }
+}
+
+async function deleteCsgReassignOrder(orderNum){
+  if(!confirm(`¿Eliminar la orden ${orderNum}? Esta acción no revierte los cambios en la existencia de consignación.`)) return;
+  try{
+    const d = await csgFetchJSON(`/api/consignacion/reasignaciones/orden/${encodeURIComponent(orderNum)}`,{method:'DELETE'});
+    if(d.error){toast(d.error,'er');return;}
+    await loadCsgReassign(); toast(`Orden ${orderNum} eliminada`,'ok');
+  }catch(e){toast('Error: '+e.message,'er');}
+}
+
+function printCsgReassignOrder(orderNum){
+  window.open(`/api/consignacion/reasignaciones/orden/${encodeURIComponent(orderNum)}/pdf`,'_blank');
+}
 
 // Init Recovery on load
 document.addEventListener('DOMContentLoaded',()=>{ loadRecovery(); });

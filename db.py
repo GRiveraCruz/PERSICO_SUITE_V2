@@ -397,6 +397,69 @@ class SVNumber(Base, JSONBMixin):
     sv_number = Column(String, unique=True, nullable=False, index=True)
 
 
+# ══════════════════════════════════════════════════════════════════
+#  CONSIGNACIÓN — base de datos separada por cuestiones fiscales
+#
+#  El material en consignación no es propiedad de la empresa, así que su
+#  inventario, sus reasignaciones y sus recuperaciones viven en tablas
+#  propias, con su propio `declarative_base` (ConsigBase), su propio engine y
+#  sus propias sesiones — nunca se mezclan con las de Stock.
+#
+#  - Si existe la variable de entorno CONSIG_DATABASE_URL, estas tablas se
+#    crean en ESA base de datos (una base PostgreSQL físicamente distinta).
+#  - Si no existe, se usa DATABASE_URL (misma instancia, tablas separadas).
+#  - Si ninguna existe, app/consignacion.py usa archivos JSON en
+#    DATA_DIR/CONSIGNACION/ (mismo respaldo que el resto de la suite).
+# ══════════════════════════════════════════════════════════════════
+CONSIG_DATABASE_URL = os.environ.get("CONSIG_DATABASE_URL", "")
+if CONSIG_DATABASE_URL.startswith("postgres://"):
+    CONSIG_DATABASE_URL = CONSIG_DATABASE_URL.replace("postgres://", "postgresql://", 1)
+CONSIG_SEPARATE_DB = bool(CONSIG_DATABASE_URL)
+if not CONSIG_DATABASE_URL:
+    CONSIG_DATABASE_URL = DATABASE_URL
+CONSIG_DB_ENABLED = bool(CONSIG_DATABASE_URL)
+
+if CONSIG_SEPARATE_DB:
+    consig_engine = create_engine(CONSIG_DATABASE_URL, pool_pre_ping=True, pool_size=3, max_overflow=5)
+else:
+    consig_engine = engine
+ConsigSessionLocal = (scoped_session(sessionmaker(bind=consig_engine, autoflush=False, autocommit=False))
+                      if CONSIG_DB_ENABLED else None)
+ConsigBase = declarative_base()
+
+
+class Consignacion(ConsigBase, JSONBMixin, ContentHashMixin):
+    """Inventario en consignación — mismo contrato de datos que Stock
+    (se identifica por fabricante + número de parte)."""
+    __tablename__ = "consignacion"
+    item_id = Column(String, index=True)
+
+
+class ConsigReasignacion(ConsigBase, JSONBMixin):
+    """Órdenes de reasignación de material en consignación (folio CRA-...)."""
+    __tablename__ = "consignacion_reasignaciones"
+    order_number = Column(String, unique=True, index=True)
+
+
+class ConsigRecuperacion(ConsigBase, JSONBMixin, ContentHashMixin):
+    """Recuperaciones de costo generadas al ingresar material a consignación
+    desde un Job (mismo concepto que Recovery para Stock)."""
+    __tablename__ = "consignacion_recuperaciones"
+    job = Column(String, index=True)
+
+
+class ConsigFolio(ConsigBase):
+    """Contador de folios propio de consignación (vive en la base de
+    consignación, no en doc_counters, para que la numeración quede con sus datos)."""
+    __tablename__ = "consignacion_folios"
+    prefix = Column(String, primary_key=True)
+    n = Column(Integer, nullable=False, default=0)
+
+
+def get_consig_session():
+    return ConsigSessionLocal()
+
+
 def canonical_hash(rec):
     """Huella determinística del contenido de un registro (mismo contenido →
     mismo hash, sin importar el orden de las llaves del dict). Compartida entre
@@ -410,6 +473,10 @@ def canonical_hash(rec):
 def init_db():
     """Crea todas las tablas que no existan. Nunca borra ni modifica una
     tabla existente (eso lo maneja Alembic vía migraciones versionadas)."""
+    if CONSIG_DB_ENABLED:
+        ConsigBase.metadata.create_all(bind=consig_engine)
+        print(f"  [DB] Consignación: {len(ConsigBase.metadata.tables)} tablas verificadas/creadas "
+              f"({'base de datos separada (CONSIG_DATABASE_URL)' if CONSIG_SEPARATE_DB else 'misma base, tablas separadas'}).")
     if not DB_ENABLED:
         print("  [DB] DATABASE_URL no configurada — el sistema sigue usando JSON.")
         return

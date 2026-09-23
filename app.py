@@ -5837,7 +5837,8 @@ def api_export_ivp(year):
 def _build_report_data(job_number, rate_year, wh_year, po_year, *,
                         wh_pool=None, po_pool=None, fx_all=None,
                         ra_pool=None, rc_pool=None,
-                        via_pool=None, gv_pool=None, env_pool=None):
+                        via_pool=None, gv_pool=None, env_pool=None,
+                        cra_pool=None, crc_pool=None):
     """Core logic: compile all report data for a Job.
 
     Por defecto (sin *_pool) cada colección se trae ya filtrada por job vía SQL
@@ -5927,6 +5928,27 @@ def _build_report_data(job_number, rate_year, wh_year, po_year, *,
     except:
         recovery_items = []
         recovery_total = 0.0
+    # Consignación: sus reasignaciones cargan costo al Job y sus recuperaciones lo
+    # abonan, igual que las de Stock. Los datos viven en su propia base; aquí solo
+    # se suman al reporte, etiquetados con origen="Consignación" (cra_/crc_pool
+    # vienen precargados en los reportes multi-job, igual que ra_/rc_pool).
+    reassign_consig_total = 0.0
+    recovery_consig_total = 0.0
+    if CONSIG_EN_COSTO_JOB and _consig is not None:
+        try:
+            c_ra = _consig.reassign_items_for_job(job_number, pool=cra_pool)
+            reassign_consig_total = round(sum(float(i.get("total_cost", 0)) for i in c_ra), 2)
+            reassign_items = list(reassign_items) + c_ra
+            reassign_total = round(reassign_total + reassign_consig_total, 2)
+        except Exception as e:
+            print(f"[CONSIGNACIÓN] Error leyendo reasignaciones para {job_number}: {e}")
+        try:
+            c_rc = _consig.recovery_for_job(job_number, pool=crc_pool)
+            recovery_consig_total = round(sum(float(r.get("total_value", 0)) for r in c_rc), 2)
+            recovery_items = list(recovery_items) + c_rc
+            recovery_total = round(recovery_total + recovery_consig_total, 2)
+        except Exception as e:
+            print(f"[CONSIGNACIÓN] Error leyendo recuperaciones para {job_number}: {e}")
 
     # Service costs (viáticos + gastos de viaje + envíos) — all in USD
     if via_pool is not None:
@@ -5970,6 +5992,8 @@ def _build_report_data(job_number, rate_year, wh_year, po_year, *,
         "reassign_items":   reassign_items,
         "recovery_total":   recovery_total,
         "recovery_items":   recovery_items,
+        "reassign_consig_total": reassign_consig_total,
+        "recovery_consig_total": recovery_consig_total,
         "svc_viaticos":      svc_via,
         "svc_gastos":        svc_gv,
         "svc_envios":        svc_env,
@@ -7003,6 +7027,8 @@ def api_dashboard_general_management():
         po_pool  = po_year_records
         ra_pool  = reassign_load()
         rc_pool  = recovery_load()
+        cra_pool = _consig.load("orders")   if (_consig and CONSIG_EN_COSTO_JOB) else None
+        crc_pool = _consig.load("recovery") if (_consig and CONSIG_EN_COSTO_JOB) else None
         via_pool = _svc_load(VIATICOS_FILE)
         gv_pool  = _svc_load(GASTOS_FILE)
         env_pool = _svc_load(ENVIOS_FILE)
@@ -7015,7 +7041,8 @@ def api_dashboard_general_management():
             d = _build_report_data(jn, year, year, year,
                                     wh_pool=wh_pool, po_pool=po_pool, fx_all=fx_all,
                                     ra_pool=ra_pool, rc_pool=rc_pool,
-                                    via_pool=via_pool, gv_pool=gv_pool, env_pool=env_pool)
+                                    via_pool=via_pool, gv_pool=gv_pool, env_pool=env_pool,
+                                    cra_pool=cra_pool, crc_pool=crc_pool)
             cpo_rev = cpo_revenue_for_job(jn, year, pool=cpo_pool)
             if cpo_rev > 0:
                 d["revenue"]      = cpo_rev
@@ -7081,6 +7108,8 @@ def api_report_multi():
         fx_all   = fx_load_all()
         ra_pool  = reassign_load()
         rc_pool  = recovery_load()
+        cra_pool = _consig.load("orders")   if (_consig and CONSIG_EN_COSTO_JOB) else None
+        crc_pool = _consig.load("recovery") if (_consig and CONSIG_EN_COSTO_JOB) else None
         via_pool = _svc_load(VIATICOS_FILE)
         gv_pool  = _svc_load(GASTOS_FILE)
         env_pool = _svc_load(ENVIOS_FILE)
@@ -7095,7 +7124,8 @@ def api_report_multi():
             d = _build_report_data(jn, rate_year, wh_year, po_year,
                                     wh_pool=wh_pool, po_pool=po_pool, fx_all=fx_all,
                                     ra_pool=ra_pool, rc_pool=rc_pool,
-                                    via_pool=via_pool, gv_pool=gv_pool, env_pool=env_pool)
+                                    via_pool=via_pool, gv_pool=gv_pool, env_pool=env_pool,
+                                    cra_pool=cra_pool, crc_pool=crc_pool)
             # Usar CPO como Revenue si hay registros
             cpo_rev = cpo_revenue_for_job(jn, cpo_year, pool=cpo_pool)
             if cpo_rev > 0:
@@ -7296,9 +7326,9 @@ MODULES = [
     # Compras — Proveedores
     "proveedores",
     # Compras — Documentos
-    "gpo", "po", "ivp", "reassign", "recovery", "compras-requisicion",
+    "gpo", "po", "ivp", "reassign", "consig-reassign", "recovery", "compras-requisicion",
     # Almacenes
-    "stock", "ingreso", "apartados", "salida",
+    "stock", "consignacion", "ingreso", "apartados", "salida",
     # Servicio
     "viaticos", "gastos-viaje", "envios",
     # Reportes y Configuración
@@ -7763,6 +7793,14 @@ PROFILES = {
     },
 }
 
+# Consignación hereda el mismo nivel que Stock, y sus reasignaciones el mismo
+# que Reasignaciones, en cada perfil (mismas funciones → mismos accesos).
+# Si algún perfil debe verlos distinto, basta con agregar la llave explícita
+# en PROFILES arriba: setdefault no la pisa.
+for _prof in PROFILES.values():
+    _prof.setdefault("consignacion", _prof.get("stock", LEVEL_NONE))
+    _prof.setdefault("consig-reassign", _prof.get("reassign", LEVEL_NONE))
+
 def _default_perms(role):
     if role == "admin":
         return {m: LEVEL_FULL for m in MODULES}
@@ -7824,9 +7862,13 @@ def users_load():
             # Nuevos módulos agregados después de que este usuario ya existía:
             # se rellenan con "view" (no "none") para no cortar de golpe accesos
             # que antes no tenían ninguna restricción (ej. Finanzas).
+            # Si el usuario tiene un perfil de puesto (o es admin), el módulo nuevo
+            # toma el nivel que ese perfil define; solo sin perfil cae a "view".
+            _role = info.get("role")
+            _defaults = _default_perms(_role) if (_role == "admin" or _role in PROFILES) else {}
             for mod in MODULES:
                 if mod not in migrated:
-                    migrated[mod] = LEVEL_VIEW
+                    migrated[mod] = _defaults.get(mod, LEVEL_VIEW)
             info["permissions"] = migrated
         return data
     # Build from auth file or env vars
@@ -8868,6 +8910,10 @@ import csv as _csv
 def _db_to_rows(name, year=None):
     """Devuelve (headers, rows) para cada base de datos."""
     y = year or CURRENT_YEAR
+    if name.startswith("consig") and _consig is not None:
+        _r = _consig.export_rows(name)
+        if _r is not None:
+            return _r
     if name == "quotes":
         data = _load_quotes()
         if not data: return [], []
@@ -9002,7 +9048,7 @@ def api_backup_all():
     except: year = CURRENT_YEAR
     import io as _io, zipfile as _zip
     buf = _io.BytesIO()
-    dbs = ["quotes","jobs","rates","wh","po","ivp","cpo","fx","pt","sv","stock","reassign","recovery","proveedores","catalogo_electrico","catalogo_mecanico","catalogo_servicios"]
+    dbs = ["quotes","jobs","rates","wh","po","ivp","cpo","fx","pt","sv","stock","reassign","recovery","consignacion","consig-reassign","consig-recovery","proveedores","catalogo_electrico","catalogo_mecanico","catalogo_servicios"]
     with _zip.ZipFile(buf, "w", _zip.ZIP_DEFLATED) as zf:
         for name in dbs:
             try:
@@ -9167,7 +9213,7 @@ def reassign_items_for_job(job_number, ra_pool=None):
     ra_pool (colección ya cargada, usado por el reporte multi-job) se filtra ahí
     directo sin volver a consultar la DB."""
     if ra_pool is not None:
-        return [item for o in ra_pool for item in o.get("items", [])
+        return [{**item, "order_number": o.get("order_number", "")} for o in ra_pool for item in o.get("items", [])
                 if (item.get("job") or "").upper() == job_number.upper()]
     if _orm and _orm.DB_ENABLED:
         try:
@@ -9179,14 +9225,15 @@ def reassign_items_for_job(job_number, ra_pool=None):
                             "EXISTS (SELECT 1 FROM jsonb_array_elements(reassign_orders.data->'items') item "
                             "WHERE UPPER(item->>'job') = UPPER(:job_number))"
                         )).params(job_number=job_number).all())
-                return [item for r in rows for item in (r.data.get("items") or [])
+                return [{**item, "order_number": r.data.get("order_number", "")}
+                        for r in rows for item in (r.data.get("items") or [])
                         if (item.get("job") or "").upper() == job_number.upper()]
             finally:
                 s.close()
         except Exception as e:
             print(f"[DB] Error leyendo reassign_orders filtrado ({job_number}), usando fallback: {e}")
     ra_data = reassign_load()
-    return [item for o in ra_data for item in o.get("items", [])
+    return [{**item, "order_number": o.get("order_number", "")} for o in ra_data for item in o.get("items", [])
             if (item.get("job") or "").upper() == job_number.upper()]
 
 def reassign_save(records):
@@ -9369,13 +9416,13 @@ def api_import_stock():
         ci_mfr  = col("FABRICANTE","MANUFACTURER","MARCA")
         ci_pnum = col("NUMERO DE PARTE","PART NUMBER","PART_NUMBER","NO. PARTE")
         ci_desc = col("DESCRIPCION","DESCRIPTION","DESC")
-        ci_cost = col("ULTIMO COSTO","LAST COST","COSTO","COST")
+        ci_cost = col("ULTIMO COSTO","LAST COST","LAST_COST","COSTO","COST")
         ci_qty  = col("EXISTENCIA","QUANTITY","CANTIDAD","QTY")
         ci_unit = col("UNIDAD","UNIT")
         ci_sec  = col("SECCION","SECTION")
         ci_box  = col("CAJA","BOX")
         ci_rec  = col("RECUPERACION","RECOVERY","RECOVERY_JOB")
-        ci_label = col("ETIQUETA","LABEL","QR","CODIGO DE BARRAS","BARCODE","COD. ETIQUETA")
+        ci_label = col("ETIQUETA","LABEL","LABEL_CODE","QR","CODIGO DE BARRAS","BARCODE","COD. ETIQUETA")
         missing = [n for n,c in (("FABRICANTE",ci_mfr),("NUMERO DE PARTE",ci_pnum),("EXISTENCIA",ci_qty)) if c is None]
         if missing:
             return jsonify({"error": "Faltan columnas requeridas en la primera fila de la hoja activa: " + ", ".join(missing)}), 400
@@ -9574,6 +9621,19 @@ def api_delete_reassign_order(order_number):
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+# ── CONSIGNACIÓN (Almacenes ▸ Consignación): vive en consignacion.py con su
+#    propia capa de datos (tablas / base separada por cuestiones fiscales).
+try:
+    import consignacion as _consig
+    _consig.setup(app, lambda: is_admin(), _DATA)
+except Exception as _e_consig:
+    _consig = None
+    print(f"[CONSIGNACIÓN] ⚠ No se pudo cargar el módulo: {_e_consig}")
+
+# Si False, las reasignaciones/recuperaciones de consignación NO afectan el
+# costo del Job en los reportes (solo quedan registradas en su propia base).
+CONSIG_EN_COSTO_JOB = True
 
 @app.route("/api/reassign/order/<order_number>/pdf")
 def api_reassign_pdf(order_number):
@@ -14415,6 +14475,9 @@ tbody tr:nth-child(even){{background:#f7f7f7}}td{{padding:6px 8px;border-bottom:
             "project_configs":  _os.path.join(_DATA, "project_configs.json"),
             "generated_pos":    _os.path.join(_DATA, "generated_pos.json"),
             "movimientos_stock":_os.path.join(_DATA, "movimientos_stock.json"),
+            "consignacion":            _os.path.join(_DATA, "CONSIGNACION", "consignacion.json"),
+            "consignacion_reasignaciones": _os.path.join(_DATA, "CONSIGNACION", "reasignaciones.json"),
+            "consignacion_recuperaciones": _os.path.join(_DATA, "CONSIGNACION", "recuperaciones.json"),
         }
         for name, path in simple_files.items():
             p = Path(path)
@@ -14524,6 +14587,9 @@ def _build_backup_zip():
             "project_configs":   _os.path.join(_DATA, "project_configs.json"),
             "generated_pos":     _os.path.join(_DATA, "generated_pos.json"),
             "movimientos_stock": _os.path.join(_DATA, "movimientos_stock.json"),
+            "consignacion":            _os.path.join(_DATA, "CONSIGNACION", "consignacion.json"),
+            "consignacion_reasignaciones": _os.path.join(_DATA, "CONSIGNACION", "reasignaciones.json"),
+            "consignacion_recuperaciones": _os.path.join(_DATA, "CONSIGNACION", "recuperaciones.json"),
         }
         for name, path in simple_files.items():
             p = Path(path)
