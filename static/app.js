@@ -5623,7 +5623,11 @@ function adminSelectUser(uname) {
           <select onchange="adminChangeRole('${uname}',this.value)"
             style="background:var(--inp);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:5px 10px;font-size:12px;outline:none"
             ${uname===d.admin_user?'disabled':''}><option value="viewer" ${role==='viewer'?'selected':''}>Acceso personalizado</option>
-            <option value="admin" ${role==='admin'?'selected':''}>Administrador</option></select>
+            <option value="admin" ${role==='admin'?'selected':''}>Administrador</option>
+            <optgroup label="Perfiles de puesto">
+            ${['GENERAL MANAGEMENT','OPERATION MANAGER','FINANCE MANAGER','HUMAN RESOURCES','PROJECT MANAGER','PURCHASING','ENGINEERING','MANUFACTURING','OPERATIVE LEADING']
+              .map(p=>`<option value="${p}" ${role===p?'selected':''}>${p.charAt(0)+p.slice(1).toLowerCase()}</option>`).join('')}
+            </optgroup></select>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;background:rgba(200,16,46,.06);border:1px solid rgba(200,16,46,.3);border-radius:8px;padding:10px 14px;margin-bottom:14px">
@@ -6192,22 +6196,21 @@ async function loadAdminUsers() {
 
 async function adminChangeRole(uname, newRole) {
   try {
-    const defaultPerms = {};
-    const mods = ['jobs','rates','quotes','pt','cpo','po','wh','ivp','report','multirpt','fx'];
-    const acts = ['view','create','edit','delete','import'];
-    mods.forEach(m => {
-      defaultPerms[m] = {};
-      acts.forEach(a => {
-        defaultPerms[m][a] = newRole === 'admin' ? true : (a === 'view');
-      });
-    });
+    // Antes esta función armaba su propio objeto de "permissions" con un modelo
+    // viejo e incompatible (booleanos por acción, solo 11 de los 46 módulos) y lo
+    // mandaba junto con el rol — el backend prioriza "permissions" sobre recalcular
+    // el rol, así que esto nunca dejaba que se aplicaran los permisos reales del
+    // nuevo rol/perfil (y de paso ensuciaba esos 11 módulos con datos con una forma
+    // que ya no usa el resto del sistema). Ahora solo se manda el rol — el backend
+    // ya sabe regenerar los permisos correctos para "admin", "viewer", o cualquiera
+    // de los perfiles de puesto (ver PROFILES en app.py).
     const d = await fetch(`/api/admin/users/${uname}`, {
       method: 'PUT',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({role: newRole, permissions: defaultPerms})
+      body: JSON.stringify({role: newRole})
     }).then(r=>r.json());
     if (d.error) { toast(d.error,'er'); return; }
-    toast(`${uname} → ${newRole==='admin'?'Administrador':'Consulta'} ✓`,'ok');
+    toast(`${uname} → ${newRole} ✓`,'ok');
     await loadAdminUsers();
   } catch(e) { toast('Error cambiando rol','er'); }
 }
@@ -6586,7 +6589,256 @@ document.addEventListener('DOMContentLoaded', () => {
     const now = new Date();
     homeDate.textContent = now.toLocaleDateString('es-MX', {weekday:'long', year:'numeric', month:'long', day:'numeric'});
   }
+  initHomeDashboard();
 });
+
+// ════════════════════════════════════════════════════════
+//  DASHBOARD DE INICIO — por perfil (Ronda 1: General Management)
+//  Reemplaza la bienvenida genérica SOLO para el perfil que tenga un
+//  dashboard construido; para todos los demás, la pantalla de inicio
+//  sigue exactamente igual que siempre.
+// ════════════════════════════════════════════════════════
+async function initHomeDashboard(){
+  try{
+    const me = await fetch('/api/me/perms').then(r=>r.json());
+    if(me.role === 'GENERAL MANAGEMENT' || me.is_admin){
+      await loadGMDashboard();
+    }
+  }catch(e){ /* si falla, se queda la bienvenida de siempre — nunca romper el inicio */ }
+}
+
+function fmtMoney(n){ return '$' + Number(n||0).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0}); }
+function fmtPct(n){ return (n>0?'+':'') + n.toFixed(0) + '%'; }
+function pctDelta(curr, prev){
+  if(!prev) return null;
+  return Math.round((curr-prev)/prev*100);
+}
+
+// ── Donut chart en SVG puro (técnica stroke-dasharray, sin librerías) con
+//    leyenda a un costado — inspirado en las referencias que compartió el
+//    usuario, adaptado a los colores de marca de Persico. ──
+function svgDonut(segments, opts){
+  opts = opts || {};
+  const size = opts.size || 108, stroke = opts.stroke || 15;
+  const r = (size - stroke) / 2, cx = size/2, cy = size/2;
+  const circumference = 2 * Math.PI * r;
+  const total = segments.reduce((s,x)=>s+x.value, 0) || 1;
+  let offset = 0;
+  const arcs = segments.filter(s=>s.value>0).map(seg => {
+    const dash = (seg.value/total) * circumference;
+    const circle = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${seg.color}" stroke-width="${stroke}"
+      stroke-dasharray="${dash.toFixed(2)} ${(circumference-dash).toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}"
+      transform="rotate(-90 ${cx} ${cy})" stroke-linecap="butt"/>`;
+    offset += dash;
+    return circle;
+  }).join('');
+  const svg = `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="flex-shrink:0">${arcs}</svg>`;
+  const legend = `<div style="display:flex;flex-direction:column;gap:8px;justify-content:center">
+    ${segments.map(s=>{
+      const pct = total ? Math.round(s.value/total*100) : 0;
+      return `<div style="display:flex;align-items:center;gap:8px;font-size:12px">
+        <span style="width:9px;height:9px;border-radius:50%;background:${s.color};flex-shrink:0"></span>
+        <span style="color:var(--muted2);min-width:58px">${esc(s.label)}</span>
+        <span style="font-weight:800;font-variant-numeric:tabular-nums">${s.value}</span>
+        <span style="color:var(--muted);font-size:10px">${pct}%</span>
+      </div>`;
+    }).join('')}
+  </div>`;
+  return `<div style="display:flex;align-items:center;gap:20px">${svg}${legend}</div>`;
+}
+
+// Barras con línea base y esquinas redondeadas — más cercano a las referencias
+// que barras planas sin línea de referencia.
+function miniBarChart(items, opts){
+  opts = opts || {};
+  const max = Math.max(1, ...items.map(i=>i.count));
+  const h = opts.height || 110;
+  const color = opts.color || 'var(--red)';
+  return `<div style="border-top:1px solid var(--border);padding-top:10px">
+    <div style="display:flex;align-items:flex-end;gap:10px;height:${h}px;padding:0 2px">
+      ${items.map(i => {
+        const barH = Math.max(3, Math.round((i.count/max)*(h-26)));
+        return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;min-width:0">
+          <div style="font-size:10px;font-weight:700;color:var(--text);margin-bottom:4px;font-variant-numeric:tabular-nums">${i.count}</div>
+          <div style="width:100%;max-width:30px;height:${barH}px;background:${color};border-radius:5px 5px 0 0"></div>
+        </div>`;
+      }).join('')}
+    </div>
+    <div style="display:flex;gap:10px;padding:0 2px;margin-top:6px">
+      ${items.map(i=>`<div style="flex:1;font-size:9px;color:var(--muted);text-align:center;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0" title="${esc(i.customer)}">${esc(i.customer)}</div>`).join('')}
+    </div>
+  </div>`;
+}
+
+// ── Tarjeta blanca flotante (fondo blanco puro contra el gris de la página,
+//    sombra suave, esquinas amplias) — el mismo lenguaje visual de las
+//    referencias, con la tipografía y colores de marca de Persico. ──
+function dashCard(innerHtml, extra){
+  return `<div style="background:#fff;border-radius:14px;box-shadow:0 1px 2px rgba(0,0,0,.04),0 4px 16px rgba(0,0,0,.05);padding:22px 24px;min-width:0;overflow:hidden;${extra||''}">${innerHtml}</div>`;
+}
+// Número protagonista con etiqueta arriba y, si se le da un valor de
+// comparación, una variación (▲/▼) contra el año anterior.
+function dashHero(label, value, opts){
+  opts = opts || {};
+  let delta = '';
+  if(opts.deltaPct != null){
+    const up = opts.deltaPct >= 0;
+    delta = `<span style="display:inline-flex;align-items:center;gap:2px;font-size:11px;font-weight:700;color:${up?'var(--green,#1f8a4c)':'var(--red)'};margin-left:9px;vertical-align:middle">
+      ${up?'▲':'▼'} ${Math.abs(opts.deltaPct)}%</span>`;
+  }
+  return `<div>
+    <div style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.7px">${label}</div>
+    <div style="font-size:32px;font-weight:800;color:${opts.color||'var(--text)'};margin-top:5px;line-height:1;font-variant-numeric:tabular-nums">${value}${delta}</div>
+    ${opts.sub?`<div style="font-size:11px;color:var(--muted);margin-top:4px">${opts.sub}</div>`:''}
+  </div>`;
+}
+function dashStat(label, value, color){
+  return `<div style="display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px">
+    <span style="color:var(--muted2)">${label}</span>
+    <span style="font-weight:700;color:${color||'var(--text)'};font-variant-numeric:tabular-nums">${value}</span>
+  </div>`;
+}
+function dashDivider(){ return `<div style="height:1px;background:var(--border);margin:2px 0"></div>`; }
+function dashNote(text){ return `<div style="font-size:10.5px;color:var(--muted);line-height:1.5">${text}</div>`; }
+function dashSectionLabel(text, color){
+  return `<div style="display:flex;align-items:center;gap:7px;margin-bottom:2px">
+    <span style="width:8px;height:8px;border-radius:50%;background:${color}"></span>
+    <span style="font-size:11px;font-weight:700;letter-spacing:1.2px;color:var(--muted2);text-transform:uppercase">${text}</span>
+  </div>`;
+}
+
+let _gmDashYear = new Date().getFullYear();
+async function loadGMDashboard(year){
+  year = year || _gmDashYear;
+  _gmDashYear = year;
+  const wrap = document.getElementById('home-dashboard');
+  const dflt = document.getElementById('home-default');
+  if(!wrap) return;
+  dflt.style.display = 'none';
+  wrap.style.display = 'block';
+  wrap.innerHTML = '<div class="state" style="text-align:center;padding:60px;color:var(--muted)"><div class="spinner" style="width:26px;height:26px;border:3px solid var(--border);border-top-color:var(--red);border-radius:50%;margin:0 auto 12px;animation:spin .7s linear infinite"></div>Cargando dashboard…</div>';
+  try{
+    const d = await fetch('/api/dashboard/general-management?year='+year).then(r=>r.json());
+    if(d.error){ wrap.innerHTML = `<div style="text-align:center;padding:60px;color:var(--red)">⚠ ${esc(d.error)}</div>`; return; }
+    renderGMDashboard(d);
+  }catch(e){
+    wrap.innerHTML = '<div style="text-align:center;padding:60px;color:var(--red)">⚠ No se pudo cargar el dashboard. <button onclick="loadGMDashboard()" class="btn-reload" style="margin-left:8px">Reintentar</button></div>';
+  }
+}
+
+function renderGMDashboard(d){
+  const wrap = document.getElementById('home-dashboard');
+  const s = d.sales, p = d.projects, cc = d.cost_control;
+
+  // ── Fila superior: los 3 números que un director mira primero, con su
+  //    variación año contra año donde el dato existe (Projects sí tiene
+  //    este_año/año_pasado calculado en el backend; Sales y Cost Control por
+  //    ahora no comparan contra el año anterior — se puede agregar después). ──
+  const heroRow = `
+    <div class="dash-hero-row" style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px">
+      ${dashCard(dashHero('Customer POs · '+d.year, fmtMoney(s.cpos_total_amount), {sub: s.cpos_registered+' POs registradas', color:'var(--gold)'}))}
+      ${dashCard(dashHero('Jobs open · '+d.year, p.this_year.open, {deltaPct: pctDelta(p.this_year.open, p.last_year.open), sub: 'vs. '+p.last_year.open+' en '+(d.year-1), color:'var(--blue)'}))}
+      ${dashCard(dashHero('Gross margin · '+d.year, fmtMoney(cc.gross_margin), {color: cc.gross_margin>=0?'var(--green,#1f8a4c)':'var(--red)', sub: 'Revenue '+fmtMoney(cc.revenue_total)}))}
+    </div>
+  `;
+
+  const salesCard = dashCard(`
+    ${dashSectionLabel('Sales', 'var(--gold)')}
+    <div style="margin-top:14px;display:flex;flex-direction:column;gap:11px">
+      ${dashStat('Quotes registered', s.quotes_registered)}
+      ${dashStat('Quotes sent to customer', s.quotes_sent)}
+    </div>
+    <div style="margin-top:16px">
+      ${s.quotes_by_customer.length ? miniBarChart(s.quotes_by_customer,{height:92,color:'var(--gold)'}) : `<div style="font-size:11px;color:var(--muted);text-align:center;padding:16px 0">Sin cotizaciones en ${d.year}</div>`}
+    </div>
+    <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+      ${svgDonut([
+        {label:'Awarded', value:s.awarded, color:'#1f8a4c'},
+        {label:'Pending', value:s.pending, color:'#b3760a'},
+        {label:'Refused', value:s.refused, color:'#C8102E'},
+      ])}
+    </div>
+    <div style="margin-top:14px">${dashNote('Customer POs = solo ventas confirmadas. No incluye jobs con revenue solo estimado.')}</div>
+  `);
+
+  const projCard = dashCard(`
+    ${dashSectionLabel('Projects', 'var(--blue)')}
+    <div style="margin-top:14px;display:flex;flex-direction:column;gap:11px">
+      <div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.6px">${d.year}</div>
+      ${dashStat('Jobs in WIP', p.this_year.wip)}
+      ${dashStat('Jobs closed', p.this_year.closed)}
+    </div>
+    <div style="margin-top:14px">
+      ${p.this_year.by_customer.length ? miniBarChart(p.this_year.by_customer,{height:88,color:'var(--blue)'}) : ''}
+    </div>
+    <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:11px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline">
+        <span style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.6px">${d.year-1}</span>
+        <span style="font-size:15px;font-weight:800;font-variant-numeric:tabular-nums">${p.last_year.open} <span style="font-size:9px;color:var(--muted);font-weight:600">open</span></span>
+      </div>
+      ${dashStat('Jobs in WIP', p.last_year.wip)}
+      ${dashStat('Jobs closed', p.last_year.closed)}
+    </div>
+  `);
+
+  const costCard = dashCard(`
+    ${dashSectionLabel('Cost Control', 'var(--red)')}
+    <div style="margin-top:14px;display:flex;flex-direction:column;gap:11px">
+      ${dashStat('Revenue total', fmtMoney(cc.revenue_total))}
+      ${dashStat('Work: hours cost', fmtMoney(cc.wh_cost))}
+      ${dashStat('Purchasing + services', fmtMoney(cc.purchasing_services))}
+    </div>
+    <div style="margin-top:12px">${dashNote('Revenue usa la Customer PO de cada Job cuando existe; si un Job aún no tiene CPO, usa su revenue estimado.')}</div>
+    <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+      <div style="max-height:260px;overflow:auto;border-radius:8px">
+        <table style="width:100%;min-width:280px;border-collapse:collapse;font-size:11px">
+        <thead style="position:sticky;top:0;background:#fff">
+          <tr style="text-align:left">
+            <th style="padding:6px 4px;border-bottom:1px solid var(--border);font-weight:700;color:var(--muted);font-size:10px">Job</th>
+            <th style="padding:6px 4px;border-bottom:1px solid var(--border);text-align:right;font-weight:700;color:var(--muted);font-size:10px">Revenue</th>
+            <th style="padding:6px 4px;border-bottom:1px solid var(--border);text-align:right;font-weight:700;color:var(--muted);font-size:10px">Cost</th>
+            <th style="padding:6px 4px;border-bottom:1px solid var(--border);text-align:right;font-weight:700;color:var(--muted);font-size:10px">Result</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${cc.jobs.map(j=>`<tr>
+            <td style="padding:6px 4px;border-bottom:1px solid var(--border);font-weight:700;font-variant-numeric:tabular-nums">${esc(j.job_number)}</td>
+            <td style="padding:6px 4px;border-bottom:1px solid var(--border);text-align:right;font-variant-numeric:tabular-nums">${fmtMoney(j.revenue)} <span style="font-size:8px;color:var(--muted);font-weight:400">${j.revenue_source==='CPO'?'':'(est.)'}</span></td>
+            <td style="padding:6px 4px;border-bottom:1px solid var(--border);text-align:right;font-variant-numeric:tabular-nums">${fmtMoney(j.cost)}</td>
+            <td style="padding:6px 4px;border-bottom:1px solid var(--border);text-align:right;font-weight:700;font-variant-numeric:tabular-nums;color:${j.result>=0?'var(--green,#1f8a4c)':'var(--red)'}">${fmtMoney(j.result)}</td>
+          </tr>`).join('') || `<tr><td colspan="4" style="padding:16px;text-align:center;color:var(--muted)">Sin jobs activos en ${d.year}</td></tr>`}
+        </tbody>
+      </table>
+      </div>
+    </div>
+  `);
+
+  // El saludo de siempre se conserva íntegro (mismo texto), condensado en una
+  // sola franja horizontal arriba de todo, en vez de ocupar la pantalla entera.
+  wrap.innerHTML = `
+    <div style="display:flex;align-items:center;gap:16px;margin-bottom:22px;flex-wrap:wrap">
+      <img src="/static/persico_logo.webp" alt="" style="height:32px;object-fit:contain;flex-shrink:0" onerror="this.style.display='none'">
+      <div style="flex:1;min-width:220px">
+        <div style="font-size:9px;font-weight:600;letter-spacing:2px;color:var(--muted);text-transform:uppercase">Bienvenido a</div>
+        <div style="font-size:15px;font-weight:900;letter-spacing:.5px;color:var(--text);text-transform:uppercase;line-height:1.3">Sistema de Gestión Interna
+          <span style="color:var(--red)">· Persico México</span>
+        </div>
+      </div>
+      <div style="text-align:right">
+        <div id="home-date-dash" style="font-size:10px;color:var(--muted);font-family:'DM Mono',monospace"></div>
+        <select onchange="loadGMDashboard(this.value)" style="margin-top:6px;padding:6px 10px;border-radius:6px;border:1px solid var(--border2);background:var(--inp);font-size:12px">
+          ${[0,1,2].map(off=>{const y=new Date().getFullYear()-off; return `<option value="${y}" ${y==d.year?'selected':''}>${y}</option>`}).join('')}
+        </select>
+      </div>
+    </div>
+    ${heroRow}
+    <div class="dash-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;align-items:start">
+      ${salesCard}${projCard}${costCard}
+    </div>
+  `;
+  const hd = document.getElementById('home-date-dash');
+  if(hd) hd.textContent = new Date().toLocaleDateString('es-MX', {weekday:'long', year:'numeric', month:'long', day:'numeric'});
+}
 
 
 // ════════════════════════════════════════════════════════
@@ -9865,11 +10117,17 @@ function pcRenderTiming(savedRows) {
   if(!tb) { console.error('pc-timing-body NOT FOUND in DOM'); return; }
   tb.innerHTML = '';
   _pcTimingRowCounter = 0;
+  _pcCollapsedGroups = new Set();
 
   // Ya no se agregan actividades por defecto: el usuario elige de la lista
   // (datalist con sugerencias) o escribe la actividad que necesite.
-  (savedRows||[]).forEach(r => { if(r.actividad) pcAddTimingRow(r); });
+  (savedRows||[]).forEach(r => {
+    if(!r.actividad) return;
+    if(r.tipo === 'grupo') pcAddGroupRow(r);
+    else pcAddTimingRow(r);
+  });
 
+  pcUpdateGroupsList();
   pcUpdateTimingCalcs();
 }
 
@@ -9880,14 +10138,18 @@ function pcAddTimingRow(data={}) {
   const tr = document.createElement('tr');
   const inpS = 'background:var(--inp);border:1px solid rgba(255,193,7,.3);border-radius:4px;color:var(--amber);padding:5px 7px;font-size:11px';
   tr.innerHTML = `
-    <td><input data-field="actividad" list="pc-act-list" value="${esc(data.actividad||data.name||'')}"
+    <td style="padding-left:${data.grupo?'18px':'6px'}"><input data-field="actividad" list="pc-act-list" value="${esc(data.actividad||data.name||'')}"
       oninput="pcUpdateTimingCalcs()" style="${inpS};width:100%"></td>
+    <td><input data-field="grupo" list="pc-timing-groups-list" value="${esc(data.grupo||'')}" placeholder="— sin grupo —"
+      oninput="pcOnGroupFieldChange(this);pcUpdateTimingCalcs()" style="${inpS};width:100%;color:var(--muted2)"></td>
     <td><input data-field="actividad_previa" list="pc-timing-activities-list" value="${esc(data.actividad_previa||data.prev||'')}"
       oninput="pcUpdateTimingCalcs()" style="${inpS};width:100%;color:var(--muted2)"></td>
     <td><input data-field="fecha_inicial" type="date" value="${data.fecha_inicial||data.fecha_ini||''}"
       oninput="pcUpdateTimingCalcs()" style="${inpS};color:var(--text);width:100%"></td>
     <td><input data-field="dias_estimados" type="number" min="0" value="${data.dias_estimados||data.dias||0}"
       oninput="pcUpdateTimingCalcs()" style="${inpS};width:60px;text-align:right"></td>
+    <td><input data-field="recurso" value="${esc(data.recurso||'')}" placeholder="—"
+      oninput="pcUpdateTimingCalcs()" style="${inpS};width:100%;color:var(--muted2)"></td>
     <td class="pc-t-cond" style="font-family:'DM Mono',monospace;font-size:10px;color:var(--muted2);text-align:center">—</td>
     <td class="pc-t-obj"  style="font-family:'DM Mono',monospace;font-size:10px;color:var(--gold);text-align:center;font-weight:600">—</td>
     <td><input data-field="fecha_real_finalizacion" type="date" value="${data.fecha_real_finalizacion||''}"
@@ -9908,8 +10170,76 @@ function pcAddTimingRow(data={}) {
       style="${inpS};width:55px;text-align:right;color:var(--gold)"></td>
     <td><button onclick="this.closest('tr').remove();pcUpdateTimingCalcs()"
       style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px">Eliminar</button></td>`;
+  tr.dataset.tipo = 'actividad';
   tb.appendChild(tr);
 }
+
+// ── Fila de GRUPO: encabezado colapsable que agrupa actividades — las fechas
+//    condicionada/objetivo se calculan solas a partir de sus hijas (mín. inicio,
+//    máx. fin), igual que en el diagrama de referencia (barra gris que engloba a
+//    sus tareas). No tiene fecha/duración propia: no es una tarea con trabajo,
+//    es un contenedor. ──
+function pcAddGroupRow(data={}) {
+  const tb = document.getElementById('pc-timing-body');
+  if(!tb) return;
+  const tr = document.createElement('tr');
+  tr.dataset.tipo = 'grupo';
+  tr.className = 'pc-t-group-row';
+  tr.style.background = 'rgba(0,0,0,.045)';
+  tr.innerHTML = `
+    <td colspan="3" style="font-weight:800;letter-spacing:.3px">
+      <span class="pc-grp-toggle" onclick="pcToggleGroup(this)" style="cursor:pointer;display:inline-block;width:14px;user-select:none">▾</span>
+      <input data-field="actividad" value="${esc(data.actividad||'')}" placeholder="Nombre del grupo"
+        oninput="pcUpdateGroupsList();pcUpdateTimingCalcs()"
+        style="background:transparent;border:none;border-bottom:1px dashed var(--border2);color:var(--text);font-weight:800;font-size:11.5px;padding:3px 4px;width:75%">
+    </td>
+    <td></td>
+    <td></td>
+    <td></td>
+    <td class="pc-t-cond" style="font-family:'DM Mono',monospace;font-size:10px;color:var(--muted2);text-align:center">—</td>
+    <td class="pc-t-obj"  style="font-family:'DM Mono',monospace;font-size:10px;color:var(--gold);text-align:center;font-weight:700">—</td>
+    <td colspan="5"></td>
+    <td><button onclick="this.closest('tr').remove();pcUpdateGroupsList();pcUpdateTimingCalcs()"
+      style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px">Eliminar</button></td>`;
+  tb.appendChild(tr);
+  pcUpdateGroupsList();
+}
+
+// Al escribir/asignar un grupo en una actividad, se indenta visualmente para que
+// la jerarquía se note de un vistazo en la propia tabla, no solo en el Gantt.
+function pcOnGroupFieldChange(input){
+  const tr = input.closest('tr');
+  const actCell = tr.querySelector('[data-field="actividad"]');
+  if(actCell) actCell.closest('td').style.paddingLeft = input.value.trim() ? '18px' : '6px';
+}
+
+function pcUpdateGroupsList(){
+  const dl = document.getElementById('pc-timing-groups-list');
+  const tb = document.getElementById('pc-timing-body');
+  if(!dl || !tb) return;
+  const names = [...tb.querySelectorAll('tr[data-tipo="grupo"] [data-field="actividad"]')]
+    .map(inp => inp.value.trim()).filter(Boolean);
+  dl.innerHTML = [...new Set(names)].map(n => `<option value="${esc(n)}">`).join('');
+}
+
+// Colapsar/expandir: oculta las filas de actividad de este grupo en la TABLA
+// (el Gantt maneja su propio colapso por separado, ver pcRenderGantt/_pcCollapsed).
+function pcToggleGroup(toggleEl){
+  const tr = toggleEl.closest('tr');
+  const groupName = tr.querySelector('[data-field="actividad"]').value.trim();
+  const collapsed = toggleEl.textContent === '▾';
+  toggleEl.textContent = collapsed ? '▸' : '▾';
+  if(!_pcCollapsedGroups) window._pcCollapsedGroups = new Set();
+  if(collapsed) _pcCollapsedGroups.add(groupName); else _pcCollapsedGroups.delete(groupName);
+  let sib = tr.nextElementSibling;
+  while(sib && sib.dataset.tipo !== 'grupo'){
+    const g = sib.querySelector('[data-field="grupo"]');
+    if(g && g.value.trim() === groupName) sib.style.display = collapsed ? 'none' : '';
+    sib = sib.nextElementSibling;
+  }
+  pcRenderGantt([...document.getElementById('pc-timing-body').rows], _pcLastEndDateMap||{}, _pcLastGroupRanges||{});
+}
+let _pcCollapsedGroups = new Set();
 
 function _pcF(tr,field){
   const el=tr.querySelector(`[data-field="${field}"]`);
@@ -9921,11 +10251,15 @@ function pcUpdateTimingCalcs() {
   const tb = document.getElementById('pc-timing-body');
   if(!tb) return;
   pcUpdateActividadPreviaList();
+  pcUpdateGroupsList();
   const today = new Date(); today.setHours(0,0,0,0);
   const endDateMap = {};
+  const groupRanges = {};   // { GRUPO_NORMALIZADO: {min:Date, max:Date} } — para la barra agregada
   const normKey = s => (s||'').trim().toUpperCase();
   [...tb.rows].forEach(tr => {
+    if(tr.dataset.tipo === 'grupo') return;   // las filas de grupo se calculan aparte, abajo
     const activ = _pcF(tr,'actividad');
+    const grupo = _pcF(tr,'grupo');
     const prev  = _pcF(tr,'actividad_previa');
     const fIni  = _pcF(tr,'fecha_inicial');
     const dias  = parseInt(_pcF(tr,'dias_estimados'))||0;
@@ -9944,6 +10278,14 @@ function pcUpdateTimingCalcs() {
       const fObj=new Date(fCond); fObj.setDate(fObj.getDate()+dias);
       if(objEl) objEl.textContent=fmt(fObj);
       if(activ) endDateMap[normKey(activ)]=fObj;
+      if(grupo) {
+        const gk = normKey(grupo);
+        if(!groupRanges[gk]) groupRanges[gk] = {min:new Date(fCond), max:new Date(fObj)};
+        else {
+          if(fCond < groupRanges[gk].min) groupRanges[gk].min = new Date(fCond);
+          if(fObj  > groupRanges[gk].max) groupRanges[gk].max = new Date(fObj);
+        }
+      }
       if(statEl){
         if(fReal) {
           const fRealDate = new Date(fReal+'T00:00:00');
@@ -9967,24 +10309,71 @@ function pcUpdateTimingCalcs() {
       if(statEl) statEl.textContent='—';
     }
   });
-  pcRenderGantt([...tb.rows], endDateMap);
+
+  // Segunda pasada: cada fila de GRUPO toma su fecha condicionada/objetivo del
+  // rango agregado (mín. inicio, máx. fin) de sus actividades hijas, calculadas
+  // arriba — así el grupo siempre refleja lo que contiene, sin capturarse a mano.
+  const fmtLong = d=>d.toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'});
+  [...tb.rows].forEach(tr => {
+    if(tr.dataset.tipo !== 'grupo') return;
+    const gname = _pcF(tr,'actividad');
+    const range = groupRanges[normKey(gname)];
+    const condEl=tr.querySelector('.pc-t-cond'), objEl=tr.querySelector('.pc-t-obj');
+    if(range){
+      if(condEl) condEl.textContent = fmtLong(range.min);
+      if(objEl)  objEl.textContent  = fmtLong(range.max);
+    } else {
+      if(condEl) condEl.textContent = '—';
+      if(objEl)  objEl.textContent  = 'sin actividades';
+    }
+  });
+
+  _pcLastEndDateMap = endDateMap;
+  _pcLastGroupRanges = groupRanges;
+  pcRenderGantt([...tb.rows], endDateMap, groupRanges);
 }
+let _pcLastEndDateMap = {};
+let _pcGanttZoom = 'semanas';   // 'dias' | 'semanas' | 'meses'
+function pcSetGanttZoom(mode){
+  _pcGanttZoom = mode;
+  document.querySelectorAll('.pc-zoom-btn').forEach(b=>{
+    const active = b.dataset.zoom === mode;
+    b.style.background = active ? 'var(--red)' : 'transparent';
+    b.style.color = active ? '#fff' : 'var(--muted2)';
+    b.style.fontWeight = active ? '700' : '400';
+  });
+  pcRenderGantt([...document.getElementById('pc-timing-body').rows], _pcLastEndDateMap||{}, _pcLastGroupRanges||{});
+}
+let _pcLastGroupRanges = {};
 
 function pcGetTimingData() {
   const tb = document.getElementById('pc-timing-body');
   if(!tb) return [];
-  return [...tb.rows].map(tr => ({
-    actividad:             _pcF(tr,'actividad'),
-    actividad_previa:      _pcF(tr,'actividad_previa'),
-    fecha_inicial:         _pcF(tr,'fecha_inicial'),
-    dias_estimados:        parseInt(_pcF(tr,'dias_estimados'))||0,
-    fecha_condicionada:    tr.querySelector('.pc-t-cond')?.textContent||'',
-    fecha_objetivo:        tr.querySelector('.pc-t-obj')?.textContent||'',
-    fecha_real_finalizacion: _pcF(tr,'fecha_real_finalizacion'),
-    cumplido:              _pcF(tr,'cumplido'),
-    milestone_facturacion: _pcF(tr,'milestone'),
-    pct_facturacion:       parseFloat(_pcF(tr,'pct_facturacion'))||null,
-  })).filter(r=>r.actividad);
+  return [...tb.rows].map(tr => {
+    if(tr.dataset.tipo === 'grupo'){
+      return {
+        tipo: 'grupo',
+        actividad: _pcF(tr,'actividad'),
+        fecha_condicionada: tr.querySelector('.pc-t-cond')?.textContent||'',
+        fecha_objetivo:     tr.querySelector('.pc-t-obj')?.textContent||'',
+      };
+    }
+    return {
+      tipo: 'actividad',
+      actividad:             _pcF(tr,'actividad'),
+      grupo:                 _pcF(tr,'grupo'),
+      actividad_previa:      _pcF(tr,'actividad_previa'),
+      fecha_inicial:         _pcF(tr,'fecha_inicial'),
+      dias_estimados:        parseInt(_pcF(tr,'dias_estimados'))||0,
+      recurso:               _pcF(tr,'recurso'),
+      fecha_condicionada:    tr.querySelector('.pc-t-cond')?.textContent||'',
+      fecha_objetivo:        tr.querySelector('.pc-t-obj')?.textContent||'',
+      fecha_real_finalizacion: _pcF(tr,'fecha_real_finalizacion'),
+      cumplido:              _pcF(tr,'cumplido'),
+      milestone_facturacion: _pcF(tr,'milestone'),
+      pct_facturacion:       parseFloat(_pcF(tr,'pct_facturacion'))||null,
+    };
+  }).filter(r=>r.actividad);
 }
 
 let pcLastGanttSVG = null, pcLastGanttMeta = null;
@@ -9996,14 +10385,27 @@ function _pcFmtDLong(d){
   return d.toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'});
 }
 
-function pcRenderGantt(rows, endDateMap) {
+function pcRenderGantt(rows, endDateMap, groupRanges) {
+  groupRanges = groupRanges || {};
   const wrap  = document.getElementById('pc-gantt-wrap');
   const gantt = document.getElementById('pc-gantt');
   if(!wrap || !gantt) return;
 
-  const entries = [];
+  const normKey = s => (s||'').trim().toUpperCase();
+
+  // 1) Actividades reales con fecha resuelta (igual que antes), más a qué grupo
+  //    pertenece cada una — y el orden en que aparecen los grupos en la tabla.
+  const activityEntries = [];
+  const groupOrder = [];
+  const groupSeen = new Set();
   rows.forEach((tr) => {
+    if(tr.dataset.tipo === 'grupo'){
+      const gname = _pcF(tr,'actividad');
+      if(gname && !groupSeen.has(normKey(gname))){ groupSeen.add(normKey(gname)); groupOrder.push(gname); }
+      return;
+    }
     const act  = _pcF(tr,'actividad');
+    const grupo= _pcF(tr,'grupo');
     const prev = _pcF(tr,'actividad_previa');
     const fIni = _pcF(tr,'fecha_inicial');
     const dias = parseInt(_pcF(tr,'dias_estimados'))||0;
@@ -10012,60 +10414,129 @@ function pcRenderGantt(rows, endDateMap) {
     const fRealStr = _pcF(tr,'fecha_real_finalizacion');
     if(!act) return;
 
-    // Determine start: explicit fecha_inicial, or end of prev activity +1 day
     let start = fIni ? new Date(fIni+'T00:00:00') : null;
     if(!start && prev && endDateMap[prev.trim().toUpperCase()]) {
       start = new Date(endDateMap[prev.trim().toUpperCase()]);
       start.setDate(start.getDate()+1);
     }
-    if(!start) return; // no date info — skip
+    if(!start) return; // sin información de fecha — se omite
 
     const end = new Date(start);
     end.setDate(end.getDate() + Math.max(dias, 1));
     const fReal = fRealStr ? new Date(fRealStr+'T00:00:00') : null;
-    entries.push({act, start, end, dias, cumpl, mile, fReal});
+    activityEntries.push({act, start, end, dias, cumpl, mile, fReal, grupo: grupo||null});
   });
 
-  if(!entries.length){ wrap.style.display='none'; pcLastGanttSVG=null; return; }
+  if(!activityEntries.length){ wrap.style.display='none'; pcLastGanttSVG=null; return; }
   wrap.style.display='';
 
+  // 2) Orden final a dibujar: por cada grupo (en el orden en que aparece en la
+  //    tabla) su barra agregada + sus hijas indentadas (si no está colapsado);
+  //    al final, las actividades sin grupo asignado, igual que siempre.
+  const byGroup = {};
+  activityEntries.forEach(e => {
+    if(e.grupo){ const k = normKey(e.grupo); (byGroup[k] = byGroup[k]||[]).push(e); }
+  });
+  const drawEntries = [];
+  groupOrder.forEach(gname => {
+    const k = normKey(gname);
+    const range = groupRanges[k];
+    const children = byGroup[k] || [];
+    if(!range && !children.length) return; // grupo vacío y sin fechas propias: no se dibuja
+    const collapsed = _pcCollapsedGroups.has(gname);
+    drawEntries.push({
+      kind:'group', act:gname, count: children.length, collapsed,
+      start: range ? range.min : children[0].start,
+      end:   range ? range.max : children[0].end,
+    });
+    if(!collapsed) children.forEach(c => drawEntries.push(Object.assign({kind:'activity', indent:true}, c)));
+  });
+  activityEntries.filter(e=>!e.grupo).forEach(e => drawEntries.push(Object.assign({kind:'activity', indent:false}, e)));
+
+  if(!drawEntries.length){ wrap.style.display='none'; pcLastGanttSVG=null; return; }
+
   const today   = new Date(); today.setHours(0,0,0,0);
-  const allDates = entries.flatMap(e => e.fReal ? [e.start, e.end, e.fReal] : [e.start, e.end]);
+  const allDates = drawEntries.flatMap(e => e.fReal ? [e.start, e.end, e.fReal] : [e.start, e.end]);
   const minD    = new Date(Math.min(...allDates));
   const maxD    = new Date(Math.max(...allDates));
   const totalMs = Math.max(1, maxD - minD);
-  const W = 700, ROW = 22, PAD = 4, LABEL = 170, DATES = 78, HEAD = 26;
+  const totalMsForW = maxD - minD;
+  const totalDaysForW = totalMsForW / 86400000;
+  // En "Días" cada columna necesita ancho real para ser legible — el ancho del
+  // SVG crece con el rango (el contenedor ya tiene scroll horizontal propio). En
+  // "Semanas"/"Meses" se mantiene el ancho fijo de siempre, más compacto.
+  const W = _pcGanttZoom === 'dias' ? Math.max(700, Math.min(3200, Math.round(totalDaysForW*20))) : 700;
+  const ROW = 22, PAD = 4, LABEL = 190, DATES = 78, HEAD = 26, INDENT = 14;
 
   const pct = d => ((d - minD) / totalMs * W).toFixed(1);
   const todayX = parseFloat(pct(today));
 
-  // ── Regla de fechas superior (visible a lo largo de todo el cronograma) ──
+  // ── Regla de fechas superior — el paso entre marcas lo controla el usuario
+  //    con los botones Días/Semanas/Meses (antes se autoescalaba solo). ──
   const totalDays = totalMs / 86400000;
   let stepDays = 7;
-  if(totalDays > 240) stepDays = 30;
-  else if(totalDays > 120) stepDays = 14;
-  else if(totalDays > 45) stepDays = 7;
-  else stepDays = Math.max(1, Math.round(totalDays/8));
+  if(_pcGanttZoom === 'dias') stepDays = 1;
+  else if(_pcGanttZoom === 'meses') stepDays = 30;
+  else stepDays = 7; // 'semanas'
+
+  // En "Días", la rejilla se dibuja cada día, pero el TEXTO de la fecha solo se
+  // muestra cada N días según el espacio real disponible por día — si no, con
+  // rangos largos las etiquetas se amontonan unas sobre otras y quedan
+  // ilegibles (un problema real de densidad, no de que el contenedor no recorte).
+  const pxPerStepDay = W / Math.max(1, totalDays/stepDays);
+  const labelEvery = _pcGanttZoom === 'dias' ? Math.max(1, Math.ceil(28/pxPerStepDay)) : 1;
 
   let headerSvg = '';
-  const bodyBottom = HEAD + PAD + entries.length*(ROW+2);
-  for(let t=new Date(minD); t<=maxD; t.setDate(t.getDate()+stepDays)){
+  const bodyBottom = HEAD + PAD + drawEntries.length*(ROW+2);
+
+  // ── Sombreado de fines de semana (sáb/dom) — se pinta primero, debajo de todo. ──
+  let weekendSvg = '';
+  for(let t=new Date(minD); t<=maxD; t.setDate(t.getDate()+1)){
+    const day = t.getDay();
+    if(day===0 || day===6){
+      const x1 = LABEL + parseFloat(pct(t));
+      const tNext = new Date(t); tNext.setDate(tNext.getDate()+1);
+      const x2 = LABEL + parseFloat(pct(tNext<=maxD?tNext:maxD));
+      weekendSvg += `<rect x="${x1}" y="${HEAD}" width="${Math.max(1,x2-x1)}" height="${bodyBottom-HEAD}" fill="#C8102E" opacity=".04"/>`;
+    }
+  }
+
+  let _stepIdx = 0;
+  for(let t=new Date(minD); t<=maxD; t.setDate(t.getDate()+stepDays), _stepIdx++){
     const x = LABEL + parseFloat(pct(t));
     if(x < LABEL-2 || x > LABEL+W+2) continue;
-    headerSvg += `<line x1="${x}" y1="${HEAD}" x2="${x}" y2="${bodyBottom}" stroke="#000" stroke-opacity=".06" stroke-width="1"/>
-      <text x="${x}" y="${HEAD-8}" font-size="8.5" fill="#666" text-anchor="middle" font-family="Arial">${_pcFmtD(t)}</text>`;
+    const showLabel = _stepIdx % labelEvery === 0;
+    headerSvg += `<line x1="${x}" y1="${HEAD}" x2="${x}" y2="${bodyBottom}" stroke="#000" stroke-opacity=".06" stroke-width="1"/>`;
+    if(showLabel) headerSvg += `<text x="${x}" y="${HEAD-8}" font-size="8.5" fill="#666" text-anchor="middle" font-family="Arial">${_pcFmtD(t)}</text>`;
   }
   // Asegura que la fecha final también se vea aunque no caiga en un "step" exacto
   headerSvg += `<text x="${LABEL+W}" y="${HEAD-8}" font-size="8.5" fill="#666" text-anchor="end" font-family="Arial" font-weight="700">${_pcFmtD(maxD)}</text>`;
   headerSvg += `<line x1="${LABEL}" y1="${HEAD}" x2="${LABEL+W}" y2="${HEAD}" stroke="#000" stroke-opacity=".15" stroke-width="1"/>`;
 
-  let svgRows = entries.map((e,i) => {
+  let svgRows = drawEntries.map((e,i) => {
     const x = parseFloat(pct(e.start));
     const w = Math.max(4, parseFloat(pct(e.end)) - x);
     const y = HEAD + PAD + i*(ROW+2);
+
+    if(e.kind === 'group'){
+      // Barra agregada como línea sólida delgada — misma convención que la
+      // referencia (no una caja con solo contorno): comunica "este es un
+      // contenedor, no una tarea con trabajo propio" sin ocupar tanto espacio
+      // visual como las barras de sus hijas.
+      const label = e.act.length > 26 ? e.act.slice(0,25)+'…' : e.act;
+      const toggleIcon = e.collapsed ? '▸' : '▾';
+      return `
+      <rect x="${LABEL+x}" y="${y+ROW/2-2}" width="${w}" height="4" rx="2" fill="#2b2b2b"/>
+      <rect x="${LABEL+x}" y="${y+4}" width="2" height="${ROW-8}" fill="#2b2b2b"/>
+      <rect x="${LABEL+x+w-2}" y="${y+4}" width="2" height="${ROW-8}" fill="#2b2b2b"/>
+      <text x="${LABEL-4}" y="${y+ROW-8}" font-size="10.5" fill="#222" text-anchor="end" font-family="Arial" font-weight="800">${toggleIcon} ${esc(label)} (${e.count})</text>`;
+    }
+
+    const indentPx = e.indent ? INDENT : 0;
     const color = e.cumpl ? '#1f8a4c' : (e.end < today ? '#c8102e' : '#a8650a');
     const mileIcon = e.mile ? ' ★' : '';
-    const label = e.act.length > 24 ? e.act.slice(0,23)+'…' : e.act;
+    const maxLabelLen = e.indent ? 20 : 24;
+    const label = e.act.length > maxLabelLen ? e.act.slice(0,maxLabelLen-1)+'…' : e.act;
     const rangoTxt = `${_pcFmtD(e.start)} → ${_pcFmtD(e.end)}`;
     let extra = '';
     if(e.fReal) {
@@ -10078,15 +10549,15 @@ function pcRenderGantt(rows, endDateMap) {
       if(diffDays !== 0) {
         const xEnd = LABEL + parseFloat(pct(e.end));
         const xReal = LABEL + xr;
-        const x1 = Math.min(xEnd, xReal), x2 = Math.max(xEnd, xReal);
-        extra += `<line x1="${x1}" y1="${y+ROW/2}" x2="${x2}" y2="${y+ROW/2}" stroke="${markerColor}" stroke-width="1.2" stroke-dasharray="2,2"/>
-        <text x="${x2+4}" y="${y+ROW/2+3}" font-size="8" fill="${markerColor}" font-family="Arial" font-weight="700">${diffDays>0?'+':''}${diffDays}d</text>`;
+        const x1b = Math.min(xEnd, xReal), x2b = Math.max(xEnd, xReal);
+        extra += `<line x1="${x1b}" y1="${y+ROW/2}" x2="${x2b}" y2="${y+ROW/2}" stroke="${markerColor}" stroke-width="1.2" stroke-dasharray="2,2"/>
+        <text x="${x2b+4}" y="${y+ROW/2+3}" font-size="8" fill="${markerColor}" font-family="Arial" font-weight="700">${diffDays>0?'+':''}${diffDays}d</text>`;
       }
     }
     return `
-    <rect x="${LABEL+x}" y="${y+3}" width="${w}" height="${ROW-6}" rx="3" fill="${color}" opacity=".85"/>
-    <text x="${LABEL+x+4}" y="${y+ROW-8}" font-size="9" fill="white" font-family="Arial">${e.dias>0?e.dias+'d':''}</text>
-    <text x="${LABEL-4}" y="${y+ROW-8}" font-size="10" fill="#555" text-anchor="end" font-family="Arial">${label}${mileIcon}</text>
+    <rect x="${LABEL+indentPx+x}" y="${y+3}" width="${Math.max(2,w-indentPx)}" height="${ROW-6}" rx="3" fill="${color}" opacity=".85"/>
+    <text x="${LABEL+indentPx+x+4}" y="${y+ROW-8}" font-size="9" fill="white" font-family="Arial">${e.dias>0?e.dias+'d':''}</text>
+    <text x="${LABEL-4}" y="${y+ROW-8}" font-size="10" fill="#555" text-anchor="end" font-family="Arial">${esc(label)}${mileIcon}</text>
     <text x="${LABEL+W+8}" y="${y+ROW-8}" font-size="8.5" fill="#444" font-family="'DM Mono',monospace">${rangoTxt}</text>
     ${extra}`;
   }).join('');
@@ -10099,6 +10570,7 @@ function pcRenderGantt(rows, endDateMap) {
   const svgW = LABEL + W + DATES + 10;
   const svgH = bodyBottom + 10;
   const svgMarkup = `<svg width="${svgW}" height="${svgH}" xmlns="http://www.w3.org/2000/svg" style="background:rgba(0,0,0,.03);border-radius:6px">
+    ${weekendSvg}
     ${headerSvg}
     ${svgRows}
   </svg>`;
@@ -10106,7 +10578,7 @@ function pcRenderGantt(rows, endDateMap) {
 
   // Se guarda para poder generar el PDF con el mismo diagrama, sin recalcular
   pcLastGanttSVG = svgMarkup.replace(/rgba\(0,0,0,\.03\)/,'#f7f7f7');
-  pcLastGanttMeta = { minD:_pcFmtDLong(minD), maxD:_pcFmtDLong(maxD), total: entries.length };
+  pcLastGanttMeta = { minD:_pcFmtDLong(minD), maxD:_pcFmtDLong(maxD), total: drawEntries.filter(e=>e.kind==='activity').length };
 }
 
 function pcPrintGanttPDF(){

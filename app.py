@@ -10,7 +10,7 @@ Ejecutar:  python app.py
 Acceso:    http://<IP-del-servidor>:5000
 """
 
-import io, json, re, datetime, shutil, hashlib, secrets
+import io, json, re, datetime, shutil, hashlib, secrets, html as _html
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from flask import Flask, request, jsonify, send_from_directory, Response, session, redirect, url_for, send_file
@@ -292,7 +292,7 @@ def _login_required(f):
         if not session.get("user"):
             if request.path.startswith("/api/"):
                 return jsonify({"error": "no autenticado"}), 401
-            return redirect("/login")
+            return redirect("/login?next=" + request.path)
         return f(*args, **kwargs)
     return decorated
 
@@ -320,12 +320,22 @@ def _cache_del(key):
 @app.route("/login", methods=["GET", "POST"])
 def login():
     error = ""
+    # ?next= permite volver a donde se intentaba entrar (ej. /mobile) después de
+    # loguearse, en vez de mandar siempre a la vista de escritorio.
+    next_url = request.values.get("next", "") or "/"
+    if not next_url.startswith("/") or next_url.startswith("//"):
+        next_url = "/"   # nunca redirigir fuera del propio sitio
     if request.method == "POST":
         u = request.form.get("username", "").strip()
         p = request.form.get("password", "").strip()
+        # Revalidar 'next' también en el POST (no confiar en el valor que venga del
+        # formulario sin pasar otra vez por el mismo chequeo anti-open-redirect).
+        post_next = request.form.get("next", "") or "/"
+        if not post_next.startswith("/") or post_next.startswith("//"):
+            post_next = "/"
         if _check_login(u, p):
             session["user"] = u
-            return redirect("/")
+            return redirect(post_next)
         error = "Usuario o contraseña incorrectos"
     return f'''<!DOCTYPE html>
 <html lang="es">
@@ -338,7 +348,7 @@ def login():
     body {{ font-family: Arial, sans-serif; background: #1a1a2e; display: flex;
             justify-content: center; align-items: center; min-height: 100vh; }}
     .card {{ background: #16213e; border-radius: 12px; padding: 36px 40px 40px;
-             width: 380px; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }}
+             width: min(380px, 92vw); box-shadow: 0 8px 32px rgba(0,0,0,0.4); }}
     .logo-wrap {{ text-align: center; margin-bottom: 6px; }}
     .logo-wrap img {{ height: 52px; object-fit: contain; }}
     p.sub {{ color: #718096; text-align: center; margin-bottom: 28px; font-size: 12px;
@@ -368,6 +378,7 @@ def login():
     <hr class="divider">
     {'<div class="error">' + error + '</div>' if error else ''}
     <form method="POST">
+      <input type="hidden" name="next" value="{_html.escape(next_url)}">
       <label>Usuario</label>
       <input type="text" name="username" autocomplete="username" required>
       <label>Contraseña</label>
@@ -839,12 +850,19 @@ def require_login():
     if not session.get("user"):
         if request.path.startswith("/api/"):
             return jsonify({"error": "no autenticado"}), 401
-        return redirect("/login")
+        return redirect("/login?next=" + request.path)
 
 @app.route("/")
 @_login_required
 def index():
     return send_from_directory("static", "index.html")
+
+@app.route("/mobile")
+@_login_required
+def mobile_index():
+    """Versión reducida para teléfono — consulta/aprobación rápida sobre la marcha.
+    No reemplaza la Suite de escritorio: usa las mismas rutas /api/*, mismo login."""
+    return send_from_directory("static/mobile", "index.html")
 
 @app.route("/api/ping")
 def ping():
@@ -959,6 +977,7 @@ def api_create_job():
 
 @app.route("/api/jobs/<job_number>", methods=["PUT"])
 def api_update_job(job_number):
+    if not can("edit", "jobs"): return jsonify({"error": "Sin permiso"}), 403
     if not JOB_RE.match(job_number):
         return jsonify({"error": "Job number inválido"}), 400
     try:
@@ -6917,6 +6936,129 @@ def api_cpo_revenue(job_number):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+def _year_of(record):
+    """Extrae el año de un created_at (soporta 'YYYY-MM-DD' e ISO con hora)."""
+    v = (record or {}).get("created_at") or ""
+    return v[:4] if len(v) >= 4 else None
+
+@app.route("/api/dashboard/general-management", methods=["GET"])
+def api_dashboard_general_management():
+    """Dashboard de inicio para el perfil GENERAL MANAGEMENT.
+    Solo lectura — no modifica ningún dato. Protegido por perfil, no por is_admin(),
+    porque este perfil de puesto no es lo mismo que el rol interno 'admin'
+    (ver CAMBIOS_PERFILES_PUESTO.md)."""
+    user = session.get("user")
+    role = get_user_perms(user).get("role") if user else None
+    if not (is_admin() or role == "GENERAL MANAGEMENT"):
+        return jsonify({"error": "Sin permiso"}), 403
+    try:
+        from collections import Counter
+        year      = int(request.args.get("year", CURRENT_YEAR))
+        last_year = year - 1
+
+        # ── VENTAS: Quotes ────────────────────────────────────────────
+        quotes = _load_quotes()
+        quotes_this_year = [q for q in quotes if _year_of(q) == str(year)]
+        refused  = sum(1 for q in quotes_this_year if q.get("refused"))
+        awarded  = sum(1 for q in quotes_this_year if q.get("awarded"))
+        pending  = len(quotes_this_year) - refused - awarded
+        cust_ctr = Counter((q.get("customer") or "Sin cliente") for q in quotes_this_year)
+
+        # ── VENTAS: Customer POs (cpo) — órdenes de los CLIENTES hacia Persico.
+        #    OJO: esto NO es lo mismo que "Purchase Orders" (po/po_load), que son las
+        #    órdenes que PERSICO le hace a SUS proveedores (un costo, no una venta).
+        #    Antes este dashboard usaba por error po_load() aquí — por eso "Sales" no
+        #    coincidía con "Revenue" de Cost Control, que sí usa cpo correctamente
+        #    (vía cpo_revenue_for_job). Corregido: mismo origen de datos en los dos
+        #    lados, así los dos números concuerdan por construcción. ──
+        cpo_year_records = cpo_load(year)
+        cpos_total_amount = round(sum(cpo_to_float(r.get("value")) for r in cpo_year_records), 2)
+
+        # ── Purchase Orders (po) — esto SÍ es costo (compras a proveedores), se usa
+        #    más abajo únicamente para "Purchasing + Services" en Cost Control. ──
+        po_year_records = po_load(year)
+        fx_all = fx_load_all()
+
+        # ── PROYECTOS: Jobs, por año y por estatus ──────────────────────
+        all_jobs = scan_jobs()
+        def project_stats(yr):
+            js = [j for j in all_jobs if _year_of(j) == str(yr)]
+            st = Counter(j.get("status") for j in js)
+            jc = Counter((j.get("customer") or "Sin cliente") for j in js)
+            return {
+                "total":       len(js),
+                "open":        st.get("Open", 0),
+                "wip":         st.get("WIP", 0),
+                "closed":      st.get("Done", 0),
+                "cancelled":   st.get("Cancelled", 0),
+                "by_customer": [{"customer": c, "count": n} for c, n in jc.most_common(8)],
+            }
+
+        # ── CONTROL DE COSTO (año actual): reutiliza _build_report_data,
+        #    cargando cada colección UNA vez para todos los jobs del año (mismo
+        #    patrón que /api/report/multi) — ver AUDITORIA.md / CAMBIOS_FASE2_PARTE1
+        #    sobre por qué esto importa (evita repetir la carga completa por job). ──
+        jobs_this_year = [j for j in all_jobs if _year_of(j) == str(year) and j.get("status") != "Cancelled"]
+        wh_pool  = wh_load(year)
+        po_pool  = po_year_records
+        ra_pool  = reassign_load()
+        rc_pool  = recovery_load()
+        via_pool = _svc_load(VIATICOS_FILE)
+        gv_pool  = _svc_load(GASTOS_FILE)
+        env_pool = _svc_load(ENVIOS_FILE)
+        cpo_pool = cpo_load(year)
+
+        job_rows = []
+        tot_revenue = tot_wh = tot_purch_svc = tot_margin = 0.0
+        for j in jobs_this_year:
+            jn = j["job_number"]
+            d = _build_report_data(jn, year, year, year,
+                                    wh_pool=wh_pool, po_pool=po_pool, fx_all=fx_all,
+                                    ra_pool=ra_pool, rc_pool=rc_pool,
+                                    via_pool=via_pool, gv_pool=gv_pool, env_pool=env_pool)
+            cpo_rev = cpo_revenue_for_job(jn, year, pool=cpo_pool)
+            if cpo_rev > 0:
+                d["revenue"]      = cpo_rev
+                d["cost"]         = round(d["amount_wh"] + d["purchasing_total"] + d.get("svc_total", 0), 2)
+                d["gross_margin"] = round(cpo_rev - d["cost"] + d.get("recovery_total", 0), 2)
+            revenue_source = "CPO" if cpo_rev > 0 else "estimado"
+            purch_svc = round(d["purchasing_total"] + d.get("svc_total", 0), 2)
+            tot_revenue   += d["revenue"]
+            tot_wh        += d["amount_wh"]
+            tot_purch_svc += purch_svc
+            tot_margin    += d["gross_margin"]
+            job_rows.append({
+                "job_number": jn, "customer": d["customer"],
+                "revenue": d["revenue"], "cost": d["cost"], "result": d["gross_margin"],
+                "revenue_source": revenue_source,
+            })
+        job_rows.sort(key=lambda r: r["job_number"])
+
+        return jsonify({
+            "year": year,
+            "sales": {
+                "quotes_registered": len(quotes_this_year),
+                "quotes_sent":       sum(1 for q in quotes_this_year if q.get("sentClient")),
+                "quotes_by_customer": [{"customer": c, "count": n} for c, n in cust_ctr.most_common(8)],
+                "refused": refused, "awarded": awarded, "pending": pending,
+                "cpos_registered":    len(cpo_year_records),
+                "cpos_total_amount":  cpos_total_amount,
+            },
+            "projects": {
+                "this_year": project_stats(year),
+                "last_year": project_stats(last_year),
+            },
+            "cost_control": {
+                "revenue_total":      round(tot_revenue, 2),
+                "wh_cost":            round(tot_wh, 2),
+                "purchasing_services":round(tot_purch_svc, 2),
+                "gross_margin":       round(tot_margin, 2),
+                "jobs": job_rows,
+            },
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/api/report/multi", methods=["POST"])
 def api_report_multi():
     """Reporte agrupado de múltiples jobs."""
@@ -7176,11 +7318,457 @@ LEVEL_VIEW   = "view"
 LEVEL_CREATE = "create"
 LEVEL_FULL   = "full"
 
+
+# ══════════════════════════════════════════════════════════════════
+#  PERFILES DE PUESTO — plantillas de permisos predefinidas
+#  Generadas a partir de la matriz de permisos llenada por el equipo
+#  (una fila por cada uno de los 46 módulos de MODULES, una columna por
+#  perfil). "GENERAL MANAGEMENT" tiene acceso total a los 46 módulos de
+#  negocio, pero a propósito NO es lo mismo que el rol interno "admin":
+#  "admin" además desbloquea la administración de usuarios/permisos en sí
+#  misma (ver is_admin()) — eso se reserva aparte, no viene con este perfil.
+# ══════════════════════════════════════════════════════════════════
+PROFILES = {
+    "GENERAL MANAGEMENT": {
+        "jobs": LEVEL_FULL,
+        "pt": LEVEL_FULL,
+        "sv": LEVEL_FULL,
+        "rates": LEVEL_FULL,
+        "quotes": LEVEL_FULL,
+        "cpo": LEVEL_FULL,
+        "cat-electrico": LEVEL_FULL,
+        "cat-mecanico": LEVEL_FULL,
+        "cat-servicios": LEVEL_FULL,
+        "proveedores": LEVEL_FULL,
+        "gpo": LEVEL_FULL,
+        "po": LEVEL_FULL,
+        "ivp": LEVEL_FULL,
+        "reassign": LEVEL_FULL,
+        "recovery": LEVEL_FULL,
+        "compras-requisicion": LEVEL_FULL,
+        "stock": LEVEL_FULL,
+        "ingreso": LEVEL_FULL,
+        "apartados": LEVEL_FULL,
+        "salida": LEVEL_FULL,
+        "viaticos": LEVEL_FULL,
+        "gastos-viaje": LEVEL_FULL,
+        "envios": LEVEL_FULL,
+        "wh": LEVEL_FULL,
+        "report": LEVEL_FULL,
+        "multirpt": LEVEL_FULL,
+        "fx": LEVEL_FULL,
+        "projconfig": LEVEL_FULL,
+        "fin-recepciones": LEVEL_FULL,
+        "fin-procesarcompra": LEVEL_FULL,
+        "fin-cpp": LEVEL_FULL,
+        "fin-pagos": LEVEL_FULL,
+        "fin-esquemas": LEVEL_FULL,
+        "rrhh-asistencia": LEVEL_FULL,
+        "rrhh-vacaciones": LEVEL_FULL,
+        "rrhh-permisos": LEVEL_FULL,
+        "rrhh-salario": LEVEL_FULL,
+        "rrhh-sueldos": LEVEL_FULL,
+        "rrhh-nomina": LEVEL_FULL,
+        "personal-areas": LEVEL_FULL,
+        "personal-perfiles": LEVEL_FULL,
+        "personal-listado": LEVEL_FULL,
+        "ops-capacidad": LEVEL_FULL,
+        "ops-ot": LEVEL_FULL,
+        "ops-op": LEVEL_FULL,
+        "ops-os": LEVEL_FULL,
+    },
+    "OPERATION MANAGER": {
+        "jobs": LEVEL_FULL,
+        "pt": LEVEL_FULL,
+        "sv": LEVEL_FULL,
+        "rates": LEVEL_FULL,
+        "quotes": LEVEL_VIEW,
+        "cpo": LEVEL_VIEW,
+        "cat-electrico": LEVEL_VIEW,
+        "cat-mecanico": LEVEL_VIEW,
+        "cat-servicios": LEVEL_VIEW,
+        "proveedores": LEVEL_VIEW,
+        "gpo": LEVEL_VIEW,
+        "po": LEVEL_VIEW,
+        "ivp": LEVEL_VIEW,
+        "reassign": LEVEL_VIEW,
+        "recovery": LEVEL_VIEW,
+        "compras-requisicion": LEVEL_VIEW,
+        "stock": LEVEL_VIEW,
+        "ingreso": LEVEL_VIEW,
+        "apartados": LEVEL_VIEW,
+        "salida": LEVEL_VIEW,
+        "viaticos": LEVEL_VIEW,
+        "gastos-viaje": LEVEL_VIEW,
+        "envios": LEVEL_VIEW,
+        "wh": LEVEL_VIEW,
+        "report": LEVEL_VIEW,
+        "multirpt": LEVEL_VIEW,
+        "fx": LEVEL_VIEW,
+        "projconfig": LEVEL_VIEW,
+        "fin-recepciones": LEVEL_NONE,
+        "fin-procesarcompra": LEVEL_NONE,
+        "fin-cpp": LEVEL_NONE,
+        "fin-pagos": LEVEL_NONE,
+        "fin-esquemas": LEVEL_NONE,
+        "rrhh-asistencia": LEVEL_VIEW,
+        "rrhh-vacaciones": LEVEL_FULL,
+        "rrhh-permisos": LEVEL_FULL,
+        "rrhh-salario": LEVEL_VIEW,
+        "rrhh-sueldos": LEVEL_VIEW,
+        "rrhh-nomina": LEVEL_NONE,
+        "personal-areas": LEVEL_VIEW,
+        "personal-perfiles": LEVEL_VIEW,
+        "personal-listado": LEVEL_VIEW,
+        "ops-capacidad": LEVEL_FULL,
+        "ops-ot": LEVEL_FULL,
+        "ops-op": LEVEL_FULL,
+        "ops-os": LEVEL_FULL,
+    },
+    "FINANCE MANAGER": {
+        "jobs": LEVEL_VIEW,
+        "pt": LEVEL_VIEW,
+        "sv": LEVEL_VIEW,
+        "rates": LEVEL_VIEW,
+        "quotes": LEVEL_VIEW,
+        "cpo": LEVEL_VIEW,
+        "cat-electrico": LEVEL_NONE,
+        "cat-mecanico": LEVEL_NONE,
+        "cat-servicios": LEVEL_NONE,
+        "proveedores": LEVEL_FULL,
+        "gpo": LEVEL_VIEW,
+        "po": LEVEL_VIEW,
+        "ivp": LEVEL_FULL,
+        "reassign": LEVEL_VIEW,
+        "recovery": LEVEL_VIEW,
+        "compras-requisicion": LEVEL_VIEW,
+        "stock": LEVEL_VIEW,
+        "ingreso": LEVEL_FULL,
+        "apartados": LEVEL_VIEW,
+        "salida": LEVEL_VIEW,
+        "viaticos": LEVEL_FULL,
+        "gastos-viaje": LEVEL_FULL,
+        "envios": LEVEL_FULL,
+        "wh": LEVEL_VIEW,
+        "report": LEVEL_FULL,
+        "multirpt": LEVEL_FULL,
+        "fx": LEVEL_VIEW,
+        "projconfig": LEVEL_NONE,
+        "fin-recepciones": LEVEL_FULL,
+        "fin-procesarcompra": LEVEL_FULL,
+        "fin-cpp": LEVEL_FULL,
+        "fin-pagos": LEVEL_FULL,
+        "fin-esquemas": LEVEL_FULL,
+        "rrhh-asistencia": LEVEL_FULL,
+        "rrhh-vacaciones": LEVEL_FULL,
+        "rrhh-permisos": LEVEL_FULL,
+        "rrhh-salario": LEVEL_FULL,
+        "rrhh-sueldos": LEVEL_FULL,
+        "rrhh-nomina": LEVEL_FULL,
+        "personal-areas": LEVEL_FULL,
+        "personal-perfiles": LEVEL_FULL,
+        "personal-listado": LEVEL_FULL,
+        "ops-capacidad": LEVEL_NONE,
+        "ops-ot": LEVEL_FULL,
+        "ops-op": LEVEL_NONE,
+        "ops-os": LEVEL_NONE,
+    },
+    "HUMAN RESOURCES": {
+        "jobs": LEVEL_VIEW,
+        "pt": LEVEL_NONE,
+        "sv": LEVEL_NONE,
+        "rates": LEVEL_NONE,
+        "quotes": LEVEL_NONE,
+        "cpo": LEVEL_NONE,
+        "cat-electrico": LEVEL_NONE,
+        "cat-mecanico": LEVEL_NONE,
+        "cat-servicios": LEVEL_NONE,
+        "proveedores": LEVEL_NONE,
+        "gpo": LEVEL_NONE,
+        "po": LEVEL_NONE,
+        "ivp": LEVEL_NONE,
+        "reassign": LEVEL_NONE,
+        "recovery": LEVEL_NONE,
+        "compras-requisicion": LEVEL_NONE,
+        "stock": LEVEL_NONE,
+        "ingreso": LEVEL_NONE,
+        "apartados": LEVEL_NONE,
+        "salida": LEVEL_NONE,
+        "viaticos": LEVEL_NONE,
+        "gastos-viaje": LEVEL_NONE,
+        "envios": LEVEL_NONE,
+        "wh": LEVEL_FULL,
+        "report": LEVEL_NONE,
+        "multirpt": LEVEL_NONE,
+        "fx": LEVEL_NONE,
+        "projconfig": LEVEL_NONE,
+        "fin-recepciones": LEVEL_NONE,
+        "fin-procesarcompra": LEVEL_NONE,
+        "fin-cpp": LEVEL_NONE,
+        "fin-pagos": LEVEL_NONE,
+        "fin-esquemas": LEVEL_NONE,
+        "rrhh-asistencia": LEVEL_FULL,
+        "rrhh-vacaciones": LEVEL_FULL,
+        "rrhh-permisos": LEVEL_FULL,
+        "rrhh-salario": LEVEL_FULL,
+        "rrhh-sueldos": LEVEL_FULL,
+        "rrhh-nomina": LEVEL_FULL,
+        "personal-areas": LEVEL_FULL,
+        "personal-perfiles": LEVEL_FULL,
+        "personal-listado": LEVEL_FULL,
+        "ops-capacidad": LEVEL_NONE,
+        "ops-ot": LEVEL_NONE,
+        "ops-op": LEVEL_NONE,
+        "ops-os": LEVEL_NONE,
+    },
+    "PROJECT MANAGER": {
+        "jobs": LEVEL_FULL,
+        "pt": LEVEL_FULL,
+        "sv": LEVEL_FULL,
+        "rates": LEVEL_FULL,
+        "quotes": LEVEL_FULL,
+        "cpo": LEVEL_FULL,
+        "cat-electrico": LEVEL_VIEW,
+        "cat-mecanico": LEVEL_VIEW,
+        "cat-servicios": LEVEL_VIEW,
+        "proveedores": LEVEL_VIEW,
+        "gpo": LEVEL_VIEW,
+        "po": LEVEL_VIEW,
+        "ivp": LEVEL_VIEW,
+        "reassign": LEVEL_FULL,
+        "recovery": LEVEL_FULL,
+        "compras-requisicion": LEVEL_VIEW,
+        "stock": LEVEL_VIEW,
+        "ingreso": LEVEL_VIEW,
+        "apartados": LEVEL_VIEW,
+        "salida": LEVEL_FULL,
+        "viaticos": LEVEL_VIEW,
+        "gastos-viaje": LEVEL_VIEW,
+        "envios": LEVEL_VIEW,
+        "wh": LEVEL_VIEW,
+        "report": LEVEL_VIEW,
+        "multirpt": LEVEL_VIEW,
+        "fx": LEVEL_VIEW,
+        "projconfig": LEVEL_FULL,
+        "fin-recepciones": LEVEL_NONE,
+        "fin-procesarcompra": LEVEL_NONE,
+        "fin-cpp": LEVEL_NONE,
+        "fin-pagos": LEVEL_NONE,
+        "fin-esquemas": LEVEL_NONE,
+        "rrhh-asistencia": LEVEL_NONE,
+        "rrhh-vacaciones": LEVEL_NONE,
+        "rrhh-permisos": LEVEL_NONE,
+        "rrhh-salario": LEVEL_NONE,
+        "rrhh-sueldos": LEVEL_NONE,
+        "rrhh-nomina": LEVEL_NONE,
+        "personal-areas": LEVEL_NONE,
+        "personal-perfiles": LEVEL_NONE,
+        "personal-listado": LEVEL_NONE,
+        "ops-capacidad": LEVEL_VIEW,
+        "ops-ot": LEVEL_NONE,
+        "ops-op": LEVEL_NONE,
+        "ops-os": LEVEL_NONE,
+    },
+    "PURCHASING": {
+        "jobs": LEVEL_VIEW,
+        "pt": LEVEL_NONE,
+        "sv": LEVEL_NONE,
+        "rates": LEVEL_NONE,
+        "quotes": LEVEL_NONE,
+        "cpo": LEVEL_NONE,
+        "cat-electrico": LEVEL_FULL,
+        "cat-mecanico": LEVEL_FULL,
+        "cat-servicios": LEVEL_FULL,
+        "proveedores": LEVEL_FULL,
+        "gpo": LEVEL_FULL,
+        "po": LEVEL_FULL,
+        "ivp": LEVEL_FULL,
+        "reassign": LEVEL_FULL,
+        "recovery": LEVEL_FULL,
+        "compras-requisicion": LEVEL_FULL,
+        "stock": LEVEL_FULL,
+        "ingreso": LEVEL_FULL,
+        "apartados": LEVEL_FULL,
+        "salida": LEVEL_FULL,
+        "viaticos": LEVEL_NONE,
+        "gastos-viaje": LEVEL_NONE,
+        "envios": LEVEL_NONE,
+        "wh": LEVEL_NONE,
+        "report": LEVEL_VIEW,
+        "multirpt": LEVEL_VIEW,
+        "fx": LEVEL_NONE,
+        "projconfig": LEVEL_NONE,
+        "fin-recepciones": LEVEL_NONE,
+        "fin-procesarcompra": LEVEL_NONE,
+        "fin-cpp": LEVEL_NONE,
+        "fin-pagos": LEVEL_NONE,
+        "fin-esquemas": LEVEL_NONE,
+        "rrhh-asistencia": LEVEL_NONE,
+        "rrhh-vacaciones": LEVEL_NONE,
+        "rrhh-permisos": LEVEL_NONE,
+        "rrhh-salario": LEVEL_NONE,
+        "rrhh-sueldos": LEVEL_NONE,
+        "rrhh-nomina": LEVEL_NONE,
+        "personal-areas": LEVEL_NONE,
+        "personal-perfiles": LEVEL_NONE,
+        "personal-listado": LEVEL_NONE,
+        "ops-capacidad": LEVEL_NONE,
+        "ops-ot": LEVEL_VIEW,
+        "ops-op": LEVEL_NONE,
+        "ops-os": LEVEL_NONE,
+    },
+    "ENGINEERING": {
+        "jobs": LEVEL_VIEW,
+        "pt": LEVEL_NONE,
+        "sv": LEVEL_NONE,
+        "rates": LEVEL_NONE,
+        "quotes": LEVEL_NONE,
+        "cpo": LEVEL_NONE,
+        "cat-electrico": LEVEL_FULL,
+        "cat-mecanico": LEVEL_FULL,
+        "cat-servicios": LEVEL_FULL,
+        "proveedores": LEVEL_VIEW,
+        "gpo": LEVEL_VIEW,
+        "po": LEVEL_VIEW,
+        "ivp": LEVEL_NONE,
+        "reassign": LEVEL_VIEW,
+        "recovery": LEVEL_VIEW,
+        "compras-requisicion": LEVEL_FULL,
+        "stock": LEVEL_VIEW,
+        "ingreso": LEVEL_VIEW,
+        "apartados": LEVEL_VIEW,
+        "salida": LEVEL_FULL,
+        "viaticos": LEVEL_NONE,
+        "gastos-viaje": LEVEL_NONE,
+        "envios": LEVEL_NONE,
+        "wh": LEVEL_NONE,
+        "report": LEVEL_NONE,
+        "multirpt": LEVEL_NONE,
+        "fx": LEVEL_NONE,
+        "projconfig": LEVEL_VIEW,
+        "fin-recepciones": LEVEL_NONE,
+        "fin-procesarcompra": LEVEL_NONE,
+        "fin-cpp": LEVEL_NONE,
+        "fin-pagos": LEVEL_NONE,
+        "fin-esquemas": LEVEL_NONE,
+        "rrhh-asistencia": LEVEL_NONE,
+        "rrhh-vacaciones": LEVEL_NONE,
+        "rrhh-permisos": LEVEL_NONE,
+        "rrhh-salario": LEVEL_NONE,
+        "rrhh-sueldos": LEVEL_NONE,
+        "rrhh-nomina": LEVEL_NONE,
+        "personal-areas": LEVEL_NONE,
+        "personal-perfiles": LEVEL_NONE,
+        "personal-listado": LEVEL_NONE,
+        "ops-capacidad": LEVEL_VIEW,
+        "ops-ot": LEVEL_VIEW,
+        "ops-op": LEVEL_VIEW,
+        "ops-os": LEVEL_VIEW,
+    },
+    "MANUFACTURING": {
+        "jobs": LEVEL_VIEW,
+        "pt": LEVEL_NONE,
+        "sv": LEVEL_NONE,
+        "rates": LEVEL_NONE,
+        "quotes": LEVEL_NONE,
+        "cpo": LEVEL_NONE,
+        "cat-electrico": LEVEL_VIEW,
+        "cat-mecanico": LEVEL_VIEW,
+        "cat-servicios": LEVEL_VIEW,
+        "proveedores": LEVEL_VIEW,
+        "gpo": LEVEL_VIEW,
+        "po": LEVEL_VIEW,
+        "ivp": LEVEL_VIEW,
+        "reassign": LEVEL_VIEW,
+        "recovery": LEVEL_VIEW,
+        "compras-requisicion": LEVEL_VIEW,
+        "stock": LEVEL_VIEW,
+        "ingreso": LEVEL_VIEW,
+        "apartados": LEVEL_VIEW,
+        "salida": LEVEL_FULL,
+        "viaticos": LEVEL_NONE,
+        "gastos-viaje": LEVEL_NONE,
+        "envios": LEVEL_NONE,
+        "wh": LEVEL_NONE,
+        "report": LEVEL_NONE,
+        "multirpt": LEVEL_NONE,
+        "fx": LEVEL_NONE,
+        "projconfig": LEVEL_VIEW,
+        "fin-recepciones": LEVEL_NONE,
+        "fin-procesarcompra": LEVEL_NONE,
+        "fin-cpp": LEVEL_NONE,
+        "fin-pagos": LEVEL_NONE,
+        "fin-esquemas": LEVEL_NONE,
+        "rrhh-asistencia": LEVEL_NONE,
+        "rrhh-vacaciones": LEVEL_NONE,
+        "rrhh-permisos": LEVEL_NONE,
+        "rrhh-salario": LEVEL_NONE,
+        "rrhh-sueldos": LEVEL_NONE,
+        "rrhh-nomina": LEVEL_NONE,
+        "personal-areas": LEVEL_NONE,
+        "personal-perfiles": LEVEL_NONE,
+        "personal-listado": LEVEL_NONE,
+        "ops-capacidad": LEVEL_NONE,
+        "ops-ot": LEVEL_VIEW,
+        "ops-op": LEVEL_VIEW,
+        "ops-os": LEVEL_NONE,
+    },
+    "OPERATIVE LEADING": {
+        "jobs": LEVEL_VIEW,
+        "pt": LEVEL_NONE,
+        "sv": LEVEL_NONE,
+        "rates": LEVEL_NONE,
+        "quotes": LEVEL_NONE,
+        "cpo": LEVEL_NONE,
+        "cat-electrico": LEVEL_FULL,
+        "cat-mecanico": LEVEL_FULL,
+        "cat-servicios": LEVEL_FULL,
+        "proveedores": LEVEL_VIEW,
+        "gpo": LEVEL_VIEW,
+        "po": LEVEL_VIEW,
+        "ivp": LEVEL_VIEW,
+        "reassign": LEVEL_VIEW,
+        "recovery": LEVEL_VIEW,
+        "compras-requisicion": LEVEL_VIEW,
+        "stock": LEVEL_VIEW,
+        "ingreso": LEVEL_VIEW,
+        "apartados": LEVEL_VIEW,
+        "salida": LEVEL_FULL,
+        "viaticos": LEVEL_NONE,
+        "gastos-viaje": LEVEL_NONE,
+        "envios": LEVEL_NONE,
+        "wh": LEVEL_NONE,
+        "report": LEVEL_NONE,
+        "multirpt": LEVEL_NONE,
+        "fx": LEVEL_NONE,
+        "projconfig": LEVEL_VIEW,
+        "fin-recepciones": LEVEL_NONE,
+        "fin-procesarcompra": LEVEL_NONE,
+        "fin-cpp": LEVEL_NONE,
+        "fin-pagos": LEVEL_NONE,
+        "fin-esquemas": LEVEL_NONE,
+        "rrhh-asistencia": LEVEL_NONE,
+        "rrhh-vacaciones": LEVEL_NONE,
+        "rrhh-permisos": LEVEL_FULL,
+        "rrhh-salario": LEVEL_NONE,
+        "rrhh-sueldos": LEVEL_NONE,
+        "rrhh-nomina": LEVEL_NONE,
+        "personal-areas": LEVEL_NONE,
+        "personal-perfiles": LEVEL_NONE,
+        "personal-listado": LEVEL_NONE,
+        "ops-capacidad": LEVEL_VIEW,
+        "ops-ot": LEVEL_VIEW,
+        "ops-op": LEVEL_VIEW,
+        "ops-os": LEVEL_VIEW,
+    },
+}
+
 def _default_perms(role):
     if role == "admin":
         return {m: LEVEL_FULL for m in MODULES}
-    else:
-        return {m: LEVEL_VIEW for m in MODULES}
+    if role in PROFILES:
+        return dict(PROFILES[role])   # copia — nunca el dict compartido original
+    return {m: LEVEL_VIEW for m in MODULES}
 
 def _level_gte(level, minimum):
     """Check if level >= minimum."""
@@ -7519,6 +8107,7 @@ def api_admin_update_user(username):
         role = "admin" if username == ADMIN_USER else "viewer"
         users[username] = {"role": role, "permissions": _default_perms(role)}
     new_role = data.get("role", users[username]["role"])
+    role_changed = new_role != users[username].get("role")   # comparar ANTES de sobrescribir
     users[username]["role"] = new_role
     if "puede_ver_salarios" in data:
         users[username]["puede_ver_salarios"] = bool(data["puede_ver_salarios"])
@@ -7527,7 +8116,11 @@ def api_admin_update_user(username):
         existing = users[username].get("permissions", _default_perms(new_role))
         existing.update(data["permissions"])
         users[username]["permissions"] = existing
-    elif new_role != users[username].get("role"):
+    elif role_changed:
+        # Antes esta condición comparaba new_role contra users[username]["role"] DESPUÉS
+        # de ya haberlo sobrescrito dos líneas arriba — así que siempre daba falso y
+        # nunca se regeneraban los permisos al cambiar de perfil (bug real, corregido
+        # aquí — ver AUDITORIA.md). Ahora sí aplica los permisos del nuevo perfil.
         users[username]["permissions"] = _default_perms(new_role)
     users_save(users)
     return jsonify({"ok": True, "user": users[username]})

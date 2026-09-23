@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="theme-color" content="#C8102E">
+<title>Persico Suite · Móvil</title>
+<style>
+  :root{
+    --red:#C8102E;--red-h:#a80d24;--gold:#b3760a;
+    --bg:#f4f4f5;--panel:#ffffff;--card:#ffffff;
+    --border:rgba(0,0,0,.10);--border2:rgba(0,0,0,.18);
+    --text:#1a1a1a;--muted:#8a8a8e;--muted2:#55555a;
+    --green:#1f8a4c;--amber:#c67c0e;--blue:#2569a0;
+    --r:10px;--tr:.16s ease;
+    --safe-t:env(safe-area-inset-top,0px);--safe-b:env(safe-area-inset-bottom,0px);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+    -webkit-tap-highlight-color:transparent;overscroll-behavior-y:contain}
+  @media (prefers-reduced-motion: reduce){ *{transition:none!important;animation:none!important} }
+
+  /* ── Header ── */
+  header{position:sticky;top:0;z-index:20;background:#fff;border-bottom:1px solid var(--border);
+    padding:calc(10px + var(--safe-t)) 14px 10px;display:flex;align-items:center;gap:10px}
+  header img{height:26px}
+  header .brand{font-weight:900;letter-spacing:1px;color:var(--red);font-size:16px}
+  header .sub{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-top:1px}
+  header .spacer{flex:1}
+  header button.logout{background:none;border:1px solid var(--border);border-radius:8px;
+    color:var(--muted2);font-size:12px;padding:8px 12px;min-height:36px}
+
+  main{padding:14px 14px calc(90px + var(--safe-b));max-width:640px;margin:0 auto}
+
+  /* ── Búsqueda y filtros ── */
+  .searchbar{display:flex;gap:8px;margin-bottom:10px}
+  .searchbar input{flex:1;padding:11px 14px;border:1px solid var(--border2);border-radius:var(--r);
+    font-size:16px;background:#fff;min-height:44px}
+  .searchbar input:focus{outline:none;border-color:var(--red)}
+  .chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:10px;margin-bottom:6px;-webkit-overflow-scrolling:touch}
+  .chip{flex-shrink:0;padding:8px 14px;border-radius:999px;border:1px solid var(--border2);
+    background:#fff;font-size:13px;font-weight:600;color:var(--muted2);min-height:36px;display:flex;align-items:center}
+  .chip.active{background:var(--red);border-color:var(--red);color:#fff}
+
+  /* ── Estado de carga / error / vacío ── */
+  .state{text-align:center;padding:50px 20px;color:var(--muted)}
+  .state.err{color:var(--red)}
+  .spinner{width:26px;height:26px;border:3px solid var(--border);border-top-color:var(--red);
+    border-radius:50%;margin:0 auto 12px;animation:spin .7s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .retry{margin-top:12px;padding:9px 20px;border-radius:var(--r);border:1px solid var(--border2);
+    background:#fff;font-size:13px;min-height:40px}
+
+  /* ── Tarjetas de Job ── */
+  .job-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);
+    padding:13px 14px;margin-bottom:9px;cursor:pointer;transition:border-color var(--tr)}
+  .job-card:active{border-color:var(--red)}
+  .job-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px}
+  .job-num{font-weight:800;font-size:14px;color:var(--text)}
+  .job-cust{font-size:13px;color:var(--muted2);margin-top:1px}
+  .job-desc{font-size:12px;color:var(--muted);margin-top:5px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .badges{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+  .badge{font-size:10px;font-weight:700;padding:3px 8px;border-radius:5px;letter-spacing:.3px}
+  .b-open{background:rgba(37,105,160,.12);color:var(--blue)}
+  .b-closed{background:rgba(0,0,0,.08);color:var(--muted2)}
+  .b-toappr{background:rgba(198,124,14,.14);color:var(--amber)}
+  .b-inprog{background:rgba(37,105,160,.12);color:var(--blue)}
+  .b-yes{background:rgba(31,138,76,.13);color:var(--green)}
+  .b-no{background:rgba(0,0,0,.08);color:var(--muted2)}
+  .load-more{width:100%;padding:13px;border-radius:var(--r);border:1px solid var(--border2);
+    background:#fff;font-size:13px;font-weight:600;color:var(--muted2);min-height:44px;margin-top:4px}
+
+  /* ── Hoja de detalle (bottom sheet) ── */
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;opacity:0;pointer-events:none;transition:opacity var(--tr)}
+  .overlay.on{opacity:1;pointer-events:auto}
+  .sheet{position:fixed;left:0;right:0;bottom:0;z-index:101;background:#fff;
+    border-radius:16px 16px 0 0;max-height:85vh;overflow-y:auto;
+    transform:translateY(100%);transition:transform var(--tr);
+    padding:18px 18px calc(20px + var(--safe-b))}
+  .sheet.on{transform:translateY(0)}
+  .sheet-handle{width:36px;height:4px;background:var(--border2);border-radius:2px;margin:0 auto 14px}
+  .sheet h2{font-size:17px;margin:0 0 2px;letter-spacing:.3px}
+  .sheet .cust{color:var(--muted2);font-size:13px;margin-bottom:14px}
+  .field-row{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);font-size:13px}
+  .field-row .k{color:var(--muted);flex-shrink:0}
+  .field-row .v{text-align:right;font-weight:600}
+  .sheet-actions{display:flex;gap:10px;margin-top:16px}
+  .btn{flex:1;padding:13px;border-radius:var(--r);border:none;font-size:14px;font-weight:700;
+    min-height:46px;cursor:pointer}
+  .btn-primary{background:var(--red);color:#fff}
+  .btn-primary:active{background:var(--red-h)}
+  .btn-secondary{background:#fff;color:var(--muted2);border:1px solid var(--border2)}
+  .btn:disabled{opacity:.5}
+
+  /* ── Barra de navegación inferior ── */
+  nav.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:20;background:#fff;
+    border-top:1px solid var(--border);display:flex;padding-bottom:var(--safe-b)}
+  nav.tabbar button{flex:1;background:none;border:none;padding:10px 4px 8px;
+    display:flex;flex-direction:column;align-items:center;gap:3px;min-height:56px;color:var(--muted)}
+  nav.tabbar button.active{color:var(--red)}
+  nav.tabbar button .ic{font-size:19px;line-height:1}
+  nav.tabbar button .lb{font-size:10px;font-weight:700;letter-spacing:.2px}
+  nav.tabbar button.soon{opacity:.45}
+  nav.tabbar button .soon-tag{font-size:8px;color:var(--muted);font-weight:600}
+
+  .toast{position:fixed;left:50%;bottom:calc(80px + var(--safe-b));transform:translateX(-50%);
+    background:#1a1a1a;color:#fff;padding:11px 18px;border-radius:999px;font-size:13px;
+    z-index:200;opacity:0;pointer-events:none;transition:opacity var(--tr),transform var(--tr)}
+  .toast.on{opacity:1;transform:translateX(-50%) translateY(-6px)}
+  .toast.er{background:var(--red)}
+</style>
+</head>
+<body>
+
+<header>
+  <img src="/static/persico_logo.webp" alt="" onerror="this.style.display='none'">
+  <div>
+    <div class="brand">PERSICO</div>
+    <div class="sub">Suite · Móvil</div>
+  </div>
+  <div class="spacer"></div>
+  <button class="logout" onclick="location.href='/logout'">Salir</button>
+</header>
+
+<main>
+  <div class="searchbar">
+    <input id="q" type="search" placeholder="Buscar job, cliente…" autocomplete="off" enterkeyhint="search">
+  </div>
+  <div class="chips" id="chips"></div>
+  <div id="list"></div>
+</main>
+
+<div class="overlay" id="overlay" onclick="closeSheet()"></div>
+<div class="sheet" id="sheet"></div>
+<div class="toast" id="toast"></div>
+
+<nav class="tabbar">
+  <button class="active" id="tab-jobs" onclick="void 0">
+    <span class="ic">▤</span><span class="lb">Jobs</span>
+  </button>
+  <button class="soon" onclick="toast('Próximamente en la versión móvil')">
+    <span class="ic">◈</span><span class="lb">Cotizaciones</span>
+    <span class="soon-tag">próx.</span>
+  </button>
+  <button class="soon" onclick="toast('Próximamente en la versión móvil')">
+    <span class="ic">◷</span><span class="lb">Horas</span>
+    <span class="soon-tag">próx.</span>
+  </button>
+</nav>
+
+<script>
+// ══════════════════════════════════════════════════════════════════
+//  Persico Suite · Móvil — Módulo 1: Jobs (ver + aprobar)
+//  Reutiliza las mismas rutas /api/* y la misma sesión de login que la
+//  Suite de escritorio. No es una app aparte con su propio backend.
+// ══════════════════════════════════════════════════════════════════
+
+const PAGE_SIZE = 20;
+let state = { q: '', status: '', offset: 0, jobs: [], loading: false, canEdit: false };
+
+// ── fetch con manejo explícito de estados HTTP (a diferencia de apiCall()
+//    del escritorio, que no distingue 401/403/errores no-JSON — ver
+//    AUDITORIA.md P1-5. Esta versión nueva sí lo hace desde el inicio.) ──
+async function api(method, path, body){
+  let r;
+  try{
+    r = await fetch(path, {
+      method,
+      headers: {'Content-Type':'application/json'},
+      body: body ? JSON.stringify(body) : undefined
+    });
+  }catch(e){
+    throw { kind:'network', message:'Sin conexión. Revisa tu internet e intenta de nuevo.' };
+  }
+  if(r.status === 401){
+    location.href = '/login?next=' + encodeURIComponent(location.pathname);
+    throw { kind:'auth', message:'Sesión expirada' };
+  }
+  if(r.status === 403){
+    let msg = 'Sin permiso para esta acción';
+    try{ const d = await r.json(); if(d && d.error) msg = d.error; }catch(e){}
+    throw { kind:'forbidden', message: msg };
+  }
+  let data;
+  try{ data = await r.json(); }
+  catch(e){ throw { kind:'server', message:'Respuesta inesperada del servidor ('+r.status+')' }; }
+  if(!r.ok){
+    throw { kind:'error', message: (data && data.error) || ('Error del servidor ('+r.status+')') };
+  }
+  return data;
+}
+
+function toast(msg, type){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast on' + (type==='er' ? ' er' : '');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(()=> t.classList.remove('on'), 3000);
+}
+
+// ── Debounce explícito SOLO para este campo de búsqueda — nada global,
+//    nada de interceptar otros inputs (ver AUDITORIA.md P1-4). ──
+let _searchTimer = null;
+document.getElementById('q').addEventListener('input', (e)=>{
+  clearTimeout(_searchTimer);
+  const val = e.target.value;
+  _searchTimer = setTimeout(()=>{ state.q = val.trim(); state.offset = 0; loadJobs(true); }, 300);
+});
+
+const STATUS_CHIPS = [
+  { label:'Todos', value:'' },
+  { label:'Abiertos', value:'Open' },
+  { label:'Cerrados', value:'Closed' },
+];
+function renderChips(){
+  document.getElementById('chips').innerHTML = STATUS_CHIPS.map(c =>
+    `<button class="chip ${c.value===state.status?'active':''}" onclick="setStatus('${c.value}')">${c.label}</button>`
+  ).join('');
+}
+function setStatus(v){ state.status = v; state.offset = 0; renderChips(); loadJobs(true); }
+
+function fcBadge(v){
+  const m = {Yes:['b-yes','Aprobado'], ToApprove:['b-toappr','Por aprobar'], InProgress:['b-inprog','En proceso'], No:['b-no','No']};
+  const [cls,label] = m[v] || ['b-no', v || '—'];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+function statusBadge(v){
+  return `<span class="badge ${v==='Open'?'b-open':'b-closed'}">${esc(v||'—')}</span>`;
+}
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+async function loadJobs(reset){
+  if(state.loading) return;
+  state.loading = true;
+  const list = document.getElementById('list');
+  if(reset){
+    list.innerHTML = '<div class="state"><div class="spinner"></div>Cargando jobs…</div>';
+  }
+  try{
+    const params = new URLSearchParams();
+    if(state.q) params.set('q', state.q);
+    if(state.status) params.set('status', state.status);
+    params.set('limit', PAGE_SIZE);
+    params.set('offset', state.offset);
+    const data = await api('GET', '/api/jobs?' + params.toString());
+    const batch = Array.isArray(data) ? data : [];
+    state.jobs = reset ? batch : state.jobs.concat(batch);
+    state.hasMore = batch.length === PAGE_SIZE;
+    renderList();
+  }catch(err){
+    list.innerHTML = `<div class="state err">⚠ ${esc(err.message||'Error al cargar')}
+      <div><button class="retry" onclick="loadJobs(true)">Reintentar</button></div></div>`;
+  }finally{
+    state.loading = false;
+  }
+}
+
+function renderList(){
+  const list = document.getElementById('list');
+  if(state.jobs.length === 0){
+    list.innerHTML = '<div class="state">No hay jobs que coincidan con la búsqueda.</div>';
+    return;
+  }
+  list.innerHTML = state.jobs.map((j,i) => `
+    <div class="job-card" onclick="openJob(${i})">
+      <div class="job-top">
+        <div>
+          <div class="job-num">${esc(j.job_number)}</div>
+          <div class="job-cust">${esc(j.customer || 'Sin cliente')}</div>
+        </div>
+      </div>
+      ${j.description ? `<div class="job-desc">${esc(j.description)}</div>` : ''}
+      <div class="badges">${statusBadge(j.status)}${fcBadge(j.approval_fc)}</div>
+    </div>
+  `).join('') + (state.hasMore ? `<button class="load-more" onclick="loadMore()">Cargar más</button>` : '');
+}
+function loadMore(){ state.offset += PAGE_SIZE; loadJobs(false); }
+
+// ── Hoja de detalle ──
+let _openIdx = null;
+function openJob(i){
+  _openIdx = i;
+  const j = state.jobs[i];
+  const canApprove = state.canEdit && j.approval_fc === 'ToApprove';
+  document.getElementById('sheet').innerHTML = `
+    <div class="sheet-handle"></div>
+    <h2>${esc(j.job_number)}</h2>
+    <div class="cust">${esc(j.customer || 'Sin cliente')}</div>
+    <div class="field-row"><span class="k">Descripción</span><span class="v">${esc(j.description || '—')}</span></div>
+    <div class="field-row"><span class="k">PM</span><span class="v">${esc(j.pm || '—')}</span></div>
+    <div class="field-row"><span class="k">Status</span><span class="v">${statusBadge(j.status)}</span></div>
+    <div class="field-row"><span class="k">Aprobación FC</span><span class="v">${fcBadge(j.approval_fc)}</span></div>
+    <div class="field-row"><span class="k">Fecha de entrega</span><span class="v">${esc(j.ship_date || '—')}</span></div>
+    ${j.notes ? `<div class="field-row"><span class="k">Notas</span><span class="v">${esc(j.notes)}</span></div>` : ''}
+    <div class="sheet-actions">
+      <button class="btn btn-secondary" onclick="closeSheet()">Cerrar</button>
+      ${canApprove ? `<button class="btn btn-primary" id="btn-approve" onclick="approveJob('${j.job_number}')">Aprobar</button>` : ''}
+    </div>
+  `;
+  document.getElementById('overlay').classList.add('on');
+  document.getElementById('sheet').classList.add('on');
+}
+function closeSheet(){
+  document.getElementById('overlay').classList.remove('on');
+  document.getElementById('sheet').classList.remove('on');
+}
+
+async function approveJob(jobNumber){
+  if(!confirm(`¿Aprobar el Job ${jobNumber}? Esto solo cambia el estatus de aprobación (FC) — no crea ventas ni modifica otros datos.`)) return;
+  const btn = document.getElementById('btn-approve');
+  if(btn){ btn.disabled = true; btn.textContent = 'Aprobando…'; }
+  try{
+    const updated = await api('PUT', '/api/jobs/' + encodeURIComponent(jobNumber), { approval_fc: 'Yes' });
+    const idx = state.jobs.findIndex(j => j.job_number === jobNumber);
+    if(idx >= 0) state.jobs[idx] = Object.assign({}, state.jobs[idx], updated);
+    renderList();
+    closeSheet();
+    toast('Job ' + jobNumber + ' aprobado ✓');
+  }catch(err){
+    toast(err.message || 'No se pudo aprobar', 'er');
+    if(btn){ btn.disabled = false; btn.textContent = 'Aprobar'; }
+  }
+}
+
+// ── Arranque ──
+async function init(){
+  renderChips();
+  try{
+    const me = await api('GET', '/api/me/perms');
+    const lvl = (me.permissions && me.permissions.jobs) || 'none';
+    state.canEdit = me.is_admin || lvl === 'create' || lvl === 'full';
+  }catch(e){
+    state.canEdit = false; // si falla, más vale no mostrar "Aprobar" que mostrarlo de más
+  }
+  loadJobs(true);
+}
+init();
+</script>
+</body>
+</html>

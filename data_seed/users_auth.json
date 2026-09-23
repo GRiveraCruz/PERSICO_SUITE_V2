@@ -18,5 +18,65 @@
     "password_hash": "$2b$12$upxozrHFbNqQ55WhjbGGnO/QapTIdkTzZo3EUW/aUnEjEHcI7r47W",
     "active": true,
     "created_at": "2026-09-22T16:05:12.929586"
+  },
+  "prueba_0": {
+    "password_hash": "$2b$12$MJKI9Or0JftegkTOp8vs/.mUDRjsUkJHbJ2A2oSQNWgyRusHV.VGO",
+    "active": true,
+    "created_at": "2026-09-22T17:24:55.467610"
+  },
+  "prueba_1": {
+    "password_hash": "$2b$12$aerzeULpXDbpjYNU/UmlzemODHsQU/wTEllgDfX.1CINjHNjtyZVO",
+    "active": true,
+    "created_at": "2026-09-22T17:24:55.756004"
+  },
+  "prueba_2": {
+    "password_hash": "$2b$12$TsJZyimosMEDsD0qDoN61uS.C0y2K21HTX8.rnEWuT3AIqYidCMAa",
+    "active": true,
+    "created_at": "2026-09-22T17:24:56.031106"
+  },
+  "prueba_3": {
+    "password_hash": "$2b$12$YE9HmTP1.6TO8D1eEEu/3uvaxAy/H4KwkuK82NK0FM1CEZdd7nuYC",
+    "active": true,
+    "created_at": "2026-09-22T17:24:56.305373"
+  },
+  "prueba_4": {
+    "password_hash": "$2b$12$ZwqCJZBx4VRQX96dZB9f2uQSKpMsnfZ8GRUprJRN0E92/sFLuO/Hi",
+    "active": true,
+    "created_at": "2026-09-22T17:24:56.577860"
+  },
+  "prueba_5": {
+    "password_hash": "$2b$12$qFNaCRfValdfsWum2mz7oO9j2Skq5Rg5F.ylwr34QdZ4LfaPCXdhi",
+    "active": true,
+    "created_at": "2026-09-22T17:24:56.849275"
+  },
+  "prueba_6": {
+    "password_hash": "$2b$12$7nyt3hNDG28KCx.PbTuc7uUppDSa5YCLEWh9f3yQgM9fjDd9bd1ye",
+    "active": true,
+    "created_at": "2026-09-22T17:24:57.131717"
+  },
+  "prueba_7": {
+    "password_hash": "$2b$12$L77zIPGwWhxjpfgEzoy96.dozn6DvFddYVLJA7lWbbtBQFZtvNJTe",
+    "active": true,
+    "created_at": "2026-09-22T17:24:57.409497"
+  },
+  "prueba_8": {
+    "password_hash": "$2b$12$vE3l5Ok5enLdzPgukzTauuC2beGfmey.sgF296kzhkMSGE4HLAm2a",
+    "active": true,
+    "created_at": "2026-09-22T17:24:57.682836"
+  },
+  "prueba_cambio": {
+    "password_hash": "$2b$12$mUjbS8hPrtqfjB/7zJikderRmiSXHqFPlEUIB.J1/vymkecOd.VEi",
+    "active": true,
+    "created_at": "2026-09-22T17:24:57.962358"
+  },
+  "ana_rh": {
+    "password_hash": "$2b$12$nUwYCc/UeSJ8b705cXNRT.gJWQTcediowe6rdODvrCSWUw0XyoGSC",
+    "active": true,
+    "created_at": "2026-09-22T17:25:11.220966"
+  },
+  "carlos_pm": {
+    "password_hash": "$2b$12$0fRCYkz808zMVelnfr1i7uxy2TWWCG.cKijmrSR29HgT8bawC0jI6",
+    "active": true,
+    "created_at": "2026-09-22T17:25:11.498711"
   }
 }
