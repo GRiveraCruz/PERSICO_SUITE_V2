@@ -10203,29 +10203,68 @@ def api_requisiciones_upload():
             v = " ".join(v.split())
             return "" if v in ("None", "nan", "#N/A") else v
 
-        nuevos = []
+        # 1) Leer el archivo y consolidar números de parte repetidos DENTRO del archivo
+        #    (misma pieza en dos renglones → un solo renglón con la suma).
+        archivo, orden, repetidos = {}, [], 0
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            pn = g(row, ci_pn)
+            if not pn: continue
+            qty_raw = g(row, ci_qty)
+            try: qty = float(qty_raw) if qty_raw else 0
+            except: qty = 0
+            k = _req_pn(pn)
+            if k in archivo:
+                archivo[k]["quantity"] += qty; repetidos += 1
+                continue
+            estatus_excel = g(row, ci_stat)
+            archivo[k] = {"brand": g(row, ci_brand), "part_number": pn, "description": g(row, ci_desc),
+                          "quantity": qty, "status": estatus_excel if estatus_excel in REQ_STATUS else "Solicitado"}
+            orden.append(k)
+
+        # 2) Comparar contra los renglones que ya existen para este Job + tipo.
+        user, ahora = session.get("user", ""), datetime.datetime.now().isoformat()
+        res = {"agregados": 0, "actualizados": [], "iguales": 0, "revision": [], "consolidados_en_archivo": repetidos}
         s = _orm.get_session()
         try:
-            for row in ws.iter_rows(min_row=2, values_only=True):
-                pn = g(row, ci_pn)
-                if not pn: continue
-                qty_raw = g(row, ci_qty)
-                try: qty = float(qty_raw) if qty_raw else 0
-                except: qty = 0
-                estatus_excel = g(row, ci_stat)
-                estatus = estatus_excel if estatus_excel in REQ_STATUS else "Solicitado"
-                item = {
-                    "id": _req_gen_item_id(), "job": job, "tipo": tipo,
-                    "brand": g(row, ci_brand), "part_number": pn, "description": g(row, ci_desc),
-                    "quantity": qty, "status": estatus,
-                    "created_by": session.get("user", ""), "created_at": datetime.datetime.now().isoformat(),
-                }
-                s.add(_orm.RequisicionCompra(data=item, item_id=item["id"], job=job, tipo=tipo, status=estatus))
-                nuevos.append(item)
+            existentes = {}
+            for r in (s.query(_orm.RequisicionCompra)
+                      .filter(_orm.RequisicionCompra.job == job, _orm.RequisicionCompra.tipo == tipo)
+                      .order_by(_orm.RequisicionCompra.id.asc()).all()):
+                existentes.setdefault(_req_pn(r.data.get("part_number")), r)   # si ya había repetidos, se usa el primero
+            for k in orden:
+                nuevo = archivo[k]
+                row = existentes.get(k)
+                if row is None:
+                    item = {"id": _req_gen_item_id(), "job": job, "tipo": tipo, **nuevo,
+                            "created_by": user, "created_at": ahora}
+                    s.add(_orm.RequisicionCompra(data=item, item_id=item["id"], job=job, tipo=tipo, status=item["status"]))
+                    res["agregados"] += 1
+                    continue
+                d = row.data
+                actual, nueva = float(d.get("quantity") or 0), float(nuevo["quantity"])
+                if nueva == actual:
+                    d.pop("revision", None); res["iguales"] += 1
+                elif nueva > actual and d.get("status") not in ("Comprado", "Cancelado"):
+                    # Sube la cantidad: se actualiza el renglón existente y se conserva lo
+                    # reasignado, el historial y el estatus. Si estaba "Reasignado" y ahora
+                    # vuelve a faltar material, regresa a "Solicitado".
+                    d["quantity"] = nueva
+                    d.pop("revision", None)
+                    d.setdefault("cambios_cantidad", []).append({"de": actual, "a": nueva, "fecha": ahora, "usuario": user, "origen": "carga de requisición"})
+                    if d.get("status") == "Reasignado" and nueva - float(d.get("cantidad_reasignada") or 0) > 0:
+                        d["status"] = "Solicitado"; row.status = "Solicitado"
+                    res["actualizados"].append({"part_number": d.get("part_number"), "de": actual, "a": nueva})
+                else:
+                    # Baja la cantidad, o el renglón ya está Comprado/Cancelado: no se toca,
+                    # se marca para que alguien lo revise y decida.
+                    d["revision"] = {"cantidad_nueva": nueva, "cantidad_actual": actual, "fecha": ahora, "usuario": user}
+                    res["revision"].append({"part_number": d.get("part_number"), "actual": actual, "nueva": nueva, "status": d.get("status")})
+                row.data = d
+                _orm_flag_modified(row, "data")
             s.commit()
         finally:
             s.close()
-        return jsonify({"ok": True, "imported": len(nuevos)})
+        return jsonify({"ok": True, "imported": res["agregados"], **res})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -10250,6 +10289,19 @@ def api_requisiciones_update(item_id):
             for campo in ("brand", "part_number", "description", "quantity"):
                 if campo in data:
                     row.data[campo] = data[campo]
+            accion = data.get("revision")
+            if accion in ("aceptar", "descartar"):
+                rev = row.data.get("revision")
+                if not rev:
+                    return jsonify({"error": "Este renglón no tiene una cantidad pendiente de revisión"}), 400
+                if accion == "aceptar":
+                    row.data.setdefault("cambios_cantidad", []).append({
+                        "de": row.data.get("quantity"), "a": rev["cantidad_nueva"], "fecha": datetime.datetime.now().isoformat(),
+                        "usuario": session.get("user", ""), "origen": "revisión aceptada"})
+                    row.data["quantity"] = rev["cantidad_nueva"]
+                    if row.data.get("status") == "Reasignado" and float(rev["cantidad_nueva"]) - float(row.data.get("cantidad_reasignada") or 0) > 0:
+                        row.data["status"] = "Solicitado"; row.status = "Solicitado"
+                row.data.pop("revision", None)
             row.data["updated_by"] = session.get("user", ""); row.data["updated_at"] = datetime.datetime.now().isoformat()
             _orm_flag_modified(row, "data")
             s.commit()
