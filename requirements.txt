@@ -5,7 +5,7 @@ pdfplumber
 requests
 psycopg2-binary
 bcrypt
-sqlalchemy>=2.0
+sqlalchemy>=2.0,<2.1   # 2.1 cambió el conector predeterminado de PostgreSQL (psycopg v3); db.py ya fija psycopg2
 flask-migrate
 alembic
 # xlrd==1.2.0   # opcional — acelera lectura de archivos .xls del Banco de México

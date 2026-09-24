@@ -22,8 +22,20 @@ try:
     import db as _orm  # SQLAlchemy — capa de datos para los módulos ya migrados (distinto del
                         # DB_ENABLED/db_conn de más abajo, que es psycopg2 directo, usado solo por Ventas)
     from sqlalchemy.orm.attributes import flag_modified as _orm_flag_modified
-except ImportError:
+except ImportError as _e_orm:
     _orm = None
+    import os as __os_chk
+    if __os_chk.environ.get("DATABASE_URL"):
+        # Antes esto pasaba en silencio: con DATABASE_URL configurada pero sin poder
+        # importar db.py (normalmente porque SQLAlchemy no se instaló en el build), toda
+        # la app corría en MODO JSON sobre DATA_DIR — usuarios, Jobs, etc. salían de
+        # data_seed y NINGÚN usuario real podía entrar ("Usuario o contraseña incorrectos").
+        print("=" * 78)
+        print(f"[DB] ✗✗ ERROR GRAVE: DATABASE_URL está configurada pero no se pudo cargar la capa "
+              f"de base de datos (db.py): {_e_orm}")
+        print("[DB] ✗✗ La aplicación está corriendo en MODO JSON: los usuarios y datos que ve NO son "
+              "los de PostgreSQL. Revisar que requirements.txt incluya 'sqlalchemy>=2.0' y el Build Log.")
+        print("=" * 78)
     def _orm_flag_modified(*a, **k): pass
 try:
     import psycopg2
@@ -85,15 +97,57 @@ app  = Flask(__name__, static_folder="static", static_url_path="/static")
 # configurarla es que las sesiones no sobreviven un reinicio/redeploy (el usuario
 # tiene que volver a iniciar sesión), lo cual es una señal imposible de ignorar en
 # vez de un hueco de seguridad silencioso.
+def _shared_generated_secret():
+    """Clave de sesión generada UNA vez y compartida por todos los workers y reinicios.
+
+    Sin SECRET_KEY, antes cada worker de gunicorn (Procfile: --workers=2) generaba su
+    propia clave al arrancar: el login se aceptaba en un worker, pero la siguiente
+    petición caía en el otro, que no reconocía la cookie → 401 → de regreso al login.
+    En la práctica NADIE podía entrar (reproducido: 2 de 10 sesiones completas).
+
+    Ahora la clave aleatoria se guarda en la base de datos (tabla app_secrets) o, sin
+    base, en DATA_DIR/.flask_secret_key. El primero que llega la crea; los demás la
+    leen. Sigue sin haber una clave fija en el código (el hueco que se quitó antes)."""
+    if _orm and getattr(_orm, "DB_ENABLED", False):
+        from sqlalchemy import text
+        for intento in range(3):
+            try:
+                with _orm.engine.begin() as c:
+                    c.execute(text("CREATE TABLE IF NOT EXISTS app_secrets (name TEXT PRIMARY KEY, value TEXT NOT NULL)"))
+                    c.execute(text("INSERT INTO app_secrets (name, value) VALUES ('flask_secret_key', :v) "
+                                   "ON CONFLICT (name) DO NOTHING"), {"v": secrets.token_hex(32)})
+                    v = c.execute(text("SELECT value FROM app_secrets WHERE name = 'flask_secret_key'")).scalar()
+                if v:
+                    return v, "base de datos (tabla app_secrets)"
+            except Exception as e:      # dos workers creando la tabla a la vez: se reintenta
+                print(f"[SEGURIDAD] Intento {intento + 1} de leer/crear la clave compartida en la base: {e}")
+                import time as _t; _t.sleep(0.5 + intento)
+    path = _os.path.join(_DATA, ".flask_secret_key")
+    try:
+        _os.makedirs(_DATA, exist_ok=True)
+        fd = _os.open(path, _os.O_WRONLY | _os.O_CREAT | _os.O_EXCL, 0o600)   # solo el primero la crea
+        with _os.fdopen(fd, "w") as f:
+            f.write(secrets.token_hex(32))
+    except FileExistsError:
+        pass
+    except Exception as e:
+        print(f"[SEGURIDAD] No se pudo guardar la clave en {path}: {e}")
+        return secrets.token_hex(32), "temporal (solo este proceso)"
+    for _ in range(10):                  # por si el otro worker la está terminando de escribir
+        with open(path, "r") as f:
+            v = f.read().strip()
+        if len(v) >= 32:
+            return v, f"archivo {path}"
+        import time as _t; _t.sleep(0.1)
+    return secrets.token_hex(32), "temporal (solo este proceso)"
+
 _SECRET_KEY = _os.environ.get("SECRET_KEY")
 if not _SECRET_KEY:
-    _SECRET_KEY = secrets.token_hex(32)
-    print("[SEGURIDAD] ⚠ La variable de entorno SECRET_KEY no está configurada. "
-          "Se generó una clave temporal solo para este proceso — las sesiones NO "
-          "sobrevivirán un reinicio ni se compartirán entre workers. Configura "
+    _SECRET_KEY, _origen_clave = _shared_generated_secret()
+    print("[SEGURIDAD] ⚠ La variable de entorno SECRET_KEY no está configurada. Se usa una clave "
+          f"generada y compartida entre workers — origen: {_origen_clave}. Recomendado: configurar "
           "SECRET_KEY en Railway (Variables) con un valor largo y aleatorio "
-          "(ej. `python -c \"import secrets; print(secrets.token_hex(32))\"`) "
-          "antes de considerar esto listo para producción.")
+          "(ej. `python -c \"import secrets; print(secrets.token_hex(32))\"`).")
 app.secret_key = _SECRET_KEY
 lock = Lock()
 JOB_RE = re.compile(r"^\d+-\d+$")
@@ -7025,8 +7079,19 @@ def api_dashboard_project_manager():
         if not names:
             return jsonify(out)
         wanted = {_norm_pm(n) for n in names}
-        jobs = [j for j in scan_jobs()
-                if _norm_pm(j.get("pm")) in wanted and (j.get("status") or "").strip().upper() in PM_DASH_STATUS]
+        mine = [j for j in scan_jobs() if _norm_pm(j.get("pm")) in wanted]
+        jobs = [j for j in mine if (j.get("status") or "").strip().upper() in PM_DASH_STATUS]
+        # Gráfica 1 (pastel): todos los Jobs del PM por estatus
+        cats = {"OPEN": "Open", "WIP": "WIP", "DONE": "Cerrado", "CLOSED": "Cerrado", "CERRADO": "Cerrado",
+                "CANCELLED": "Cancelado", "CANCELED": "Cancelado", "CANCELADO": "Cancelado"}
+        est = {"Open": 0, "WIP": 0, "Cerrado": 0, "Cancelado": 0}
+        for j in mine:
+            k = cats.get((j.get("status") or "").strip().upper(), "Otro")
+            est[k] = est.get(k, 0) + 1
+        year = int(request.args.get("year") or CURRENT_YEAR)
+        year_jobs = [j for j in mine if str(_year_of(j) or "") == str(year)]
+        out.update(estatus=est, total_jobs=len(mine), year=year,
+                   years=sorted({int(_year_of(j)) for j in mine if _year_of(j)} | {CURRENT_YEAR}, reverse=True), grafica=[])
         cfg_by_job = {}
         for cfg in projcfg_load():
             for jc in cfg.get("jobs") or []:
@@ -7042,7 +7107,7 @@ def api_dashboard_project_manager():
                     cra_pool=_consig.load("orders") if (_consig and CONSIG_EN_COSTO_JOB) else None,
                     crc_pool=_consig.load("recovery") if (_consig and CONSIG_EN_COSTO_JOB) else None)
             return pools_by_year[y]
-        for j in sorted(jobs, key=lambda x: x.get("job_number", "")):
+        for j in sorted({x["job_number"]: x for x in jobs + year_jobs}.values(), key=lambda x: x.get("job_number", "")):
             jn = j["job_number"]
             y = int(_year_of(j) or CURRENT_YEAR)
             jc = cfg_by_job.get(jn.strip().upper(), {})
@@ -7069,8 +7134,96 @@ def api_dashboard_project_manager():
                            resultado_operativo=round(ro, 2), resultado_pct=round(ro / base * 100, 1) if base else None)
             except Exception as e:
                 row["error"] = str(e)
-            out["jobs"].append(row)
+            if j in jobs:
+                out["jobs"].append(row)
+            if j in year_jobs and "error" not in row:
+                # Gráficas 2 y 3: Target = base (Internal Target o revenue), Cost = base − resultado operativo,
+                # margen = (Target − Cost) / Cost, como en PROJECT_MANAGER_GRAPHICS.xlsx.
+                cost = round(row["base"] - row["resultado_operativo"], 2)
+                out["grafica"].append({"job_number": jn, "status": row["status"], "target": row["base"], "cost": cost,
+                                       "target_configurado": row["internal_target"] is not None,
+                                       # sin target (revenue 0 y sin Configurar Proyecto) el margen no tiene contra qué medirse
+                                       "margen": round((row["base"] - cost) / cost, 4) if cost > 0 and row["base"] > 0 else None})
         return jsonify(out)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/dashboard/purchasing", methods=["GET"])
+def api_dashboard_purchasing():
+    """Dashboard de inicio del perfil PURCHASING.
+    - Jobs creados en el año: Target Compras (Configurar Proyecto) vs monto adquirido
+      (órdenes de compra IPO del Job, USD) y % de ahorro = (target − adquirido) / target.
+    - Jobs en WIP: por tipo de BOM, si hay requisición, última actualización,
+      % reasignado y % ordenado (promedio por renglón, sin renglones Cancelados)."""
+    me = session.get("user")
+    info = get_user_perms(me) if me else {}
+    if not (is_admin() or info.get("role") == "PURCHASING"):
+        return jsonify({"error": "Sin permiso"}), 403
+    try:
+        year = int(request.args.get("year") or CURRENT_YEAR)
+        all_jobs = scan_jobs()
+        cfg_by_job = {}
+        for cfg in projcfg_load():
+            for jc in cfg.get("jobs") or []:
+                cfg_by_job.setdefault((jc.get("job_number") or "").strip().upper(), jc)
+        pools = dict(wh_pool=wh_load(year), po_pool=po_load(year), fx_all=fx_load_all(),
+                     ra_pool=reassign_load(), rc_pool=recovery_load(),
+                     via_pool=_svc_load(VIATICOS_FILE), gv_pool=_svc_load(GASTOS_FILE), env_pool=_svc_load(ENVIOS_FILE),
+                     cra_pool=_consig.load("orders") if (_consig and CONSIG_EN_COSTO_JOB) else None,
+                     crc_pool=_consig.load("recovery") if (_consig and CONSIG_EN_COSTO_JOB) else None)
+        grafica = []
+        for j in sorted([j for j in all_jobs if str(_year_of(j) or "") == str(year)], key=lambda x: x.get("job_number", "")):
+            jn = j["job_number"]
+            jc = cfg_by_job.get(jn.strip().upper(), {})
+            tc = jc.get("target_compras")
+            tc = float(tc) if tc not in (None, "") else None
+            try:
+                d = _build_report_data(jn, year, year, year, **pools)
+                adq = round(float(d.get("purchasing_total") or 0), 2)
+            except Exception as e:
+                grafica.append({"job_number": jn, "error": str(e)}); continue
+            grafica.append({"job_number": jn, "status": j.get("status", ""), "customer": j.get("customer", ""),
+                            "target_compras": tc, "adquirido": adq,
+                            "ahorro_pct": round((tc - adq) / tc, 4) if tc else None})
+        # Tabla de Jobs en WIP (requisiciones por tipo)
+        wip = sorted([j for j in all_jobs if (j.get("status") or "").strip().upper() == "WIP"], key=lambda x: x.get("job_number", ""))
+        tabla = []
+        reqs = {}
+        if _orm and _orm.DB_ENABLED and wip:
+            s = _orm.get_session()
+            try:
+                for r in s.query(_orm.RequisicionCompra).filter(_orm.RequisicionCompra.job.in_([j["job_number"] for j in wip])).all():
+                    reqs.setdefault((r.job, r.tipo), []).append(r.data)
+            finally:
+                s.close()
+        for j in wip:
+            fila = {"job_number": j["job_number"], "customer": j.get("customer", ""), "pm": j.get("pm", ""), "boms": {}}
+            for tipo in REQ_TIPOS:
+                rows = reqs.get((j["job_number"], tipo)) or []
+                if not rows:
+                    fila["boms"][tipo] = None; continue
+                vivos = [r for r in rows if r.get("status") != "Cancelado"]
+                fr_reas, fr_ord = [], []
+                for r in vivos:
+                    q = float(r.get("quantity") or 0)
+                    reas = float(r.get("cantidad_reasignada") or 0)
+                    if r.get("status") == "Reasignado" and not reas: reas = q      # renglones anteriores a rev18
+                    fr = min(1.0, reas / q) if q > 0 else 0.0
+                    fr_reas.append(fr)
+                    fr_ord.append((1.0 - fr) if r.get("status") == "Comprado" else 0.0)
+                # última actualización: alta, edición, reasignaciones y cambios de cantidad por carga
+                fechas = [str(r.get(k) or "") for r in rows for k in ("updated_at", "created_at") if r.get(k)]
+                fechas += [str(h.get("fecha") or "") for r in rows for h in (r.get("reasignaciones") or []) + (r.get("cambios_cantidad") or []) if h.get("fecha")]
+                fila["boms"][tipo] = {
+                    "renglones": len(rows), "cancelados": len(rows) - len(vivos),
+                    "ultima_actualizacion": max(fechas)[:10] if fechas else "",
+                    "pct_reasignado": round(sum(fr_reas) / len(fr_reas), 4) if fr_reas else 0,
+                    "pct_ordenado": round(sum(fr_ord) / len(fr_ord), 4) if fr_ord else 0}
+            tabla.append(fila)
+        return jsonify({"year": year, "years": sorted({int(_year_of(j)) for j in all_jobs if _year_of(j)} | {CURRENT_YEAR}, reverse=True),
+                        "grafica": grafica, "wip": tabla, "tipos": list(REQ_TIPOS),
+                        "requisiciones_disponibles": bool(_orm and _orm.DB_ENABLED),
+                        "now": datetime.datetime.now().isoformat(timespec="minutes")})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

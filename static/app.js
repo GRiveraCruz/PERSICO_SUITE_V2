@@ -6632,20 +6632,23 @@ async function initHomeDashboard(){
       await loadGMDashboard();
     } else if(me.role === 'PROJECT MANAGER'){
       await loadPMDashboard();
+    } else if(me.role === 'PURCHASING'){
+      await loadPurchDashboard();
     }
   }catch(e){ /* si falla, se queda la bienvenida de siempre — nunca romper el inicio */ }
 }
 
 // ── Dashboard PROJECT MANAGER: Jobs Open/WIP del PM ligado al usuario.
 //    previewUser: solo admin (vista previa desde Config → Administrador).
-async function loadPMDashboard(previewUser){
+async function loadPMDashboard(previewUser, year){
   const wrap = document.getElementById('home-dashboard');
   const dflt = document.getElementById('home-default');
   if(!wrap) return;
   dflt.style.display='none'; wrap.style.display='block';
   wrap.innerHTML = '<div style="text-align:center;padding:60px;color:var(--muted)">Calculando resultados…</div>';
   try{
-    const d = await fetch('/api/dashboard/project-manager'+(previewUser?`?user=${encodeURIComponent(previewUser)}`:'')).then(r=>r.json());
+    const qs = new URLSearchParams(); if(previewUser) qs.set('user',previewUser); if(year) qs.set('year',year);
+    const d = await fetch('/api/dashboard/project-manager'+(qs.toString()?'?'+qs:'')).then(r=>r.json());
     if(d.error){ wrap.innerHTML = `<div style="text-align:center;padding:60px;color:var(--red)">⚠ ${esc(d.error)}</div>`; return; }
     renderPMDashboard(d, previewUser);
   }catch(e){
@@ -6663,7 +6666,7 @@ function renderPMDashboard(d, previewUser){
       <div><div style="font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted)">Dashboard · Project Manager${previewUser?' · vista previa':''}</div>
       <div style="font-size:22px;font-weight:700">${esc((d.pm_names||[]).join(' / ')||d.user)}</div></div>
       <div style="margin-left:auto;font-size:11px;color:var(--muted)">Calculado: ${esc(hora)}
-      <button onclick="loadPMDashboard(${previewUser?`'${esc(previewUser)}'`:''})" class="btn-reload" style="margin-left:8px;font-size:10px">Actualizar</button></div></div>`;
+      <button onclick="loadPMDashboard(${previewUser?`'${esc(previewUser)}'`:'null'}, ${Number(d.year)||'null'})" class="btn-reload" style="margin-left:8px;font-size:10px">Actualizar</button></div></div>`;
   if(!d.linked){
     wrap.innerHTML = head + `<div style="${card};text-align:center;color:var(--muted);padding:40px">Tu usuario todavía no está ligado a un Project Manager de los Jobs.<br>Pide al administrador que lo ligue en <b>Config → Administrador</b>.</div>`;
     return;
@@ -6682,6 +6685,7 @@ function renderPMDashboard(d, previewUser){
       ${kpi('Internal Target', money(totBase), 'var(--text)', sinCfg?`${sinCfg} Job(s) sin configurar: se usa su revenue`:'suma de presupuestos disponibles')}
       ${kpi('Resultado operativo', money(totRO), totRO<0?'var(--red)':'var(--green)', totBase?`${(totRO/totBase*100).toFixed(1)}% vs Internal Target`:'')}
     </div>`;
+  const charts = pmChartsHTML(d, previewUser, card);
   const th = t => `<th style="padding:8px 10px;text-align:${t[1]||'left'};font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border)">${t[0]}</th>`;
   const rows = jobs.map(j=>{
     const ro = j.resultado_operativo;
@@ -6697,11 +6701,167 @@ function renderPMDashboard(d, previewUser){
       <td style="padding:9px 10px;text-align:right;font-weight:700;color:${ro==null?'var(--muted)':(ro<0?'var(--red)':'var(--green)')}">${j.error?`<span title="${esc(j.error)}">error</span>`:money(ro)}
         ${j.resultado_pct!=null&&Math.abs(j.resultado_pct)<1000?`<div style="font-size:10px;font-weight:400;color:var(--muted)">${j.resultado_pct}% vs target</div>`:''}</td>
     </tr>`;}).join('');
-  wrap.innerHTML = head + kpis + `<div style="${card};overflow-x:auto">
+  wrap.innerHTML = head + kpis + charts + `<div style="${card};overflow-x:auto">
     <table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr>
       ${[['Job'],['Cliente / Descripción'],['Estatus'],['Run Off Cliente'],['Fecha de envío'],['Internal Target','right'],['Resultado operativo','right']].map(th).join('')}
     </tr></thead><tbody>${rows||'<tr><td colspan="7" style="padding:30px;text-align:center;color:var(--muted)">Sin Jobs Open o WIP asignados</td></tr>'}</tbody></table>
     <div style="font-size:10px;color:var(--muted);margin-top:10px">Resultado operativo = presupuesto disponible (o revenue) − mano de obra − compras − servicios (viáticos, gastos de viaje, envíos) − reasignaciones + recuperaciones, igual que el Job Report.</div></div>`;
+}
+
+// ── Gráficas del Dashboard PM (SVG propio, sin librerías)
+const PM_EST_COLOR = {Open:'#2563eb', WIP:'#f59e0b', Cerrado:'#16a34a', Cancelado:'#9ca3af', Otro:'#a855f7'};
+const PM_CERRADO = ['DONE','CLOSED','CERRADO'];
+function pmChartsHTML(d, previewUser, card){
+  const g = d.grafica||[];
+  const gc = g.filter(x=>PM_CERRADO.includes(String(x.status||'').trim().toUpperCase()));   // tendencia: solo Jobs cerrados
+  const yearSel = `<select onchange="loadPMDashboard(${previewUser?`'${esc(previewUser)}'`:'null'}, this.value)" style="font-size:11px;padding:2px 6px;margin-left:8px">${
+    (d.years||[]).map(y=>`<option ${y==d.year?'selected':''}>${y}</option>`).join('')}</select>`;
+  const box = (title, body, extra='', flex='1 1 0') => `<div style="${card};flex:${flex};min-width:280px">
+      <div style="display:flex;align-items:center;font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);margin-bottom:8px">${title}${extra}</div>${body}</div>`;
+  const vacio = t => `<div style="padding:40px 0;text-align:center;color:var(--muted);font-size:12px">${t}</div>`;
+  return `<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px">
+      ${box(`Estatus de mis Jobs (${d.total_jobs||0})`, pmPieSVG(d.estatus||{}), '', '0 1 300px')}
+      ${box(`Target vs Cost · Jobs ${d.year}`, g.length?pmBarsSVG(g):vacio('Sin Jobs creados en '+d.year), yearSel, '1 1 600px')}
+    </div>
+    <div style="${card};margin-bottom:16px">
+      <div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Tendencia del margen de ganancia · Jobs cerrados ${d.year} · (Target − Cost) / Cost</div>
+      ${gc.some(x=>x.margen!=null)?pmTrendSVG(gc,{excl:'cerrados sin target o sin costo'}):vacio('Sin Jobs cerrados con target y costo en '+d.year)}
+    </div>`;
+}
+
+function pmPieSVG(est){
+  const items = Object.entries(est).filter(([,v])=>v>0);
+  const tot = items.reduce((s,[,v])=>s+v,0);
+  if(!tot) return '<div style="padding:40px 0;text-align:center;color:var(--muted);font-size:12px">Sin Jobs</div>';
+  const R=80, cx=100, cy=100; let a0=-Math.PI/2, slices='';
+  for(const [k,v] of items){
+    const a1 = a0 + v/tot*2*Math.PI, big = (a1-a0)>Math.PI?1:0, col = PM_EST_COLOR[k]||'#999';
+    slices += items.length===1
+      ? `<circle cx="${cx}" cy="${cy}" r="${R}" fill="${col}"/>`
+      : `<path d="M${cx},${cy} L${cx+R*Math.cos(a0)},${cy+R*Math.sin(a0)} A${R},${R} 0 ${big} 1 ${cx+R*Math.cos(a1)},${cy+R*Math.sin(a1)} Z" fill="${col}" stroke="#fff" stroke-width="2"><title>${k}: ${v}</title></path>`;
+    const am=(a0+a1)/2, pct=v/tot*100;
+    if(pct>=6) slices += `<text x="${cx+R*.62*Math.cos(am)}" y="${cy+R*.62*Math.sin(am)+4}" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">${pct.toFixed(0)}%</text>`;
+    a0=a1;
+  }
+  const legend = Object.keys(PM_EST_COLOR).filter(k=>k!=='Otro'||est.Otro).map(k=>`<div style="display:flex;align-items:center;gap:6px;font-size:12px;margin:5px 0">
+      <span style="width:12px;height:12px;border-radius:3px;background:${PM_EST_COLOR[k]}"></span>${k}
+      <b style="margin-left:auto;padding-left:14px">${est[k]||0}</b><span style="color:var(--muted);width:48px;text-align:right">${((est[k]||0)/tot*100).toFixed(1)}%</span></div>`).join('');
+  return `<div style="display:flex;flex-direction:column;align-items:center;gap:8px"><svg viewBox="0 0 200 200" style="width:150px;height:150px">${slices}</svg><div style="width:100%;max-width:240px">${legend}</div></div>`;
+}
+
+function pmBarsSVG(g, lbl={t:'Target', c:'Cost', over:'Cost sobre target'}){
+  const W=Math.max(360, g.length*70), H=230, L=56, B=40, T=12, ph=H-B-T;
+  const max = Math.max(1, ...g.map(x=>Math.max(x.target,x.cost)));
+  const step = Math.pow(10, Math.floor(Math.log10(max))), top = Math.ceil(max/step)*step;
+  const y = v => T + ph - (v/top)*ph, gw=(W-L-10)/g.length, bw=Math.min(22, gw*0.32);
+  const k = v => v>=1e6?(v/1e6).toFixed(1)+'M':v>=1e3?(v/1e3).toFixed(0)+'k':v.toFixed(0);
+  let grid='', bars='';
+  for(let i=0;i<=4;i++){ const v=top*i/4; grid+=`<line x1="${L}" x2="${W-6}" y1="${y(v)}" y2="${y(v)}" stroke="rgba(0,0,0,.07)"/><text x="${L-6}" y="${y(v)+4}" text-anchor="end" font-size="10" fill="#888">$${k(v)}</text>`; }
+  g.forEach((x,i)=>{ const cx=L+gw*i+gw/2, over=x.cost>x.target;
+    bars+=`<rect x="${cx-bw-1}" y="${y(x.target)}" width="${bw}" height="${y(0)-y(x.target)}" fill="#1f3864" ${x.target_configurado?'':'fill-opacity=".45"'}><title>${esc(x.job_number)} · ${lbl.t} $${x.target.toLocaleString('en-US')}${x.target_configurado?'':(lbl.sinCfg||' (revenue, sin Configurar Proyecto)')}</title></rect>
+      <rect x="${cx+1}" y="${y(Math.max(0,x.cost))}" width="${bw}" height="${y(0)-y(Math.max(0,x.cost))}" fill="${over?'#c8102e':'#e89a2c'}"><title>${esc(x.job_number)} · ${lbl.c} $${x.cost.toLocaleString('en-US')}</title></rect>
+      <text x="${cx}" y="${H-B+14}" text-anchor="middle" font-size="10" font-family="DM Mono,monospace" fill="#555">${esc(x.job_number)}</text>`; });
+  const lg = `<div style="display:flex;gap:14px;font-size:11px;color:var(--muted);margin-top:4px">
+    <span><span style="display:inline-block;width:10px;height:10px;background:#1f3864;margin-right:4px"></span>${lbl.t}</span>
+    <span><span style="display:inline-block;width:10px;height:10px;background:#e89a2c;margin-right:4px"></span>${lbl.c}</span>
+    <span><span style="display:inline-block;width:10px;height:10px;background:#c8102e;margin-right:4px"></span>${lbl.over}</span>
+    <span style="opacity:.7">${lbl.nota||'Barra clara = sin Configurar Proyecto (se usa revenue)'}</span></div>`;
+  return `<div style="overflow-x:auto"><svg viewBox="0 0 ${W} ${H}" style="width:100%;min-width:${Math.min(W,560)}px;height:${H}px">${grid}<line x1="${L}" x2="${W-6}" y1="${y(0)}" y2="${y(0)}" stroke="#999"/>${bars}</svg></div>${lg}`;
+}
+
+function pmTrendSVG(g, opt={}){
+  const K = opt.key||'margen';
+  const pts = g.filter(x=>x[K]!=null).map(x=>({...x, margen:x[K]}));
+  const W=Math.max(560, pts.length*60), H=240, L=50, B=36, T=14, ph=H-B-T, MIN=opt.min ?? 0.20;
+  const vals = pts.map(x=>x.margen), mx=Math.max(...vals), avg=vals.reduce((a,b)=>a+b,0)/vals.length;
+  // (T−C)/C se dispara cuando un Job casi no tiene costo todavía (ej. 50,000 / 311 → 15,949%).
+  // La escala se limita a 200% para que el resto sea legible; lo que la rebasa se marca arriba con su valor real.
+  const CAP = 2, hi = Math.min(Math.max(mx, MIN, 0.05)*1.15, CAP), lo = Math.max(Math.min(0, ...vals)*1.15, -1);
+  const y0 = v => T + ph - (v-lo)/(hi-lo)*ph, y = v => y0(Math.max(lo, Math.min(hi, v)));
+  const xs = i => L + (pts.length===1 ? (W-L-10)/2 : i*(W-L-20)/(pts.length-1));
+  const pct = v => (v*100).toFixed(0)+'%';
+  let grid=''; for(let i=0;i<=4;i++){ const v=lo+(hi-lo)*i/4; grid+=`<line x1="${L}" x2="${W-6}" y1="${y(v)}" y2="${y(v)}" stroke="rgba(0,0,0,.07)"/><text x="${L-6}" y="${y(v)+4}" text-anchor="end" font-size="10" fill="#888">${pct(v)}</text>`; }
+  const hline = (v,col,dash,lbl) => `<line x1="${L}" x2="${W-6}" y1="${y(v)}" y2="${y(v)}" stroke="${col}" stroke-width="1.5" ${dash?`stroke-dasharray="${dash}"`:''}/><text x="${W-8}" y="${y(v)-4}" text-anchor="end" font-size="10" font-weight="700" fill="${col}">${lbl} ${pct(v)}${v>hi?' ↑ fuera de escala':''}</text>`;
+  const path = pts.map((x,i)=>`${i?'L':'M'}${xs(i)},${y(x.margen)}`).join(' ');
+  const dots = pts.map((x,i)=>(x.margen>hi
+      ? `<path d="M${xs(i)-5},${y(hi)+5} L${xs(i)},${y(hi)-3} L${xs(i)+5},${y(hi)+5} Z" fill="#16a34a"><title>${esc(x.job_number)}: ${(x.margen*100).toFixed(1)}% (fuera de escala)</title></path><text x="${xs(i)}" y="${y(hi)+17}" text-anchor="middle" font-size="9" font-weight="700" fill="#16a34a">${pct(x.margen)}</text>`
+      : `<circle cx="${xs(i)}" cy="${y(x.margen)}" r="4" fill="${x.margen<MIN?'#c8102e':'#16a34a'}" stroke="#fff" stroke-width="1.5"><title>${esc(x.job_number)}: ${(x.margen*100).toFixed(1)}%</title></circle>`)+`
+      <text x="${xs(i)}" y="${H-B+14}" text-anchor="middle" font-size="10" font-family="DM Mono,monospace" fill="#555">${esc(x.job_number)}</text>`).join('');
+  const lg = `<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin-top:4px">
+    <span style="color:#1f3864;font-weight:700">— ${opt.serie||'Margen por Job'}</span><span style="color:#16a34a;font-weight:700">- - MAX ${pct(mx)}</span>
+    <span style="color:#6d28d9;font-weight:700">··· Promedio ${pct(avg)}</span><span style="color:#c8102e;font-weight:700">- - ${opt.minLbl||'MIN'} ${pct(MIN)}</span>
+    <span>Punto rojo = Job debajo ${opt.minLbl?'de "'+opt.minLbl+'"':'del mínimo'}${pts.some(x=>x.margen>hi)?' · ▲ = rebasa 200% (casi sin costo registrado)':''}</span>
+    ${g.length>pts.length?`<span>· ${g.length-pts.length} Job(s) ${opt.excl||'sin target o sin costo'} no se grafican</span>`:''}</div>`;
+  return `<div style="overflow-x:auto"><svg viewBox="0 0 ${W} ${H}" style="width:100%;min-width:${Math.min(W,560)}px;height:${H}px">${grid}
+    ${(mx>hi && avg>hi)
+        ? `<line x1="${L}" x2="${W-6}" y1="${y(hi)}" y2="${y(hi)}" stroke="#16a34a" stroke-width="1.5" stroke-dasharray="6 4"/><text x="${W-8}" y="${y(hi)-4}" text-anchor="end" font-size="10" font-weight="700" fill="#16a34a">MAX ${pct(mx)} · PROM ${pct(avg)} ↑ fuera de escala</text>`
+        : hline(mx,'#16a34a','6 4','MAX')+hline(avg,'#6d28d9','2 3','PROM')}${hline(MIN,'#c8102e','6 4',opt.minLbl||'MIN')}
+    <path d="${path}" fill="none" stroke="#1f3864" stroke-width="2.2"/>${dots}</svg></div>${lg}`;
+}
+
+// ── Dashboard PURCHASING
+async function loadPurchDashboard(year){
+  const wrap = document.getElementById('home-dashboard'), dflt = document.getElementById('home-default');
+  if(!wrap) return;
+  dflt.style.display='none'; wrap.style.display='block';
+  wrap.innerHTML = '<div style="text-align:center;padding:60px;color:var(--muted)">Calculando…</div>';
+  try{
+    const d = await fetch('/api/dashboard/purchasing'+(year?`?year=${year}`:'')).then(r=>r.json());
+    if(d.error){ wrap.innerHTML = `<div style="text-align:center;padding:60px;color:var(--red)">⚠ ${esc(d.error)}</div>`; return; }
+    renderPurchDashboard(d);
+  }catch(e){ wrap.innerHTML = '<div style="text-align:center;padding:60px;color:var(--red)">⚠ No se pudo cargar el dashboard. <button onclick="loadPurchDashboard()" class="btn-reload">Reintentar</button></div>'; }
+}
+
+function renderPurchDashboard(d){
+  const wrap = document.getElementById('home-dashboard');
+  const card = 'background:#fff;border-radius:14px;box-shadow:0 4px 18px rgba(0,0,0,.08);padding:18px 20px;min-width:0';
+  const money = v => (v<0?'-':'')+'$'+Math.abs(Number(v||0)).toLocaleString('en-US',{maximumFractionDigits:0});
+  const g = (d.grafica||[]).filter(x=>!x.error);
+  const conT = g.filter(x=>x.target_compras);
+  const totT = conT.reduce((s,x)=>s+x.target_compras,0), totA = conT.reduce((s,x)=>s+x.adquirido,0);
+  const ahorro = totT ? (totT-totA)/totT : null;
+  const yearSel = `<select onchange="loadPurchDashboard(this.value)" style="font-size:11px;padding:2px 6px;margin-left:8px">${(d.years||[]).map(y=>`<option ${y==d.year?'selected':''}>${y}</option>`).join('')}</select>`;
+  const kpi = (lbl,val,clr,sub='') => `<div style="${card};flex:1;min-width:190px"><div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted)">${lbl}</div>
+      <div style="font-size:28px;font-weight:800;color:${clr};margin-top:4px">${val}</div>${sub?`<div style="font-size:11px;color:var(--muted)">${sub}</div>`:''}</div>`;
+  const head = `<div style="display:flex;align-items:flex-end;margin-bottom:16px"><div><div style="font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted)">Dashboard · Compras</div>
+      <div style="font-size:22px;font-weight:700">Jobs ${d.year}${yearSel}</div></div>
+      <div style="margin-left:auto;font-size:11px;color:var(--muted)">Calculado: ${esc((d.now||'').replace('T',' '))} <button onclick="loadPurchDashboard(${d.year})" class="btn-reload" style="margin-left:8px;font-size:10px">Actualizar</button></div></div>`;
+  const kpis = `<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px">
+      ${kpi('Jobs del año', g.length, 'var(--text)', `${conT.length} con Target Compras`)}
+      ${kpi('Target Compras', money(totT), 'var(--text)', 'jobs con target configurado')}
+      ${kpi('Adquirido', money(totA), totA>totT?'var(--red)':'var(--text)', 'órdenes de compra de esos jobs')}
+      ${kpi('Ahorro', ahorro==null?'—':(ahorro*100).toFixed(1)+'%', ahorro==null?'var(--muted)':(ahorro<0?'var(--red)':'var(--green)'), ahorro==null?'sin targets configurados':money(totT-totA))}
+      ${kpi('Jobs en WIP', (d.wip||[]).length, 'var(--text)')}
+    </div>`;
+  const vacio = t => `<div style="padding:40px 0;text-align:center;color:var(--muted);font-size:12px">${t}</div>`;
+  const barras = conT.map(x=>({job_number:x.job_number, target:x.target_compras, cost:x.adquirido, target_configurado:true}));
+  const charts = `<div style="${card};margin-bottom:16px"><div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Target comercial (Target Compras) vs Adquirido · Jobs ${d.year}</div>
+      ${barras.length?pmBarsSVG(barras,{t:'Target Compras',c:'Adquirido',over:'Adquirido sobre target',nota:`${g.length-conT.length} Job(s) sin Target Compras no se grafican`}):vacio('Ningún Job de '+d.year+' tiene Target Compras en Configurar Proyecto')}</div>
+    <div style="${card};margin-bottom:16px"><div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Tendencia del % de ahorro · (Target − Adquirido) / Target</div>
+      ${conT.length?pmTrendSVG(g,{key:'ahorro_pct',min:0,minLbl:'Sin ahorro',serie:'Ahorro por Job',excl:'sin Target Compras'}):vacio('Sin Jobs con Target Compras')}</div>`;
+  wrap.innerHTML = head + kpis + charts + purchWipTableHTML(d, card);
+}
+
+function purchWipTableHTML(d, card){
+  const tipos = d.tipos||['electrico','mecanico','componentes_mayores','manufactura'];
+  const titulo = {electrico:'Electric BOM', mecanico:'Mechanic BOM', componentes_mayores:'Major Items', manufactura:'Manufacturing BOM'};
+  const fdate = v => v ? new Date(v+'T12:00:00').toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'}) : '';
+  const bar = (p,col) => `<div style="position:relative;height:18px;background:rgba(0,0,0,.04);border-radius:3px;overflow:hidden">
+      <div style="position:absolute;left:0;top:0;bottom:0;width:${Math.min(100,p*100)}%;background:${col}"></div>
+      <span style="position:relative;font-size:11px;font-weight:600;line-height:18px">${(p*100).toFixed(0)}%</span></div>`;
+  const td = 'padding:5px 10px;border:1px solid var(--border);text-align:center';
+  if(!d.requisiciones_disponibles) return `<div style="${card}">Las requisiciones requieren la base de datos.</div>`;
+  if(!(d.wip||[]).length) return `<div style="${card};color:var(--muted);text-align:center">No hay Jobs en WIP</div>`;
+  const body = d.wip.map(f=>{
+    const cel = (fn) => tipos.map(t=>`<td style="${td}">${f.boms[t]?fn(f.boms[t]):''}</td>`).join('');
+    return `<tr style="background:rgba(0,0,0,.05)"><td style="${td};text-align:left;font-weight:800;font-family:'DM Mono',monospace">${esc(f.job_number)}<div style="font-size:10px;font-weight:400;color:var(--muted);font-family:inherit">${esc(f.customer||'')}${f.pm?' · '+esc(f.pm):''}</div></td>
+        ${tipos.map(t=>`<td style="${td};${f.boms[t]?'background:#dcfce7;color:#15803d;font-weight:700':''}" ${f.boms[t]?`title="${f.boms[t].renglones} renglón(es)${f.boms[t].cancelados?`, ${f.boms[t].cancelados} cancelado(s)`:''}"`:''}>${f.boms[t]?'OK':''}</td>`).join('')}</tr>
+      <tr><td style="${td};text-align:left;font-size:11px">Última actualización</td>${cel(b=>fdate(b.ultima_actualizacion))}</tr>
+      <tr><td style="${td};text-align:left;font-size:11px">% Reasignado</td>${cel(b=>bar(b.pct_reasignado,'#c4b5fd'))}</tr>
+      <tr><td style="${td};text-align:left;font-size:11px">% Ordenado</td>${cel(b=>bar(b.pct_ordenado,'#fbbf24'))}</tr>`;}).join('');
+  return `<div style="${card};overflow-x:auto"><div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Jobs en WIP · requisiciones de compra</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:720px"><thead><tr><th style="${td}"></th>${tipos.map(t=>`<th style="${td};font-size:11px;text-transform:uppercase">${titulo[t]||t}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>
+    <div style="font-size:10px;color:var(--muted);margin-top:8px">% por renglón, sin contar renglones Cancelados. % Ordenado = renglones "Comprado" (solo la parte no reasignada). Celda vacía = no hay requisición de ese tipo.</div></div>`;
 }
 
 // ── Admin: ligar usuario PROJECT MANAGER con el/los nombres de PM de los Jobs

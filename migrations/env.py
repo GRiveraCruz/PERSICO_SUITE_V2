@@ -20,6 +20,8 @@ config = context.config
 db_url = os.environ.get("DATABASE_URL", "")
 if db_url.startswith("postgres://"):
     db_url = db_url.replace("postgres://", "postgresql://", 1)
+if db_url.startswith("postgresql://"):          # conector explícito (ver _pg_url en db.py)
+    db_url = "postgresql+psycopg2://" + db_url[len("postgresql://"):]
 if db_url:
     config.set_main_option("sqlalchemy.url", db_url)
 

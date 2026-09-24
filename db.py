@@ -26,8 +26,18 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 # Railway a veces entrega la URL con el esquema viejo "postgres://" — SQLAlchemy
 # 1.4+/2.x requiere "postgresql://".
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+def _pg_url(url):
+    """Fija el conector psycopg2 en la URL. SQLAlchemy 2.1 cambió el conector
+    predeterminado de "postgresql://" a psycopg (v3), que no está instalado: con
+    "sqlalchemy>=2.0" sin tope, un build nuevo instaló 2.1.0, `import db` falló con
+    "No module named 'psycopg'" y toda la app quedó en modo JSON (nadie podía entrar)."""
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url[len("postgres://"):]
+    if url.startswith("postgresql://"):
+        url = "postgresql+psycopg2://" + url[len("postgresql://"):]
+    return url
+
+DATABASE_URL = _pg_url(DATABASE_URL)
 
 DB_ENABLED = bool(DATABASE_URL)
 
@@ -412,8 +422,7 @@ class SVNumber(Base, JSONBMixin):
 #    DATA_DIR/CONSIGNACION/ (mismo respaldo que el resto de la suite).
 # ══════════════════════════════════════════════════════════════════
 CONSIG_DATABASE_URL = os.environ.get("CONSIG_DATABASE_URL", "")
-if CONSIG_DATABASE_URL.startswith("postgres://"):
-    CONSIG_DATABASE_URL = CONSIG_DATABASE_URL.replace("postgres://", "postgresql://", 1)
+CONSIG_DATABASE_URL = _pg_url(CONSIG_DATABASE_URL)
 CONSIG_SEPARATE_DB = bool(CONSIG_DATABASE_URL)
 if not CONSIG_DATABASE_URL:
     CONSIG_DATABASE_URL = DATABASE_URL
