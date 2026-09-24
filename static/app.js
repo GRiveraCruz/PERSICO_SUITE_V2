@@ -323,7 +323,7 @@ async function jobRenumber(){
   const newNum = document.getElementById('je-new-number').value.trim().toUpperCase();
   if(!newNum){ toast('Ingresa el nuevo número','er'); return; }
   const old = jobCurrentJob.job_number;
-  if(!confirm(`¿Cambiar número de Job?\n\n${old}  →  ${newNum}\n\nEsta acción actualiza la carpeta y todos los registros asociados.`)) return;
+  if(!confirm(`¿Cambiar número de Job?\n\n${old}  →  ${newNum}\n\nSe actualizan: el Job, su carpeta, PT/SV, requisiciones, reasignaciones (Stock y Consignación), recuperaciones, Configurar Proyecto y servicios.\n\nNO se cambian: horas trabajadas, órdenes de compra (IPO), CPO e IVP.`)) return;
   try {
     const d = await fetch(`/api/jobs/${old}/renumber`,{
       method:'POST',headers:{'Content-Type':'application/json'},
@@ -334,7 +334,9 @@ async function jobRenumber(){
     await loadJobs();
     await loadPt();
     await loadSv();
-    toast(`✓ ${old} → ${newNum}`,'ok',5000);
+    const n = Object.values(d.referencias||{}).filter(v=>typeof v==='number').reduce((a,b)=>a+b,0);
+    const errs = Object.entries(d.referencias||{}).filter(([k,v])=>typeof v==='string');
+    toast(`✓ ${old} → ${newNum}${d.reanudado?' (se completó un cambio anterior que había quedado a medias)':''} · ${n} referencia(s) actualizada(s)${errs.length?` · ⚠ no se pudo actualizar: ${errs.map(e=>e[0]).join(', ')}`:''}`, errs.length?'er':'ok', 8000);
   } catch(e){ toast('Error: '+e.message,'er'); }
 }
 

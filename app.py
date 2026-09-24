@@ -8780,59 +8780,155 @@ def api_merge_jobs():
         return jsonify({"error": str(e)}), 500
 
 
+def _job_row_exists(job_number):
+    if not (_orm and _orm.DB_ENABLED): return False
+    s = _orm.get_session()
+    try:
+        return s.query(_orm.Job.id).filter(_orm.Job.job_number == job_number).first() is not None
+    finally:
+        s.close()
+
+def _renumber_references(old, new):
+    """Cambia `old` → `new` en los registros que guardan el número de Job como campo
+    exacto. Regresa {colección: registros_cambiados}. Cada bloque es independiente:
+    si uno falla se reporta y los demás siguen."""
+    out, O, N = {}, old.upper(), new
+    def run(name, fn):
+        try: out[name] = fn()
+        except Exception as e: out[name] = f"error: {e}"
+    def lists(load, save):
+        recs, n = load(), 0
+        for r in recs:
+            if O in [str(j).upper() for j in r.get("jobs", [])]:
+                r["jobs"] = [N if str(j).upper() == O else j for j in r["jobs"]]; n += 1
+        if n: save(recs)
+        return n
+    def orders(load, save):
+        recs, n = load(), 0
+        for o in recs:
+            for it in o.get("items") or []:
+                if str(it.get("job") or "").upper() == O: it["job"] = N; n += 1
+        if n: save(recs)
+        return n
+    def flat(load, save, key="job"):
+        recs, n = load(), 0
+        for r in recs:
+            if str(r.get(key) or "").upper() == O: r[key] = N; n += 1
+        if n: save(recs)
+        return n
+    run("pt", lambda: lists(pt_load, pt_save))
+    run("sv", lambda: lists(sv_load, sv_save))
+    run("reasignaciones", lambda: orders(reassign_load, reassign_save))
+    run("recuperaciones", lambda: flat(recovery_load, recovery_save))
+    def projcfg():
+        recs, n = projcfg_load(), 0
+        for c in recs:
+            for jc in c.get("jobs") or []:
+                if str(jc.get("job_number") or "").upper() == O: jc["job_number"] = N; n += 1
+        if n: projcfg_save(recs)
+        return n
+    run("configurar_proyecto", projcfg)
+    for nombre, f in (("viaticos", VIATICOS_FILE), ("gastos_viaje", GASTOS_FILE), ("envios", ENVIOS_FILE)):
+        run(nombre, lambda f=f: flat(lambda: _svc_load(f), lambda d: _svc_save(f, d)))
+    def requis():
+        if not (_orm and _orm.DB_ENABLED): return 0
+        s = _orm.get_session()
+        try:
+            rows = s.query(_orm.RequisicionCompra).filter(_orm.RequisicionCompra.job.ilike(O)).all()
+            for r in rows:
+                r.job = N; r.data["job"] = N; _orm_flag_modified(r, "data")
+            s.commit(); return len(rows)
+        finally:
+            s.close()
+    run("requisiciones", requis)
+    if _consig is not None:
+        def consig():
+            n = 0
+            with _consig.tx() as t:
+                ords = t.load("orders")
+                for o in ords:
+                    for it in o.get("items") or []:
+                        if str(it.get("job") or "").upper() == O: it["job"] = N; n += 1
+                recs = t.load("recovery")
+                for r in recs:
+                    if str(r.get("job") or "").upper() == O: r["job"] = N; n += 1
+                if n: t.save("orders", ords); t.save("recovery", recs)
+            return n
+        run("consignacion", consig)
+    return out
+
 @app.route("/api/jobs/<job_number>/renumber", methods=["POST"])
 def api_renumber_job(job_number):
-    """Cambia el número de un job. Solo admins."""
+    """Cambia el número de un Job. Solo admins.
+
+    Antes solo renombraba la carpeta en disco (y su job_info.json): con PostgreSQL la
+    fila de la tabla `jobs` se quedaba con el número viejo, el nuevo nunca aparecía y
+    un segundo intento fallaba porque la carpeta vieja ya no existía. Ahora:
+      1. valida contra la base y las carpetas;
+      2. renombra la carpeta si existe (o reconoce que ya se renombró en un intento
+         anterior que quedó a medias);
+      3. cambia la fila de `jobs` (si esto falla, la carpeta regresa a su nombre);
+      4. actualiza las referencias exactas al Job (ver _renumber_references)."""
     if not is_admin():
         return jsonify({"error": "Sin permiso — solo administradores"}), 403
+    job_number = job_number.strip().upper()
     if not JOB_RE.match(job_number):
         return jsonify({"error": "Job number inválido"}), 400
     try:
-        data       = request.get_json()
+        data       = request.get_json() or {}
         new_number = str(data.get("new_number","")).strip().upper()
         if not JOB_RE.match(new_number):
             return jsonify({"error": f"Nuevo número '{new_number}' inválido"}), 400
         if new_number == job_number:
             return jsonify({"error": "El nuevo número es igual al actual"}), 400
-        if new_number in all_job_numbers():
+        db = bool(_orm and _orm.DB_ENABLED)
+        old_folder, new_folder = job_folder(job_number), job_folder(new_number)
+        old_row, new_row = _job_row_exists(job_number), _job_row_exists(new_number)
+        if new_row:
             return jsonify({"error": f"{new_number} ya existe"}), 409
-
-        old_folder = job_folder(job_number)
-        new_folder = job_folder(new_number)
-        if not old_folder.exists():
+        if new_folder.exists() and (old_folder.exists() or not db or not old_row):
+            return jsonify({"error": f"{new_number} ya existe"}), 409
+        if not (old_row or old_folder.exists()):
             return jsonify({"error": f"{job_number} no existe"}), 404
+        reanudado = db and old_row and not old_folder.exists() and new_folder.exists()
 
-        # Renombrar carpeta
-        old_folder.rename(new_folder)
+        # 1) Carpeta
+        movida = False
+        if old_folder.exists():
+            old_folder.rename(new_folder); movida = True
+        parts = new_number.split("-")
+        def _upd(ji):
+            ji["job_number"] = new_number; ji["main_index"] = int(parts[0]); ji["subindex"] = parts[1]
+            ji["updated_at"] = datetime.datetime.now().isoformat()
+            return ji
+        meta_file = new_folder / "job_info.json"
+        if meta_file.exists():
+            with open(meta_file, "r", encoding="utf-8") as f: ji = json.load(f)
+            with open(meta_file, "w", encoding="utf-8") as f: json.dump(_upd(ji), f, ensure_ascii=False, indent=2)
 
-        # Actualizar job_info.json
-        meta = new_folder / "job_info.json"
-        if meta.exists():
-            with open(meta, "r", encoding="utf-8") as f:
-                ji = json.load(f)
-            parts = new_number.split("-")
-            ji["job_number"]  = new_number
-            ji["main_index"]  = int(parts[0])
-            ji["subindex"]    = parts[1]
-            ji["updated_at"]  = datetime.datetime.now().isoformat()
-            with open(meta, "w", encoding="utf-8") as f:
-                json.dump(ji, f, ensure_ascii=False, indent=2)
+        # 2) Base de datos
+        if db and old_row:
+            try:
+                s = _orm.get_session()
+                try:
+                    row = s.query(_orm.Job).filter(_orm.Job.job_number == job_number).one()
+                    row.job_number = new_number
+                    row.data = _upd(dict(row.data or {}))
+                    _orm_flag_modified(row, "data")
+                    s.commit()
+                finally:
+                    s.close()
+            except Exception as e:
+                if movida:
+                    try: new_folder.rename(old_folder)
+                    except Exception: pass
+                return jsonify({"error": f"No se pudo cambiar el Job en la base de datos: {e}"}), 500
 
-        # Actualizar PT Numbers
-        pt_records = pt_load()
-        for rec in pt_records:
-            if job_number in rec.get("jobs",[]):
-                rec["jobs"] = [new_number if j==job_number else j for j in rec["jobs"]]
-        pt_save(pt_records)
-
-        # Actualizar SV Numbers
-        sv_records = sv_load()
-        for rec in sv_records:
-            if job_number in rec.get("jobs",[]):
-                rec["jobs"] = [new_number if j==job_number else j for j in rec["jobs"]]
-        sv_save(sv_records)
-
-        return jsonify({"ok": True, "old": job_number, "new": new_number})
+        # 3) Referencias
+        refs = _renumber_references(job_number, new_number)
+        return jsonify({"ok": True, "old": job_number, "new": new_number, "reanudado": bool(reanudado),
+                        "referencias": refs,
+                        "no_actualizados": "Horas trabajadas, órdenes de compra (IPO), CPO e IVP conservan el número anterior"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
