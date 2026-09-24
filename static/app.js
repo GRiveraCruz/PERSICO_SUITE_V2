@@ -7254,10 +7254,27 @@ let reqCurrentTipo = 'electrico';
 let reqItems = [];
 const REQ_TIPO_LABELS = {electrico:'⚡ Eléctrico', mecanico:'⚙ Mecánico', componentes_mayores:'🧩 Componentes Mayores', manufactura:'🏭 Manufactura'};
 const REQ_STATUS_OPCIONES = ['Solicitado','Comprado','Cancelado','Reasignado','Homologado'];
+// Color por estatus: [texto, fondo]
+const REQ_STATUS_COLOR = {
+  'Solicitado': ['#a16207','#fef3c7'],
+  'Comprado':   ['#15803d','#dcfce7'],
+  'Cancelado':  ['#6b7280','#e5e7eb'],
+  'Reasignado': ['#6d28d9','#ede9fe'],
+  'Homologado': ['#1d4ed8','#dbeafe'],
+};
+const REQ_REASIGNABLES = ['Solicitado','Homologado'];
+const reqPendiente = it => it.cantidad_pendiente ?? Math.max(0,(parseFloat(it.quantity)||0)-(parseFloat(it.cantidad_reasignada)||0));
 
 async function reqInitSelectors(){
   await populateJobSelector('req-job-select');
   await populateJobSelector('req-up-job');
+  // populateJobSelector() reescribe el <select> y perdía el Job elegido, pero la tabla se
+  // quedaba con datos viejos (p. ej. "Reasignado" después de eliminar la orden en otro
+  // módulo). Se restaura el Job y se recarga desde el servidor.
+  if(reqCurrentJob){
+    document.getElementById('req-job-select').value = reqCurrentJob;
+    await reqRenderTab();
+  }
 }
 
 function reqOpenUpload(){
@@ -7328,20 +7345,31 @@ function reqRenderTable(){
     tb.innerHTML = '<tr><td colspan="7"><div class="es"><span class="ei">📋</span><br>Sin renglones subidos para este BOM todavía.</div></td></tr>';
     return;
   }
-  tb.innerHTML = reqItems.map(it=>`
-    <tr>
+  // Leyenda de colores (una sola vez, junto al conteo de renglones)
+  if(!document.getElementById('req-legend')){
+    document.getElementById('req-tab-count').insertAdjacentHTML('afterend', `<span id="req-legend" style="margin-left:14px;display:inline-flex;gap:6px;flex-wrap:wrap;vertical-align:middle">${
+      REQ_STATUS_OPCIONES.map(st=>`<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;color:${REQ_STATUS_COLOR[st][0]};background:${REQ_STATUS_COLOR[st][1]}">${st}</span>`).join('')}</span>`);
+  }
+  tb.innerHTML = reqItems.map(it=>{
+    const [fg,bg] = REQ_STATUS_COLOR[it.status] || ['var(--text)','transparent'];
+    const reas = parseFloat(it.cantidad_reasignada)||0, pend = reqPendiente(it);
+    const tip = (it.reasignaciones||[]).map(r=>`${r.order_number}: ${r.cantidad}`).join(' · ');
+    return `
+    <tr style="box-shadow:inset 4px 0 0 ${fg}">
       <td>${esc(it.brand||'—')}</td>
       <td style="font-family:'DM Mono',monospace;color:var(--gold)">${esc(it.part_number||'')}</td>
       <td style="color:var(--muted2)"><div title="${esc(it.description||'')}" style="max-width:min(420px,32vw);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(it.description||'')}</div></td>
-      <td style="text-align:right">${it.quantity ?? 0}</td>
+      <td style="text-align:right" ${tip?`title="Reasignado en ${esc(tip)}"`:''}>
+        ${reas>0 ? `<b style="color:${pend>0?'var(--text)':'var(--muted)'}">${pend}</b><div style="font-size:10px;color:#6d28d9">de ${it.quantity} · ${reas} reasignado</div>` : (it.quantity ?? 0)}
+      </td>
       <td>
-        <select onchange="reqUpdateStatus('${it.id}',this.value)" style="font-size:11px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;background:var(--inp);color:var(--text)">
+        <select onchange="reqUpdateStatus('${it.id}',this.value)" style="font-size:11px;font-weight:600;padding:4px 6px;border:1px solid ${fg};border-radius:4px;background:${bg};color:${fg}">
           ${REQ_STATUS_OPCIONES.map(s=>`<option value="${s}" ${it.status===s?'selected':''}>${s}</option>`).join('')}
         </select>
       </td>
       <td id="req-stock-${esc(it.part_number)}" style="font-size:11px;color:var(--muted)">—</td>
       <td><button class="fi-del" onclick="reqDeleteItem('${it.id}')">Eliminar</button></td>
-    </tr>`).join('');
+    </tr>`;}).join('');
 }
 
 async function reqUpdateStatus(itemId, status){
@@ -7351,6 +7379,7 @@ async function reqUpdateStatus(itemId, status){
     toast('Estatus actualizado ✓','ok');
     const it = reqItems.find(x=>x.id===itemId);
     if(it) it.status = status;
+    reqRenderTable();      // refresca el color del estatus
   }catch(e){ toast('Error: '+e,'er'); }
 }
 
@@ -7369,7 +7398,7 @@ async function reqBuscarStock(){
   box.innerHTML = 'Buscando…';
   document.getElementById('mo-req-stock').classList.add('on');
   try{
-    const items = reqItems.map(it=>({part_number:it.part_number, quantity:it.quantity}));
+    const items = reqItems.map(it=>({part_number:it.part_number, quantity:reqPendiente(it)}));   // lo que falta, no lo pedido originalmente
     const r = await apiCall('POST','/requisiciones/buscar-stock',{items});
     if(r.error){ box.innerHTML = `<span style="color:var(--red)">${esc(r.error)}</span>`; return; }
     const colorFor = e => e==='Existencia total' ? '#1f8a4c' : (e==='Existencia parcial' ? 'var(--amber)' : 'var(--red)');
@@ -7408,7 +7437,7 @@ function reqRenderReasignar(resultados){
   const box = document.getElementById('req-stock-result');
   const puede = USER_PERMS && (USER_PERMS.is_admin || ['create','full'].includes((USER_PERMS.permissions||{}).reassign));
   // renglones con algo en Stock (reqItems y resultados vienen en el mismo orden)
-  const filas = resultados.map((res,i)=>({res, it:reqItems[i]})).filter(x=>x.it && x.res.quantity_en_stock>0 && x.it.status!=='Reasignado');
+  const filas = resultados.map((res,i)=>({res, it:reqItems[i]})).filter(x=>x.it && x.res.quantity_en_stock>0 && REQ_REASIGNABLES.includes(x.it.status) && reqPendiente(x.it)>0);
   if(!filas.length || !reqCurrentJob) return;
   if(!puede){ box.insertAdjacentHTML('beforeend','<div style="font-size:11px;color:var(--muted);margin-top:12px">Hay material en Stock, pero tu usuario no tiene permiso para crear reasignaciones.</div>'); return; }
   box.insertAdjacentHTML('beforeend', `
@@ -7418,7 +7447,7 @@ function reqRenderReasignar(resultados){
       <label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:11px">
         <input type="checkbox" class="req-ra-chk" data-id="${esc(it.id)}" checked>
         <span style="flex:1;font-family:'DM Mono',monospace;color:var(--gold)">${esc(it.part_number)}</span>
-        <span style="color:var(--muted)">pide ${res.quantity_requerida} · Stock ${res.quantity_en_stock}</span>
+        <span style="color:var(--muted)">pendiente ${res.quantity_requerida} · Stock ${res.quantity_en_stock}</span>
         <input type="number" class="req-ra-qty" data-id="${esc(it.id)}" min="1" max="${max}" value="${max}" style="width:70px;padding:3px 6px;font-size:11px">
       </label>`;}).join('')}
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
@@ -7442,20 +7471,14 @@ async function reqGenerarReasignacion(){
     const resp = await fetch('/api/requisiciones/reasignar-stock',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({job:reqCurrentJob, items})});
     const d = (resp.headers.get('content-type')||'').includes('json') ? await resp.json() : {error:`Error ${resp.status} del servidor`};
     if(d.error){ toast(d.error,'er'); return; }
-    // Marcar "Reasignado" los renglones cuya cantidad pedida quedó cubierta completa
-    let completos=0, parciales=0;
-    for(const res of d.resultado||[]){
-      const it = reqItems.find(x=>x.id===res.item_id); if(!it) continue;
-      if(res.asignado >= (parseFloat(it.quantity)||0) && res.asignado>0){
-        const u = await apiCall('PUT','/requisiciones/'+it.id,{status:'Reasignado'});
-        if(!u.error){ it.status='Reasignado'; completos++; }
-      }
-      else if(res.asignado>0) parciales++;
-    }
+    // El servidor ya descontó lo reasignado de cada renglón (y marcó "Reasignado" los que
+    // quedaron sin pendiente); aquí solo se cuenta para el aviso y se recarga la tabla.
+    const res_ = (d.resultado||[]).filter(r=>r.asignado>0);
+    const completos = res_.filter(r=>r.pendiente===0).length, parciales = res_.length-completos;
     closeMo('mo-req-stock');
-    reqRenderTable();
+    await reqRenderTab();
     if(typeof loadStock==='function') loadStock();
-    toast(`Orden ${d.order_number} creada · $${Number(d.total||0).toLocaleString('en-US',{minimumFractionDigits:2})} · ${completos} renglón(es) Reasignado${parciales?` · ${parciales} parcial(es): siguen como estaban`:''}`,'ok',7000);
+    toast(`Orden ${d.order_number} creada · $${Number(d.total||0).toLocaleString('en-US',{minimumFractionDigits:2})} · ${completos} renglón(es) Reasignado${parciales?` · ${parciales} parcial(es): se descontó lo reasignado, queda el pendiente por comprar`:''}`,'ok',7000);
   }catch(e){ toast('Error: '+e.message,'er'); }
   finally{ btn.disabled=false; btn.textContent='Reasignar'; }
 }
@@ -7851,7 +7874,7 @@ async function deleteStockItem(id) {
 
 // ── Delete reassign order (admin only)
 async function deleteReassignOrder(orderNum) {
-  if(!confirm(`¿Eliminar la orden ${orderNum}? Esta acción no revierte los cambios en stock.`)) return;
+  if(!confirm(`¿Eliminar la orden ${orderNum}?\n\nSu material REGRESA a Stock y, si salió de una requisición de compra, se devuelve la cantidad pendiente a sus renglones.`)) return;
   try {
     const d = await fetch(`/api/reassign/order/${orderNum}`,{method:'DELETE'}).then(r=>r.json());
     if(d.error){toast(d.error,'er');return;}
@@ -7908,7 +7931,7 @@ loadReassign = async function() {
       return `<tr>
         <td><b style="color:var(--gold);font-family:'DM Mono',monospace">${esc(o.order_number)}</b></td>
         <td style="color:var(--muted)">${(o.created_at||'').slice(0,10)}</td>
-        <td style="color:var(--muted2)">${(o.items||[]).length} items</td>
+        <td style="color:var(--muted2)">${(o.items||[]).length} items${o.created_by?` · ${esc(o.created_by)}`:''}${o.origen&&o.origen.startsWith('Requisición')?' · <span style="color:#6d28d9">desde requisición</span>':''}</td>
         <td style="text-align:right;font-weight:700;color:var(--green)">${fmt(total)}</td>
         <td>
           <button onclick="printReassignOrder('${esc(o.order_number)}')" class="btn-reload" style="font-size:10px;padding:3px 8px">PDF</button>
@@ -8264,7 +8287,7 @@ async function saveCsgReassignOrder(){
 }
 
 async function deleteCsgReassignOrder(orderNum){
-  if(!confirm(`¿Eliminar la orden ${orderNum}? Esta acción no revierte los cambios en la existencia de consignación.`)) return;
+  if(!confirm(`¿Eliminar la orden ${orderNum}?\n\nSu material REGRESA a la existencia de Consignación.`)) return;
   try{
     const d = await csgFetchJSON(`/api/consignacion/reasignaciones/orden/${encodeURIComponent(orderNum)}`,{method:'DELETE'});
     if(d.error){toast(d.error,'er');return;}
