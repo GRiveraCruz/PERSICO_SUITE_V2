@@ -1602,7 +1602,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
 
 <!-- ── Modal: Entrada por OC ── -->
 <div class="mo" id="mo-ing-po" style="align-items:flex-start;padding:24px 16px;overflow-y:auto;z-index:150">
-  <div class="md" style="max-width:860px;width:100%;margin:auto;max-height:none">
+  <div class="md" style="max-width:min(1320px,96vw);width:100%;margin:auto;max-height:none">
     <div class="mh">
       <h2>🛒 Ingreso por Orden de Compra</h2>
       <button class="px" onclick="closeMo('mo-ing-po')">Cerrar</button>
@@ -1656,7 +1656,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
 
 <!-- ── Modal: Ingreso con SAE ── -->
 <div class="mo" id="mo-ing-sae" style="align-items:flex-start;padding:24px 16px;overflow-y:auto;z-index:150">
-  <div class="md" style="max-width:860px;width:100%;margin:auto;max-height:none">
+  <div class="md" style="max-width:min(1320px,96vw);width:100%;margin:auto;max-height:none">
     <div class="mh">
       <h2>📋 Ingreso con SAE</h2>
       <button class="px" onclick="closeMo('mo-ing-sae')">Cerrar</button>
@@ -4168,6 +4168,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
           <div style="font-size:11px;color:var(--muted)"><span id="req-tab-count">—</span></div>
           <button class="btn-reload" onclick="reqBuscarStock()">Buscar en Stock</button>
+          <button class="btn-reload" onclick="reqOpenOC()" style="margin-left:6px;border-color:var(--red);color:var(--red)">Generar Orden de Compra</button>
         </div>
 
         <div class="tw">
@@ -4219,6 +4220,26 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
 </div>
 
 <!-- Modal: Resultado de Buscar en Stock -->
+<div class="mo" id="mo-req-oc">
+  <div class="md" style="max-width:820px;width:min(820px,95vw)">
+    <div class="mh"><h2>🧾 Orden de Compra desde la requisición</h2><button class="px" onclick="closeMo('mo-req-oc')">Cerrar</button></div>
+    <div class="mb2">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Renglones <b>Solicitado</b> u <b>Homologado</b> con cantidad pendiente (pedido − reasignado − ya comprado). Selecciona los que vas a comprar y valida existencias: lo que haya en Stock no se puede comprar.</div>
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px">
+        <input type="text" id="req-oc-filtro" placeholder="Filtrar por marca, No. de parte o descripción…" oninput="reqOCFiltrar(this.value)" style="flex:1;padding:7px 10px;font-size:12px">
+        <span id="req-oc-cuenta" style="font-size:11px;color:var(--muted);white-space:nowrap"></span>
+      </div>
+      <div id="req-oc-list" style="max-height:52vh;overflow-y:auto">—</div>
+      <div id="req-oc-msg" style="margin-top:8px;font-size:12px"></div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-s" onclick="closeMo('mo-req-oc')">Cancelar</button>
+      <button class="btn btn-s" id="btn-req-oc-val" onclick="reqValidarOC()">1. Validar existencias</button>
+      <button class="btn btn-p" id="btn-req-oc-go" onclick="reqContinuarOC()" disabled>2. Continuar a Orden de Compra</button>
+    </div>
+  </div>
+</div>
+
 <div class="mo" id="mo-req-stock">
   <div class="md" style="max-width:560px">
     <div class="mh"><h2>🔍 Stock y Consignación</h2><button class="px" onclick="closeMo('mo-req-stock')">Cerrar</button></div>
@@ -6904,7 +6925,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
      MODAL: NUEVA ORDEN DE COMPRA (GPO)
 ══════════════════════════════════════════════════ -->
 <div class="mo" id="mo-gpo" style="z-index:200;align-items:flex-start;padding:24px 16px;overflow-y:auto">
-  <div class="md" style="max-width:860px;width:100%;margin:auto;max-height:none">
+  <div class="md" style="max-width:min(1320px,96vw);width:100%;margin:auto;max-height:none">
     <div class="mh">
       <h2>🛒 Nueva Orden de Compra — <span id="gpo-num-preview" style="color:var(--gold);font-family:'DM Mono',monospace">PO-…</span></h2>
       <button class="px" onclick="closeMo('mo-gpo')">Cerrar</button>
@@ -7052,8 +7073,8 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
       </div>
 
       <!-- Lista de items agregados -->
-      <div id="gpo-items-list" style="display:none">
-        <table class="tbl" style="font-size:11px">
+      <div id="gpo-items-list" style="display:none;overflow-x:auto">
+        <table class="tbl" style="font-size:11px;width:100%">
           <thead><tr>
             <th>#</th><th>Tipo</th><th>Código</th><th>Marca</th><th>No. Parte</th>
             <th>Descripción</th><th style="text-align:right">Qty</th>
@@ -7234,7 +7255,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
 
 <!-- ── Modal: Modificar Orden de Compra ── -->
 <div class="mo" id="mo-gpo-mod" style="align-items:flex-start;padding:24px 16px;overflow-y:auto;z-index:200">
-  <div class="md" style="max-width:860px;width:100%;margin:auto;max-height:none">
+  <div class="md" style="max-width:min(1320px,96vw);width:100%;margin:auto;max-height:none">
     <div class="mh">
       <h2>✏ Modificar Orden de Compra</h2>
       <button class="px" onclick="closeMo('mo-gpo-mod')">Cerrar</button>

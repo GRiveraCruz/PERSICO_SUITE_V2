@@ -3274,7 +3274,7 @@ function clExportPDF(){
 // ════════════════════════════════════════════════════════
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){
-    const mods=['mo-jnew','mo-jimp','mo-rnew','mo-rimp','mo-rcopy','mo-qnew','mo-qimp','mo-pt-new','mo-pt-confirm','mo-sv-new','mo-stk-imp','mo-stk-ing','mo-reassign','mo-prov-new','mo-prov-imp','mo-cat-new','mo-cat-imp','mo-cpo-new','mo-cpo-imp','mo-po-imp','mo-wh-imp','mo-ivp-imp','mo-fx-imp','mo-refuse','mo-award','mo-tnew','mo-timp','mo-vac-add','mo-asis-link','mo-pm-new','mo-sal-unlock','mo-ctrl-export','mo-sal-import-excel','mo-sal-export-excel','mo-isr-import','mo-np-periodo','mo-np-generar','mo-np-recibo','mo-cpc-new','mo-os','mo-ta','mo-cap-os-detalle','mo-req-upload','mo-req-stock','mo-csg-imp','mo-csg-ing','mo-csg-reassign'];
+    const mods=['mo-jnew','mo-jimp','mo-rnew','mo-rimp','mo-rcopy','mo-qnew','mo-qimp','mo-pt-new','mo-pt-confirm','mo-sv-new','mo-stk-imp','mo-stk-ing','mo-reassign','mo-prov-new','mo-prov-imp','mo-cat-new','mo-cat-imp','mo-cpo-new','mo-cpo-imp','mo-po-imp','mo-wh-imp','mo-ivp-imp','mo-fx-imp','mo-refuse','mo-award','mo-tnew','mo-timp','mo-vac-add','mo-asis-link','mo-pm-new','mo-sal-unlock','mo-ctrl-export','mo-sal-import-excel','mo-sal-export-excel','mo-isr-import','mo-np-periodo','mo-np-generar','mo-np-recibo','mo-cpc-new','mo-os','mo-ta','mo-cap-os-detalle','mo-req-upload','mo-req-stock','mo-csg-imp','mo-csg-ing','mo-csg-reassign','mo-req-oc'];
     const open=mods.find(m=>document.getElementById(m).classList.contains('on'));
     if(open)closeMo(open); else if(_currentPanel)closePanel();
   }
@@ -3959,7 +3959,7 @@ function ivpExportCSV(){ window.open('/api/ivp/export/'+ivpActiveYear,'_blank');
 // ════════════════════════════════════════════════════════
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){
-    const mods=['mo-jnew','mo-jimp','mo-rnew','mo-rimp','mo-rcopy','mo-qnew','mo-qimp','mo-pt-new','mo-pt-confirm','mo-sv-new','mo-stk-imp','mo-stk-ing','mo-reassign','mo-prov-new','mo-prov-imp','mo-cat-new','mo-cat-imp','mo-cpo-new','mo-cpo-imp','mo-po-imp','mo-wh-imp','mo-ivp-imp','mo-fx-imp','mo-refuse','mo-award','mo-tnew','mo-timp','mo-vac-add','mo-asis-link','mo-pm-new','mo-sal-unlock','mo-ctrl-export','mo-sal-import-excel','mo-sal-export-excel','mo-isr-import','mo-np-periodo','mo-np-generar','mo-np-recibo','mo-cpc-new','mo-os','mo-ta','mo-cap-os-detalle','mo-req-upload','mo-req-stock','mo-csg-imp','mo-csg-ing','mo-csg-reassign'];
+    const mods=['mo-jnew','mo-jimp','mo-rnew','mo-rimp','mo-rcopy','mo-qnew','mo-qimp','mo-pt-new','mo-pt-confirm','mo-sv-new','mo-stk-imp','mo-stk-ing','mo-reassign','mo-prov-new','mo-prov-imp','mo-cat-new','mo-cat-imp','mo-cpo-new','mo-cpo-imp','mo-po-imp','mo-wh-imp','mo-ivp-imp','mo-fx-imp','mo-refuse','mo-award','mo-tnew','mo-timp','mo-vac-add','mo-asis-link','mo-pm-new','mo-sal-unlock','mo-ctrl-export','mo-sal-import-excel','mo-sal-export-excel','mo-isr-import','mo-np-periodo','mo-np-generar','mo-np-recibo','mo-cpc-new','mo-os','mo-ta','mo-cap-os-detalle','mo-req-upload','mo-req-stock','mo-csg-imp','mo-csg-ing','mo-csg-reassign','mo-req-oc'];
     const open=mods.find(m=>document.getElementById(m).classList.contains('on'));
     if(open)closeMo(open); else if(_currentPanel)closePanel();
   }
@@ -5826,6 +5826,7 @@ function applyPermsToDom(d) {
     { pat:'deleteProv(',       mod:'proveedores',  need:'full' },
     // GPO / PO
     { pat:'openNewGPO(',      mod:'gpo',          need:'create' },
+    { pat:'reqOpenOC(',       mod:'gpo',          need:'create' },
     { pat:'poOpenImport(',    mod:'po',           need:'full' },
     { pat:'deleteGPO(',       mod:'gpo',          need:'full' },
     { pat:'deleteIPO(',       mod:'po',           need:'full' },
@@ -7425,7 +7426,7 @@ const REQ_STATUS_COLOR = {
   'Homologado': ['#1d4ed8','#dbeafe'],
 };
 const REQ_REASIGNABLES = ['Solicitado','Homologado'];
-const reqPendiente = it => it.cantidad_pendiente ?? Math.max(0,(parseFloat(it.quantity)||0)-(parseFloat(it.cantidad_reasignada)||0));
+const reqPendiente = it => it.cantidad_pendiente ?? Math.max(0,(parseFloat(it.quantity)||0)-(parseFloat(it.cantidad_reasignada)||0)-(parseFloat(it.cantidad_comprada)||0));
 
 async function reqInitSelectors(){
   await populateJobSelector('req-job-select');
@@ -7523,15 +7524,15 @@ function reqRenderTable(){
   }
   tb.innerHTML = reqItems.map(it=>{
     const [fg,bg] = REQ_STATUS_COLOR[it.status] || ['var(--text)','transparent'];
-    const reas = parseFloat(it.cantidad_reasignada)||0, pend = reqPendiente(it);
-    const tip = (it.reasignaciones||[]).map(r=>`${r.order_number}: ${r.cantidad}`).join(' · ');
+    const reas = parseFloat(it.cantidad_reasignada)||0, comp = parseFloat(it.cantidad_comprada)||0, pend = reqPendiente(it);
+    const tip = [...(it.reasignaciones||[]).map(r=>`${r.order_number}: ${r.cantidad}`), ...(it.compras||[]).map(c=>`${c.po_number}: ${c.cantidad}`)].join(' · ');
     return `
     <tr style="box-shadow:inset 4px 0 0 ${fg}">
       <td>${esc(it.brand||'—')}</td>
       <td style="font-family:'DM Mono',monospace;color:var(--gold)">${esc(it.part_number||'')}</td>
       <td style="color:var(--muted2)"><div title="${esc(it.description||'')}" style="max-width:min(420px,32vw);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(it.description||'')}</div></td>
-      <td style="text-align:right" ${tip?`title="Reasignado en ${esc(tip)}"`:''}>
-        ${reas>0 ? `<b style="color:${pend>0?'var(--text)':'var(--muted)'}">${pend}</b><div style="font-size:10px;color:#6d28d9">de ${it.quantity} · ${reas} reasignado</div>` : (it.quantity ?? 0)}
+      <td style="text-align:right" ${tip?`title="Órdenes: ${esc(tip)}"`:''}>
+        ${(reas>0||comp>0) ? `<b style="color:${pend>0?'var(--text)':'var(--muted)'}">${pend}</b><div style="font-size:10px;color:#6d28d9">de ${it.quantity}${reas?` · ${reas} reasignado`:''}${comp?` · <span style="color:#15803d">${comp} comprado</span>`:''}</div>` : (it.quantity ?? 0)}
         ${it.revision?`<div style="margin-top:4px;padding:4px 6px;border:1px solid var(--amber);border-radius:6px;background:rgba(245,158,11,.08);font-size:10px;color:var(--amber);white-space:normal;text-align:left;min-width:150px">
           ⚠ Nueva requisición pide <b>${it.revision.cantidad_nueva}</b> (actual ${it.revision.cantidad_actual})
           <div style="margin-top:3px"><button onclick="reqRevision('${esc(it.id)}','aceptar')" class="btn-reload" style="font-size:10px;padding:2px 6px">Aceptar</button>
@@ -7556,6 +7557,108 @@ async function reqUpdateStatus(itemId, status){
     if(it) it.status = status;
     reqRenderTable();      // refresca el color del estatus
   }catch(e){ toast('Error: '+e,'er'); }
+}
+
+// ── Orden de Compra desde la requisición (usa el formulario GPO existente)
+let reqOCValidado = false;
+const REQ_OC_CAT = {electrico:'electrico', mecanico:'mecanico', componentes_mayores:'major', manufactura:''};
+function reqOpenOC(){
+  if(!reqCurrentJob){ toast('Selecciona un Job','er'); return; }
+  const filas = reqItems.filter(it=>REQ_REASIGNABLES.includes(it.status) && reqPendiente(it)>0);
+  reqOCValidado = false;
+  document.getElementById('btn-req-oc-go').disabled = true;
+  document.getElementById('req-oc-msg').innerHTML = '';
+  document.getElementById('req-oc-filtro').value = '';
+  document.getElementById('req-oc-list').innerHTML = filas.length ? `<table style="width:100%;border-collapse:collapse;font-size:12px">
+    <thead><tr style="color:var(--muted);font-size:10px;text-transform:uppercase"><th style="width:28px"><input type="checkbox" id="req-oc-todos" checked title="Marcar / desmarcar los renglones visibles" onchange="reqOCMarcarVisibles(this.checked)"></th>
+      <th style="text-align:left">Marca</th><th style="text-align:left">No. Parte</th><th style="text-align:left">Descripción</th><th style="text-align:right">Pendiente</th><th style="text-align:right">A comprar</th></tr></thead><tbody>${
+    filas.map(it=>{ const p=reqPendiente(it); return `<tr id="req-oc-row-${esc(it.id)}" class="req-oc-row" data-search="${esc([it.brand,it.part_number,it.description].join(' ').toLowerCase())}" style="border-bottom:1px solid var(--border)">
+      <td><input type="checkbox" class="req-oc-chk" data-id="${esc(it.id)}" checked onchange="reqOCInvalidar()"></td>
+      <td>${esc(it.brand||'')}</td><td style="font-family:'DM Mono',monospace;color:var(--gold)">${esc(it.part_number)}</td>
+      <td><div style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(it.description||'')}">${esc(it.description||'')}</div><div class="req-oc-alerta" style="font-size:10px;font-weight:600;color:var(--red);white-space:normal;max-width:300px"></div></td>
+      <td style="text-align:right">${p}</td>
+      <td style="text-align:right"><input type="number" class="req-oc-qty" data-id="${esc(it.id)}" min="1" max="${p}" value="${p}" style="width:70px;font-size:11px;padding:3px" onchange="reqOCInvalidar()"></td></tr>`;}).join('')}</tbody></table>`
+    : '<div style="padding:24px;text-align:center;color:var(--muted)">No hay renglones Solicitado/Homologado con cantidad pendiente.</div>';
+  document.getElementById('btn-req-oc-val').disabled = !filas.length;
+  document.getElementById('mo-req-oc').classList.add('on');
+  reqOCCuenta();
+  setTimeout(()=>document.getElementById('req-oc-filtro').focus(), 50);
+}
+function reqOCInvalidar(){ reqOCValidado=false; document.getElementById('btn-req-oc-go').disabled=true; reqOCCuenta(); }
+// Filtro: solo oculta renglones; lo marcado se conserva aunque quede oculto.
+function reqOCFiltrar(q){
+  const t = (q||'').trim().toLowerCase().split(/\s+/).filter(Boolean);
+  document.querySelectorAll('.req-oc-row').forEach(r=>{
+    r.style.display = t.every(w=>r.dataset.search.includes(w)) ? '' : 'none';
+  });
+  reqOCCuenta();
+}
+function reqOCMarcarVisibles(on){
+  document.querySelectorAll('.req-oc-row').forEach(r=>{
+    if(r.style.display==='none') return;
+    const c = r.querySelector('.req-oc-chk'); if(c && !c.disabled) c.checked = on;
+  });
+  reqOCInvalidar();
+}
+function reqOCCuenta(){
+  const el = document.getElementById('req-oc-cuenta'); if(!el) return;
+  const rows = [...document.querySelectorAll('.req-oc-row')];
+  const vis = rows.filter(r=>r.style.display!=='none').length;
+  const sel = document.querySelectorAll('.req-oc-chk:checked:not(:disabled)').length;
+  el.textContent = rows.length ? `${sel} seleccionado(s) · mostrando ${vis} de ${rows.length}` : '';
+  const todos = document.getElementById('req-oc-todos');
+  if(todos){ const v = rows.filter(r=>r.style.display!=='none').map(r=>r.querySelector('.req-oc-chk')).filter(c=>!c.disabled);
+    todos.checked = v.length>0 && v.every(c=>c.checked); }
+}
+function reqOCSeleccion(){
+  return [...document.querySelectorAll('.req-oc-chk:checked:not(:disabled)')].map(c=>{
+    const it = reqItems.find(x=>String(x.id)===c.dataset.id);
+    const inp = document.querySelector(`.req-oc-qty[data-id="${CSS.escape(c.dataset.id)}"]`);
+    const q = Math.min(parseFloat(inp.value)||0, reqPendiente(it));
+    return it && q>0 ? {it, q} : null; }).filter(Boolean);
+}
+async function reqValidarOC(){
+  const sel = reqOCSeleccion();
+  if(!sel.length){ toast('Selecciona al menos un material con cantidad','er'); return; }
+  const btn=document.getElementById('btn-req-oc-val'); btn.disabled=true; btn.textContent='Validando…';
+  try{
+    const d = await apiCall('POST','/requisiciones/validar-oc',{items:sel.map(x=>({item_id:x.it.id, part_number:x.it.part_number}))});
+    if(d.error){ toast(d.error,'er'); return; }
+    // Lo que está en Stock se quita de la orden (no se puede comprar)
+    for(const e of d.en_stock||[]){
+      const row = document.getElementById('req-oc-row-'+e.item_id); if(!row) continue;
+      const chk = row.querySelector('.req-oc-chk'); chk.checked=false; chk.disabled=true;
+      row.style.background='rgba(200,16,46,.06)';
+      [1,2].forEach(i=>{ row.children[i].style.textDecoration='line-through'; row.children[i].style.color='var(--muted)'; });
+      row.querySelector('.req-oc-qty').disabled = true;
+      row.querySelector('.req-oc-alerta').textContent = `⚠ En Stock: ${e.stock} (${e.registros.join(', ')}) — reasígnalo, no se puede comprar`;
+    }
+    const n = (d.en_stock||[]).length, validos = reqOCSeleccion().length;
+    if(n) alert(`⚠ ${n} material(es) tienen existencia en Stock y se quitaron de la orden de compra:\n\n${d.en_stock.map(e=>`• ${e.part_number}: ${e.stock} en Stock`).join('\n')}\n\nNo se pueden comprar materiales en existencia. Usa "Buscar en Stock" → Reasignar.`);
+    document.getElementById('req-oc-msg').innerHTML = validos
+      ? `<span style="color:#15803d;font-weight:700">✓ ${validos} material(es) validados sin existencia en Stock.</span>${n?` <span style="color:var(--red)">${n} quitado(s) por estar en Stock.</span>`:''}`
+      : `<span style="color:var(--red);font-weight:700">Ningún material quedó para comprar.</span>`;
+    reqOCValidado = validos>0;
+    document.getElementById('btn-req-oc-go').disabled = !reqOCValidado;
+    reqOCCuenta();
+  }catch(e){ toast('Error: '+e,'er'); }
+  finally{ btn.disabled=false; btn.textContent='1. Validar existencias'; }
+}
+async function reqContinuarOC(){
+  if(!reqOCValidado){ toast('Primero valida existencias','er'); return; }
+  const sel = reqOCSeleccion(), job = reqCurrentJob, tipo = reqCurrentTipo;
+  closeMo('mo-req-oc');
+  await openNewGPO();                                    // formulario GPO de siempre: proveedor, esquema, moneda
+  document.getElementById('gpo-job-type').value = 'Unico';
+  const js = document.getElementById('gpo-job-unico');
+  if(js && ![...js.options].some(o=>o.value===job)) js.insertAdjacentHTML('beforeend', `<option value="${esc(job)}">${esc(job)}</option>`);
+  if(js) js.value = job;
+  gpoJobTypeChange();
+  gpoItems = sel.map(({it,q},i)=>({line:i+1, cat_type:REQ_OC_CAT[tipo]||'', cat_code:'', brand:(it.brand||'').toUpperCase(),
+    part_number:it.part_number, description:it.description||'', label_code:'', quantity:q, unit_price:0, total:0,
+    job, notes:'', req_item_id:it.id}));
+  gpoRenderItems();
+  toast(`${gpoItems.length} material(es) cargados. Selecciona proveedor, esquema tributario y captura los precios.`,'ok',6000);
 }
 
 async function reqRevision(itemId, accion){
@@ -9201,10 +9304,10 @@ function gpoRenderItems() {
       <td style="font-family:'DM Mono',monospace;font-size:10px;color:var(--gold)">${esc(i.cat_code||'—')}</td>
       <td style="font-weight:600">${esc(i.brand)}</td>
       <td style="font-family:'DM Mono',monospace;font-size:11px">${esc(i.part_number)}</td>
-      <td style="color:var(--muted2)">${esc(i.description)}</td>
+      <td style="color:var(--muted2);white-space:normal;word-break:break-word;min-width:220px;max-width:340px;line-height:1.35">${esc(i.description)}</td>
       <td style="text-align:right">${i.quantity}</td>
-      <td style="text-align:right">${fmt(i.unit_price)}</td>
-      <td style="text-align:right;font-weight:700;color:var(--green)">${fmt(i.total)}</td>
+      <td style="text-align:right"><input type="number" min="0" step="0.01" value="${i.unit_price||''}" placeholder="0.00" onchange="gpoSetPrice(${idx},this.value)" style="width:90px;text-align:right;font-size:11px;padding:3px;${i.unit_price?'':'border-color:var(--red)'}"></td>
+      <td style="text-align:right;font-weight:700;color:var(--green)">${fmt(i.total)}${i.req_item_id?'<div style="font-size:9px;color:#6d28d9;font-weight:400">requisición</div>':''}</td>
       <td style="font-family:'DM Mono',monospace;font-size:10px;color:var(--gold)">${esc(i.job||'—')}</td>
       <td style="color:var(--muted);font-size:10px">${esc(i.notes||'')}</td>
       <td><button onclick="gpoRemoveItem(${idx})" style="background:none;border:none;color:var(--red);cursor:pointer">Eliminar</button></td>
@@ -9214,6 +9317,12 @@ function gpoRenderItems() {
   const esqFolio = document.getElementById('gpo-esquema')?.value;
   gpoUpdateTotalPreview(gpoEsquemasCache.find(e=>e.folio===esqFolio));
   gpoUpdateSaveBtnState();
+}
+
+function gpoSetPrice(idx, v){
+  const it = gpoItems[idx]; if(!it) return;
+  it.unit_price = parseFloat(v)||0; it.total = Math.round(it.quantity*it.unit_price*100)/100;
+  gpoRenderItems();
 }
 
 function gpoRemoveItem(idx) {
@@ -9325,7 +9434,15 @@ async function saveGPO() {
     };
     const d = await fetch('/api/gpo',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify(payload)}).then(r=>r.json());
+    if(d.en_stock && d.en_stock.length){
+      const ids = new Set(d.en_stock.map(e=>String(e.item_id)));
+      gpoItems = gpoItems.filter(i=>!ids.has(String(i.req_item_id))); gpoItems.forEach((i,n)=>i.line=n+1);
+      gpoRenderItems();
+      alert(`⚠ No se emitió la orden. ${d.en_stock.length} material(es) tienen existencia en Stock y se quitaron:\n\n${d.en_stock.map(e=>`• ${e.part_number}: ${e.stock} en Stock`).join('\n')}\n\nRevisa y vuelve a emitir.`);
+      return;
+    }
     if(d.error){toast(d.error,'er');return;}
+    if(gpoItems.some(i=>i.req_item_id) && typeof reqRenderTab==='function' && reqCurrentJob) setTimeout(()=>reqRenderTab(),300);
     closeMo('mo-gpo');
     toast(`PO emitida: ${d.po_number} · ${gpoItems.length} items ✓`,'ok',6000);
     // Abrir PDF en nueva pestaña
@@ -10132,7 +10249,7 @@ function ipoRenderPO(po) {
       <td style="font-family:'DM Mono',monospace;font-size:10px;color:var(--gold)">${esc(it.cat_code||'—')}</td>
       <td style="font-family:'DM Mono',monospace;font-size:11px">${esc(it.part_number||'—')}</td>
       <td>${esc(it.brand||'—')}</td>
-      <td style="color:var(--muted2);max-width:200px;overflow:hidden;text-overflow:ellipsis">${esc(it.description||'—')}</td>
+      <td style="color:var(--muted2);white-space:normal;word-break:break-word;min-width:220px;max-width:340px;line-height:1.35">${esc(it.description||'—')}</td>
       <td style="font-family:'DM Mono',monospace;color:var(--gold);font-size:11px">${esc(it.job||'—')}</td>
       <td style="text-align:right">${qOrd}</td>
       <td style="text-align:right;color:${qDel>=qOrd?'var(--green)':'var(--muted)'}">${qDel}</td>
@@ -12424,7 +12541,7 @@ function gpoModPopulateItems(items) {
   const inpS = `background:var(--inp);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:5px 7px;font-size:11px;width:100%;outline:none`;
   document.getElementById('gpo-mod-items-body').innerHTML = items.map((it,i)=>`
     <tr id="gpo-mod-row-${i}">
-      <td><input type="text" value="${esc(it.description||it.desc||'')}" style="${inpS}"></td>
+      <td style="min-width:280px"><textarea rows="1" class="gm-desc" oninput="gpoModAutoAlto(this)" style="${inpS};resize:vertical;line-height:1.35;font-family:inherit;overflow:hidden">${esc(it.description||it.desc||'')}</textarea></td>
       <td><input type="text" value="${esc(it.part_number||it.pnum||'')}" style="${inpS};font-family:'DM Mono',monospace"></td>
       <td><input type="text" value="${esc(it.brand||it.manufacturer||'')}" style="${inpS}"></td>
       <td><input type="number" min="0" step="1" value="${it.quantity||0}" oninput="gpoModRecalc()"
@@ -12438,7 +12555,10 @@ function gpoModPopulateItems(items) {
         style="background:none;border:none;color:var(--muted);cursor:pointer">Eliminar</button></td>
     </tr>`).join('');
   gpoModRecalc();
+  // la altura de cada descripción se ajusta a su texto completo (después de pintarse)
+  requestAnimationFrame(()=>document.querySelectorAll('#gpo-mod-items-body textarea.gm-desc').forEach(gpoModAutoAlto));
 }
+function gpoModAutoAlto(t){ t.style.height='auto'; t.style.height=(t.scrollHeight+2)+'px'; }
 
 function gpoModAddItem() {
   const tbody = document.getElementById('gpo-mod-items-body');
@@ -12446,7 +12566,7 @@ function gpoModAddItem() {
   const inpS = `background:var(--inp);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:5px 7px;font-size:11px;width:100%;outline:none`;
   const tr = document.createElement('tr');
   tr.innerHTML = `
-    <td><input type="text" placeholder="Descripción" style="${inpS}"></td>
+    <td style="min-width:280px"><textarea rows="1" class="gm-desc" placeholder="Descripción" oninput="gpoModAutoAlto(this)" style="${inpS};resize:vertical;line-height:1.35;font-family:inherit;overflow:hidden"></textarea></td>
     <td><input type="text" placeholder="No. Parte" style="${inpS};font-family:'DM Mono',monospace"></td>
     <td><input type="text" placeholder="Marca" style="${inpS}"></td>
     <td><input type="number" min="0" step="1" value="1" oninput="gpoModRecalc()" style="${inpS};text-align:right;color:var(--amber)"></td>
@@ -12460,7 +12580,7 @@ function gpoModRecalc() {
   const fmt = v => '$'+Number(v||0).toLocaleString('en-US',{minimumFractionDigits:2});
   let total = 0;
   document.querySelectorAll('#gpo-mod-items-body tr').forEach(tr => {
-    const inputs = tr.querySelectorAll('input');
+    const inputs = tr.querySelectorAll('input,textarea');
     const qty   = parseFloat(inputs[3]?.value||0)||0;
     const price = parseFloat(inputs[4]?.value||0)||0;
     const row   = qty * price;
@@ -12485,7 +12605,7 @@ async function gpoModGuardar() {
     } else if(gpoModTipo === 'nueva_version') {
       const items = [];
       document.querySelectorAll('#gpo-mod-items-body tr').forEach((tr, idx) => {
-        const inputs = tr.querySelectorAll('input');
+        const inputs = tr.querySelectorAll('input,textarea');
         const desc  = inputs[0]?.value?.trim()||'';
         const pnum  = inputs[1]?.value?.trim()||'';
         const brand = inputs[2]?.value?.trim()||'';
@@ -13149,7 +13269,7 @@ function saeRenderPO(po) {
     return `<tr>
       <td style="color:var(--muted);text-align:center">${i+1}</td>
       <td style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text)">${esc(it.part_number)}</td>
-      <td style="color:var(--muted2);max-width:220px;overflow:hidden;text-overflow:ellipsis" title="${esc(it.description)}">${esc(it.description)}</td>
+      <td style="color:var(--muted2);white-space:normal;word-break:break-word;min-width:220px;max-width:340px;line-height:1.35">${esc(it.description)}</td>
       <td style="font-family:'DM Mono',monospace;color:var(--gold);font-size:11px">${esc(it.job||'—')}</td>
       <td style="text-align:right">${qOrd}</td>
       <td style="text-align:right;color:${qDel>=qOrd?'var(--green)':'var(--muted)'}">${qDel}</td>

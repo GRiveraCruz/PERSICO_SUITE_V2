@@ -5356,6 +5356,8 @@ def api_delete_gpo(po_number):
                        str(r.get("gpo_number","")).upper().replace("PO#","PO-").replace("PO_","PO-") != po_clean
                        and str(r.get("clave","")).upper().replace("PO#","PO-").replace("PO_","PO-") != po_clean]
             po_save(year, ipo_new)
+        try: _req_revert_po(po_clean)
+        except Exception as e: print(f"[REQ] No se pudo revertir la requisición de {po_clean}: {e}")
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -7210,7 +7212,9 @@ def api_dashboard_purchasing():
                     if r.get("status") == "Reasignado" and not reas: reas = q      # renglones anteriores a rev18
                     fr = min(1.0, reas / q) if q > 0 else 0.0
                     fr_reas.append(fr)
-                    fr_ord.append((1.0 - fr) if r.get("status") == "Comprado" else 0.0)
+                    comp = float(r.get("cantidad_comprada") or 0)
+                    if comp: fr_ord.append(min(1.0 - fr, comp / q) if q > 0 else 0.0)
+                    else:    fr_ord.append((1.0 - fr) if r.get("status") == "Comprado" else 0.0)   # marcado a mano
                 # última actualización: alta, edición, reasignaciones y cambios de cantidad por carga
                 fechas = [str(r.get(k) or "") for r in rows for k in ("updated_at", "created_at") if r.get(k)]
                 fechas += [str(h.get("fecha") or "") for r in rows for h in (r.get("reasignaciones") or []) + (r.get("cambios_cantidad") or []) if h.get("fecha")]
@@ -10587,8 +10591,10 @@ def _req_con_pendiente(item):
     it = dict(item)
     qty = float(it.get("quantity") or 0)
     reas = float(it.get("cantidad_reasignada") or 0)
+    comp = float(it.get("cantidad_comprada") or 0)     # lo ya incluido en órdenes de compra (GPO)
     it["cantidad_reasignada"] = reas
-    it["cantidad_pendiente"] = max(0.0, qty - reas)
+    it["cantidad_comprada"] = comp
+    it["cantidad_pendiente"] = max(0.0, qty - reas - comp)
     return it
 
 def _req_match_index(records):
@@ -10613,6 +10619,85 @@ def _req_match_index(records):
 def _req_pn(v):
     """No. de parte normalizado para comparar requisición vs Stock (sin HTML ni espacios extra)."""
     return " ".join(re.sub(r"<[^>]*>", " ", str(v or "")).split()).upper()
+
+def _req_en_stock(items):
+    """Para cada {item_id, part_number} regresa lo que hay en Stock (No. de parte O
+    etiqueta). Solo los que tienen existencia > 0."""
+    find = _req_match_index(stock_load())
+    out = []
+    for it in items:
+        hits = [r for r in find(it.get("part_number"))[0] if float(r.get("quantity") or 0) > 0]
+        if hits:
+            out.append({"item_id": it.get("item_id") or it.get("req_item_id"), "part_number": it.get("part_number"),
+                        "stock": sum(float(r.get("quantity") or 0) for r in hits),
+                        "registros": [f'{r.get("manufacturer","")} {r.get("part_number","")}: {r.get("quantity")}'.strip() for r in hits]})
+    return out
+
+def _req_rows(ids):
+    """{item_id: renglón con pendientes} de la tabla de requisiciones."""
+    if not (_orm and _orm.DB_ENABLED) or not ids: return {}
+    s = _orm.get_session()
+    try:
+        return {r.item_id: _req_con_pendiente(r.data) for r in
+                s.query(_orm.RequisicionCompra).filter(_orm.RequisicionCompra.item_id.in_([str(i) for i in ids])).all()}
+    finally:
+        s.close()
+
+def _req_registrar_compra(po_number, po_items):
+    """Después de emitir una GPO: suma la cantidad comprada a cada renglón de requisición
+    de origen, guarda el folio y marca "Comprado" si ya no queda pendiente."""
+    ligados = [i for i in po_items if i.get("req_item_id")]
+    if not ligados or not (_orm and _orm.DB_ENABLED): return 0
+    s = _orm.get_session()
+    try:
+        ahora, n = datetime.datetime.now().isoformat(), 0
+        for it in ligados:
+            row = s.query(_orm.RequisicionCompra).filter(_orm.RequisicionCompra.item_id == str(it["req_item_id"])).one_or_none()
+            if not row: continue
+            d = row.data
+            d["cantidad_comprada"] = float(d.get("cantidad_comprada") or 0) + float(it["quantity"])
+            d.setdefault("compras", []).append({"po_number": po_number, "cantidad": it["quantity"], "unit_price": it.get("unit_price"),
+                                                "fecha": ahora, "usuario": session.get("user", "")})
+            if _req_con_pendiente(d)["cantidad_pendiente"] <= 0:
+                d["status"] = "Comprado"; row.status = "Comprado"
+            row.data = d; _orm_flag_modified(row, "data"); n += 1
+        s.commit()
+        return n
+    finally:
+        s.close()
+
+def _req_revert_po(po_number):
+    """Al eliminar o cancelar una GPO: quita esa orden de los renglones de requisición y
+    regresa a "Solicitado" los que estaban "Comprado" y vuelven a tener pendiente."""
+    if not (_orm and _orm.DB_ENABLED): return 0
+    num = po_number.upper()
+    s = _orm.get_session()
+    try:
+        n = 0
+        for row in s.query(_orm.RequisicionCompra).all():
+            d = row.data
+            regs = d.get("compras") or []
+            quitar = sum(float(r.get("cantidad") or 0) for r in regs if str(r.get("po_number", "")).upper() == num)
+            if not quitar: continue
+            d["compras"] = [r for r in regs if str(r.get("po_number", "")).upper() != num]
+            d["cantidad_comprada"] = max(0.0, float(d.get("cantidad_comprada") or 0) - quitar)
+            if d.get("status") == "Comprado" and _req_con_pendiente(d)["cantidad_pendiente"] > 0:
+                d["status"] = "Solicitado"; row.status = "Solicitado"
+            row.data = d; _orm_flag_modified(row, "data"); n += 1
+        s.commit()
+        return n
+    finally:
+        s.close()
+
+@app.route("/api/requisiciones/validar-oc", methods=["POST"])
+def api_requisiciones_validar_oc():
+    """Paso previo a la orden de compra: regresa cuáles de los renglones seleccionados
+    tienen existencia en Stock (esos NO se pueden comprar; hay que reasignarlos)."""
+    if not can("view", "compras-requisicion"): return jsonify({"error": "Sin permiso"}), 403
+    items = (request.json or {}).get("items") or []
+    en_stock = _req_en_stock(items)
+    ids = {str(x["item_id"]) for x in en_stock}
+    return jsonify({"en_stock": en_stock, "validos": [it.get("item_id") for it in items if str(it.get("item_id")) not in ids]})
 
 @app.route("/api/requisiciones/reasignar-stock", methods=["POST"])
 def api_requisiciones_reasignar_stock():
@@ -11023,17 +11108,28 @@ def gpo_save(records):
         json.dump(records, f, ensure_ascii=False, indent=2)
     _cache_set("gpo", records)
 
-def gpo_next_number():
-    records = gpo_load()
-    used = set()
-    for r in records:
-        n = r.get("po_number","")
+def _gpo_max_used():
+    m = 0
+    for r in gpo_load():
+        n = str(r.get("po_number", ""))
         if n.startswith("PO-"):
-            try: used.add(int(n.replace("PO-","")))
-            except: pass
-    n = 1
-    while n in used: n += 1
+            try: m = max(m, int(n[3:]))
+            except ValueError: pass
+    return m
+
+def gpo_next_number():
+    """Vista previa del siguiente folio PO (NO lo consume). Antes esta misma función
+    asignaba el primer número libre, así que al eliminar PO-000000005 la siguiente
+    orden volvía a ser PO-000000005 (folio repetido ante el proveedor)."""
+    n = max(int(_doc_counter_load().get("PO", 0) or 0), _gpo_max_used()) + 1
     return f"PO-{n:09d}"
+
+def gpo_alloc_number():
+    """Asigna el siguiente folio PO, consecutivo y sin reutilizar: contador atómico
+    doc_counters['PO'], que nunca queda por debajo del folio más alto ya emitido
+    (así la primera vez continúa después de las órdenes existentes)."""
+    _doc_counter_bump_to("PO", _gpo_max_used())
+    return _doc_next_number("PO", width=9)
 
 @app.route("/api/gpo", methods=["GET"])
 def api_get_gpo():
@@ -11080,8 +11176,25 @@ def api_create_gpo():
             return jsonify({"error": "La PO debe tener al menos un item"}), 400
         if not esquema_tributario or not esquema_tributario.get("folio"):
             return jsonify({"error": "Debes seleccionar el Esquema Tributario antes de emitir la Orden de Compra"}), 400
+        # Renglones que vienen de Requisición de Compra: no se compra lo que hay en Stock
+        # ni más de lo pendiente (pedido − reasignado − ya comprado).
+        ligados = [it for it in items if it.get("req_item_id")]
+        if ligados:
+            en_stock = _req_en_stock(ligados)
+            if en_stock:
+                return jsonify({"error": "Hay materiales con existencia en Stock; no se pueden comprar. Se quitaron de la orden: reasígnalos desde la requisición.",
+                                "en_stock": en_stock}), 409
+            filas = _req_rows([it["req_item_id"] for it in ligados])
+            for it in ligados:
+                f = filas.get(str(it["req_item_id"]))
+                if not f:
+                    return jsonify({"error": f"El renglón de requisición de {it.get('part_number')} ya no existe"}), 400
+                if f.get("status") not in REQ_ESTATUS_REASIGNABLES:
+                    return jsonify({"error": f"{it.get('part_number')} ya está {f.get('status')} en la requisición"}), 400
+                if float(it.get("quantity") or 0) > f["cantidad_pendiente"]:
+                    return jsonify({"error": f"{it.get('part_number')}: se piden {it.get('quantity')} pero solo quedan {f['cantidad_pendiente']:g} pendientes"}), 400
         with lock:
-            po_number = gpo_next_number()
+            po_number = gpo_alloc_number()
             now = datetime.datetime.now().isoformat()
             po_items = []
             for idx, it in enumerate(items):
@@ -11106,6 +11219,7 @@ def api_create_gpo():
                     "total":       round(qty * up, 2),
                     "job":         item_job,
                     "notes":       str(it.get("notes","")).strip(),
+                    "req_item_id": str(it.get("req_item_id") or ""),
                 })
             subtotal     = round(sum(i["total"] for i in po_items), 2)
             iva_amt      = round(subtotal * iva_pct / 100, 2)
@@ -11189,7 +11303,12 @@ def api_create_gpo():
                             cr["updated_at"] = now
                             break
                     cat_save(ct, cat_records)
-        return jsonify({"ok": True, "po_number": po_number, "record": rec})
+        try:
+            req_actualizados = _req_registrar_compra(po_number, po_items)
+        except Exception as e:
+            print(f"[REQ] No se pudo registrar la compra {po_number} en la requisición: {e}")
+            req_actualizados = None
+        return jsonify({"ok": True, "po_number": po_number, "record": rec, "requisicion_renglones": req_actualizados})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -11445,6 +11564,9 @@ def api_gpo_modificar(po_number):
                         break  # Found the right year, stop
 
             gpo_save(records)
+        if tipo == "cancelar":
+            try: _req_revert_po(po_number)
+            except Exception as e: print(f"[REQ] No se pudo revertir la requisición de {po_number}: {e}")
         return jsonify({"ok": True, "record": rec})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -14156,6 +14278,35 @@ def _doc_next_number(prefix: str, width: int = 10) -> str:
         with open(DOC_COUNTERS_FILE,"w",encoding="utf-8") as f:
             json.dump(counters, f)
     return f"{prefix}-{str(n).zfill(width)}"
+
+def _doc_counter_bump_to(prefix, n):
+    """Garantiza que el contador `prefix` sea al menos `n` (nunca lo baja)."""
+    n = int(n or 0)
+    if _orm and _orm.DB_ENABLED:
+        try:
+            from sqlalchemy import text
+            with _orm.engine.begin() as conn:
+                conn.execute(text("""
+                    INSERT INTO doc_counters (prefix, data) VALUES (:prefix, jsonb_build_object('n', :n))
+                    ON CONFLICT (prefix) DO UPDATE
+                    SET data = jsonb_set(doc_counters.data, '{n}',
+                        to_jsonb(GREATEST(COALESCE((doc_counters.data->>'n')::int, 0), :n))),
+                        updated_at = now()
+                """), {"prefix": prefix, "n": n})
+            return
+        except Exception as e:
+            print(f"[DB] ⚠ Error en _doc_counter_bump_to vía PostgreSQL, usando respaldo JSON: {e}")
+    with _doc_lock:
+        p = Path(DOC_COUNTERS_FILE)
+        counters = {}
+        if p.exists():
+            try:
+                with open(p, "r", encoding="utf-8") as f: counters = json.load(f)
+            except Exception: pass
+        if int(counters.get(prefix, 0) or 0) < n:
+            counters[prefix] = n
+            p.parent.mkdir(parents=True, exist_ok=True)
+            with open(p, "w", encoding="utf-8") as f: json.dump(counters, f)
 
 @app.route("/api/admin/doc-counters", methods=["GET"])
 def api_admin_doc_counters():
