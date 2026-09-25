@@ -120,6 +120,10 @@ function switchMenu(mod, groupId) {
   if(mod==='personal-perfiles') { setTimeout(loadPerfiles,100); }
   if(mod==='personal-listado') { setTimeout(loadPersonal,100); }
   if(mod==='consignacion') { setTimeout(loadCsg,50); }
+  if(mod==='apartados') { setTimeout(loadApartados,50); }   // antes solo se cargaba al abrir la suite
+  if(mod==='ops-op') { setTimeout(loadOPs,50); }
+  if(mod==='manuf-stock') { setTimeout(loadManufStock,50); }
+  if(mod==='costos-perfil') { setTimeout(loadCostosPerfil,50); }
   if(mod==='consig-reassign') { setTimeout(loadCsgReassign,50); }
 }
 
@@ -3274,7 +3278,7 @@ function clExportPDF(){
 // ════════════════════════════════════════════════════════
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){
-    const mods=['mo-jnew','mo-jimp','mo-rnew','mo-rimp','mo-rcopy','mo-qnew','mo-qimp','mo-pt-new','mo-pt-confirm','mo-sv-new','mo-stk-imp','mo-stk-ing','mo-reassign','mo-prov-new','mo-prov-imp','mo-cat-new','mo-cat-imp','mo-cpo-new','mo-cpo-imp','mo-po-imp','mo-wh-imp','mo-ivp-imp','mo-fx-imp','mo-refuse','mo-award','mo-tnew','mo-timp','mo-vac-add','mo-asis-link','mo-pm-new','mo-sal-unlock','mo-ctrl-export','mo-sal-import-excel','mo-sal-export-excel','mo-isr-import','mo-np-periodo','mo-np-generar','mo-np-recibo','mo-cpc-new','mo-os','mo-ta','mo-cap-os-detalle','mo-req-upload','mo-req-stock','mo-csg-imp','mo-csg-ing','mo-csg-reassign','mo-req-oc'];
+    const mods=['mo-jnew','mo-jimp','mo-rnew','mo-rimp','mo-rcopy','mo-qnew','mo-qimp','mo-pt-new','mo-pt-confirm','mo-sv-new','mo-stk-imp','mo-stk-ing','mo-reassign','mo-prov-new','mo-prov-imp','mo-cat-new','mo-cat-imp','mo-cpo-new','mo-cpo-imp','mo-po-imp','mo-wh-imp','mo-ivp-imp','mo-fx-imp','mo-refuse','mo-award','mo-tnew','mo-timp','mo-vac-add','mo-asis-link','mo-pm-new','mo-sal-unlock','mo-ctrl-export','mo-sal-import-excel','mo-sal-export-excel','mo-isr-import','mo-np-periodo','mo-np-generar','mo-np-recibo','mo-cpc-new','mo-os','mo-ta','mo-cap-os-detalle','mo-req-upload','mo-req-stock','mo-csg-imp','mo-csg-ing','mo-csg-reassign','mo-req-oc','mo-req-planos','mo-op','mo-req-op','mo-ms'];
     const open=mods.find(m=>document.getElementById(m).classList.contains('on'));
     if(open)closeMo(open); else if(_currentPanel)closePanel();
   }
@@ -3959,7 +3963,7 @@ function ivpExportCSV(){ window.open('/api/ivp/export/'+ivpActiveYear,'_blank');
 // ════════════════════════════════════════════════════════
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){
-    const mods=['mo-jnew','mo-jimp','mo-rnew','mo-rimp','mo-rcopy','mo-qnew','mo-qimp','mo-pt-new','mo-pt-confirm','mo-sv-new','mo-stk-imp','mo-stk-ing','mo-reassign','mo-prov-new','mo-prov-imp','mo-cat-new','mo-cat-imp','mo-cpo-new','mo-cpo-imp','mo-po-imp','mo-wh-imp','mo-ivp-imp','mo-fx-imp','mo-refuse','mo-award','mo-tnew','mo-timp','mo-vac-add','mo-asis-link','mo-pm-new','mo-sal-unlock','mo-ctrl-export','mo-sal-import-excel','mo-sal-export-excel','mo-isr-import','mo-np-periodo','mo-np-generar','mo-np-recibo','mo-cpc-new','mo-os','mo-ta','mo-cap-os-detalle','mo-req-upload','mo-req-stock','mo-csg-imp','mo-csg-ing','mo-csg-reassign','mo-req-oc'];
+    const mods=['mo-jnew','mo-jimp','mo-rnew','mo-rimp','mo-rcopy','mo-qnew','mo-qimp','mo-pt-new','mo-pt-confirm','mo-sv-new','mo-stk-imp','mo-stk-ing','mo-reassign','mo-prov-new','mo-prov-imp','mo-cat-new','mo-cat-imp','mo-cpo-new','mo-cpo-imp','mo-po-imp','mo-wh-imp','mo-ivp-imp','mo-fx-imp','mo-refuse','mo-award','mo-tnew','mo-timp','mo-vac-add','mo-asis-link','mo-pm-new','mo-sal-unlock','mo-ctrl-export','mo-sal-import-excel','mo-sal-export-excel','mo-isr-import','mo-np-periodo','mo-np-generar','mo-np-recibo','mo-cpc-new','mo-os','mo-ta','mo-cap-os-detalle','mo-req-upload','mo-req-stock','mo-csg-imp','mo-csg-ing','mo-csg-reassign','mo-req-oc','mo-req-planos','mo-op','mo-req-op','mo-ms'];
     const open=mods.find(m=>document.getElementById(m).classList.contains('on'));
     if(open)closeMo(open); else if(_currentPanel)closePanel();
   }
@@ -5510,6 +5514,8 @@ const MODULE_LABELS = {
   // Almacenes
   'stock':'Stock', 'recovery':'Recuperaciones', 'reassign':'Reasignaciones',
   'consignacion':'Consignación', 'consig-reassign':'Reasignaciones Consignación',
+  'manuf-stock':'Piezas de Manufactura',
+  'costos-perfil':'Costo por Perfil (USD/h)',
   'ingreso':'Ingreso de Material (⚡ Solo Control Total)', 'apartados':'Apartados', 'salida':'Salida de Material',
   // Servicio
   'viaticos':'Viáticos', 'gastos-viaje':'Gastos de Viaje', 'envios':'Envíos de Mensajería',
@@ -5537,12 +5543,12 @@ const LEVEL_LABELS = {
 };
 
 const MODULE_GROUPS = [
-  { label: '📋 Proyectos',             mods: ['jobs','pt','sv','rates','quotes'] },
+  { label: '📋 Proyectos',             mods: ['jobs','pt','sv','rates','quotes','costos-perfil'] },
   { label: '🤝 Ventas',               mods: ['cpo'] },
   { label: '⚡ Catálogos',            mods: ['cat-electrico','cat-mecanico','cat-servicios'] },
   { label: '🏭 Proveedores',          mods: ['proveedores'] },
   { label: '📄 Documentos de Compra', mods: ['gpo','po','ivp','reassign','consig-reassign','recovery'] },
-  { label: '🏬 Almacenes',            mods: ['stock','consignacion','ingreso','apartados','salida'] },
+  { label: '🏬 Almacenes',            mods: ['stock','consignacion','ingreso','apartados','manuf-stock','salida'] },
   { label: '✈ Servicio',             mods: ['viaticos','gastos-viaje','envios'] },
   { label: '📊 Reportes y Config',    mods: ['wh','report','multirpt','fx','projconfig'] },
   { label: '💹 Finanzas',             mods: ['fin-recepciones','fin-procesarcompra','fin-cpp','fin-pagos','fin-esquemas'] },
@@ -5736,6 +5742,8 @@ function applyPermsToDom(d) {
     'ivp':           ["switchMenu('ivp'"],
     'stock':         ["switchMenu('stock'"],
     'consignacion':  ["switchMenu('consignacion'"],
+    'manuf-stock':   ["switchMenu('manuf-stock'"],
+    'costos-perfil': ["switchMenu('costos-perfil'"],
     'consig-reassign':["switchMenu('consig-reassign'"],
     'ingreso':       ["switchMenu('ingreso'"],
     'apartados':     ["switchMenu('apartados'"],
@@ -5827,6 +5835,7 @@ function applyPermsToDom(d) {
     // GPO / PO
     { pat:'openNewGPO(',      mod:'gpo',          need:'create' },
     { pat:'reqOpenOC(',       mod:'gpo',          need:'create' },
+    { pat:'reqOpenOP(',       mod:'ops-op',       need:'create' },
     { pat:'poOpenImport(',    mod:'po',           need:'full' },
     { pat:'deleteGPO(',       mod:'gpo',          need:'full' },
     { pat:'deleteIPO(',       mod:'po',           need:'full' },
@@ -7416,7 +7425,7 @@ let reqCurrentJob = null;
 let reqCurrentTipo = 'electrico';
 let reqItems = [];
 const REQ_TIPO_LABELS = {electrico:'⚡ Eléctrico', mecanico:'⚙ Mecánico', componentes_mayores:'🧩 Componentes Mayores', manufactura:'🏭 Manufactura'};
-const REQ_STATUS_OPCIONES = ['Solicitado','Comprado','Cancelado','Reasignado','Homologado'];
+const REQ_STATUS_OPCIONES = ['Solicitado','Reas. Parcial','Comprado','Cancelado','Reasignado','Homologado'];
 // Color por estatus: [texto, fondo]
 const REQ_STATUS_COLOR = {
   'Solicitado': ['#a16207','#fef3c7'],
@@ -7424,8 +7433,12 @@ const REQ_STATUS_COLOR = {
   'Cancelado':  ['#6b7280','#e5e7eb'],
   'Reasignado': ['#6d28d9','#ede9fe'],
   'Homologado': ['#1d4ed8','#dbeafe'],
+  'Reas. Parcial': ['#0e7490','#cffafe'],
 };
-const REQ_REASIGNABLES = ['Solicitado','Homologado'];
+const REQ_REASIGNABLES = ['Solicitado','Homologado','Reas. Parcial'];
+// Comprado/reasignado al 100% (cantidades registradas): el estatus queda bloqueado
+const reqCubierto = it => { const q=parseFloat(it.quantity)||0; return q>0 && (parseFloat(it.cantidad_reasignada)||0)+(parseFloat(it.cantidad_comprada)||0) >= q; };
+const reqQuienFecha = (u,f) => u ? `${esc(u)}${f?`<div style="font-size:9px;color:var(--muted)">${esc(String(f).slice(0,10))}</div>`:''}` : '<span style="color:var(--muted)">—</span>';
 const reqPendiente = it => it.cantidad_pendiente ?? Math.max(0,(parseFloat(it.quantity)||0)-(parseFloat(it.cantidad_reasignada)||0)-(parseFloat(it.cantidad_comprada)||0));
 
 async function reqInitSelectors(){
@@ -7492,6 +7505,10 @@ async function reqLoadJob(){
 
 function reqSetTipo(tipo){
   reqCurrentTipo = tipo;
+  // Manufactura trabaja con planos PDF: sus propios botones
+  const m = tipo==='manufactura';
+  document.getElementById('req-btns-compra').style.display = m ? 'none' : '';
+  document.getElementById('req-btns-manuf').style.display  = m ? '' : 'none';
   document.querySelectorAll('#req-job-content .cl-toggle button').forEach(b=>b.classList.remove('on'));
   event.target.classList.add('on');
   reqRenderTab();
@@ -7505,13 +7522,307 @@ async function reqRenderTab(){
     const d = await fetch(`/api/requisiciones/${encodeURIComponent(reqCurrentJob)}?tipo=${reqCurrentTipo}`).then(r=>r.json());
     if(d.error){ toast(d.error,'er'); tb.innerHTML=`<tr><td colspan="7"><div class="es">${esc(d.error)}</div></td></tr>`; return; }
     reqItems = d.items || [];
-    const porRevisar = reqItems.filter(i=>i.revision).length;
+    const porRevisar = reqCurrentTipo==='manufactura' ? 0 : reqItems.filter(i=>i.revision && typeof i.revision==='object').length;
     document.getElementById('req-tab-count').textContent = `${REQ_TIPO_LABELS[reqCurrentTipo]} — ${reqItems.length} renglón(es)${porRevisar?` · ⚠ ${porRevisar} por revisar`:''}`;
     reqRenderTable();
   }catch(e){ toast('Error al cargar el BOM: '+e,'er'); }
 }
 
+// ══ BOM de Manufactura (planos PDF) ══
+const REQ_MANUF_STATUS = ['Solicitado','Comprado','Orden interna','Fabricado'];
+const REQ_MANUF_COLOR  = {'Solicitado':['#a16207','#fef3c7'],'Comprado':['#15803d','#dcfce7'],'Orden interna':['#1d4ed8','#dbeafe'],'Fabricado':['#0f766e','#ccfbf1']};
+const REQ_FABRICACION  = ['Interna','Externa','Mixta'];
+let REQ_THEAD_COMPRA = null;   // encabezado original (compras); se guarda en el primer render
+async function reqSubirPlanos(files){
+  if(!files || !files.length) return;
+  if(!reqCurrentJob){ toast('Selecciona un Job','er'); return; }
+  const fd = new FormData(); fd.append('job', reqCurrentJob);
+  [...files].forEach(f=>fd.append('files', f));
+  toast(`Subiendo ${files.length} plano(s)…`,'ok',2500);
+  try{
+    const r = await fetch('/api/requisiciones/planos',{method:'POST',body:fd});
+    const d = (r.headers.get('content-type')||'').includes('json') ? await r.json() : {error:`Error ${r.status} del servidor`};
+    document.getElementById('req-planos-file').value='';
+    if(d.error){ toast(d.error,'er'); return; }
+    const res = d.resultados||[];
+    document.getElementById('req-planos-result').innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="font-size:10px;color:var(--muted);text-transform:uppercase"><th style="text-align:left">Archivo</th><th style="text-align:left">ID pieza</th><th>Rev.</th><th style="text-align:left">Tipo</th><th style="text-align:left">Material</th><th style="text-align:left">Acabado</th></tr></thead><tbody>${
+      res.map(x=>x.error ? `<tr style="border-bottom:1px solid var(--border)"><td>${esc(x.archivo)}</td><td colspan="5" style="color:var(--red)">⚠ ${esc(x.error)}</td></tr>`
+        : `<tr style="border-bottom:1px solid var(--border)"><td style="font-size:11px;color:var(--muted)">${esc(x.archivo)}</td><td style="font-family:'DM Mono',monospace;color:var(--gold)">${esc(x.id)}</td>
+           <td style="text-align:center"><b>${esc(x.revision)}</b>${x.nuevo?'':' <span style="font-size:9px;color:#6d28d9">nueva rev.</span>'}</td>
+           ${['tipo','material','acabado'].map(k=>`<td>${x[k]?esc(x[k]):'<span style="color:var(--amber)">no encontrado</span>'}</td>`).join('')}</tr>`).join('')}</tbody></table>
+      ${res.some(x=>(x.sin_dato||[]).length)?'<div style="font-size:11px;color:var(--amber);margin-top:8px">Los datos no encontrados en el cajetín se pueden capturar en la tabla (clic sobre el campo).</div>':''}`;
+    document.getElementById('mo-req-planos').classList.add('on');
+    await reqRenderTab();
+  }catch(e){ toast('Error: '+e.message,'er'); }
+}
+async function reqManufSet(itemId, campo, valor){
+  try{
+    const r = await apiCall('PUT','/requisiciones/'+itemId,{[campo]:valor});
+    if(r.error){ toast(r.error,'er'); }
+    await reqRenderTab();
+  }catch(e){ toast('Error: '+e,'er'); }
+}
+function reqManufEditar(itemId, campo, actual){
+  const v = prompt(`${campo==='material'?'Material':'Acabado'}:`, actual||''); if(v===null) return;
+  reqManufSet(itemId, campo, v.trim());
+}
+function reqOpenOP(){
+  if(!reqCurrentJob){ toast('Selecciona un Job','er'); return; }
+  const filas = reqItems.filter(it=>it.fabricacion==='Interna' && it.status==='Solicitado' && !it.orden_produccion);
+  const otras = reqItems.filter(it=>it.status==='Solicitado' && it.fabricacion!=='Interna' && !it.orden_produccion).length;
+  document.getElementById('req-op-list').innerHTML = filas.length ? `<table style="width:100%;border-collapse:collapse;font-size:12px">
+    <thead><tr style="font-size:10px;color:var(--muted);text-transform:uppercase"><th style="width:28px"><input type="checkbox" checked onchange="document.querySelectorAll('.req-op-chk').forEach(c=>c.checked=this.checked)"></th>
+      <th style="text-align:left">ID pieza</th><th>Rev.</th><th style="text-align:left">Tipo</th><th style="text-align:left">Material</th><th style="text-align:left">Acabado</th><th>Normal</th><th>Mirror</th></tr></thead><tbody>${
+    filas.map(it=>`<tr style="border-bottom:1px solid var(--border)"><td><input type="checkbox" class="req-op-chk" value="${esc(it.id)}" checked></td>
+      <td style="font-family:'DM Mono',monospace;color:var(--gold)">${esc(it.part_number)}</td><td style="text-align:center"><b>${esc(it.rev_plano||'')}</b></td>
+      <td>${esc(it.description||'')}</td><td>${esc(it.material||'')}</td><td>${esc(it.acabado||'')}</td>
+      <td style="text-align:center">${it.qty_normal ?? it.quantity ?? 1}</td><td style="text-align:center">${it.qty_mirror ?? 0}</td></tr>`).join('')}</tbody></table>`
+    : `<div style="padding:24px;text-align:center;color:var(--muted)">No hay piezas con Fabricación <b>Interna</b> en Solicitado.${otras?`<br><span style="font-size:11px">${otras} pieza(s) Solicitada(s) con otra fabricación: cámbiala a Interna en la tabla.</span>`:''}</div>`;
+  document.getElementById('btn-req-op-go').disabled = !filas.length;
+  if(!document.getElementById('req-op-fecha').value){ const d=new Date(Date.now()+14*864e5); document.getElementById('req-op-fecha').value=d.toISOString().slice(0,10); }
+  document.getElementById('mo-req-op').classList.add('on');
+}
+async function reqCrearOP(){
+  const ids=[...document.querySelectorAll('.req-op-chk:checked')].map(c=>c.value);
+  if(!ids.length){ toast('Selecciona al menos una pieza','er'); return; }
+  const btn=document.getElementById('btn-req-op-go'); btn.disabled=true; btn.textContent='Creando…';
+  try{
+    const d = await apiCall('POST','/ordenes-produccion',{job:reqCurrentJob, req_item_ids:ids,
+      prioridad:parseInt(document.getElementById('req-op-prio').value)||0, fecha_entrega:document.getElementById('req-op-fecha').value,
+      notas:document.getElementById('req-op-notas').value});
+    if(d.error){ toast(d.error,'er'); return; }
+    closeMo('mo-req-op'); document.getElementById('req-op-notas').value='';
+    toast(`Orden de Producción ${d.folio} creada · ${ids.length} pieza(s)`,'ok',5000);
+    await reqRenderTab(); opAbrir(d.folio);
+  }catch(e){ toast('Error: '+e,'er'); }
+  finally{ btn.disabled=false; btn.textContent='Crear Orden de Producción'; }
+}
+
+// ══ Proyectos ▸ Costo por Perfil (USD/h) ══
+async function loadCostosPerfil(){
+  const sel=document.getElementById('cp-year'); const y=sel?.value||'';
+  try{
+    const d = await apiCall('GET','/costos-perfil'+(y?`?year=${y}`:''));
+    const tb=document.getElementById('cp-tb'); if(!tb) return;
+    if(d.error){ tb.innerHTML=`<tr><td colspan="6"><div class="es">${esc(d.error)}</div></td></tr>`; return; }
+    if(sel && !sel.options.length){ sel.innerHTML=(d.available_years||[d.year]).slice().sort((a,b)=>b-a).map(a=>`<option ${a==d.year?'selected':''}>${a}</option>`).join(''); }
+    const $ = v => v==null ? '<span style="color:var(--muted)">—</span>' : '$'+Number(v).toFixed(2);
+    tb.innerHTML = d.perfiles.map(f=>`<tr>
+      <td style="font-weight:700">${esc(f.perfil)}</td>
+      <td style="text-align:right;font-size:15px;font-weight:800;color:${f.promedio==null?'var(--muted)':'var(--green)'}">${f.promedio==null?'<span style="font-size:11px;font-weight:400">sin datos</span>':$(f.promedio)}</td>
+      <td style="text-align:right">${$(f.minimo)}</td><td style="text-align:right">${$(f.maximo)}</td>
+      <td style="text-align:center">${f.personas}${f.personas===1?' <span title="Con una sola persona, el promedio es su tarifa" style="color:var(--amber)">⚠</span>':''}</td>
+      <td style="font-size:11px;color:var(--muted)">${esc(f.departamento)}</td></tr>`).join('');
+    document.getElementById('cp-nota').innerHTML = `Calculado de las tarifas por hora (USD) registradas en <b>Recursos Humanos ▸ Hourly Rate</b> para ${d.year}, agrupadas por departamento.`
+      + (d.promedio_general!=null?` Promedio de los perfiles con datos: <b>$${d.promedio_general.toFixed(2)}/h</b>.`:'')
+      + ` Los perfiles sin datos no tienen trabajadores con ese departamento en el año.`;
+  }catch(e){ toast('Error: '+e,'er'); }
+}
+
+// ══ Almacenes ▸ Piezas de Manufactura ══
+let manufStock = [];
+async function loadManufStock(){
+  const job=(document.getElementById('ms-flt-job')?.value||'').trim(), q=(document.getElementById('ms-flt-q')?.value||'').trim();
+  const qs=new URLSearchParams(); if(job) qs.set('job',job); if(q) qs.set('q',q);
+  try{
+    const d = await apiCall('GET','/manuf-stock'+(qs.toString()?'?'+qs:''));
+    const tb=document.getElementById('ms-tb'); if(!tb) return;
+    if(d.error){ tb.innerHTML=`<tr><td colspan="9"><div class="es">${esc(d.error)}</div></td></tr>`; return; }
+    manufStock = d.records||[];
+    tb.innerHTML = manufStock.map((r,i)=>{ const u=(r.movimientos||[]).slice(-1)[0];
+      const pend = (r.pendiente_normal||0)+(r.pendiente_mirror||0);
+      return `<tr class="tr-hover" style="cursor:pointer" onclick="msMovimientos(${i})">
+        <td style="font-family:'DM Mono',monospace;color:var(--gold)">${r.archivo_id?`<a href="/api/requisiciones/planos/${r.archivo_id}" target="_blank" onclick="event.stopPropagation()" style="color:var(--gold);text-decoration:none" title="Abrir plano">📄 </a>`:''}${esc(r.part_id)}${r.rev_plano?` <span style="font-size:10px;color:var(--muted)">rev ${esc(r.rev_plano)}</span>`:''}</td>
+        <td style="font-family:'DM Mono',monospace">${esc(r.job)}</td><td>${esc(r.tipo||'')}</td><td>${esc(r.material||'')}</td><td>${esc(r.acabado||'')}</td>
+        <td style="text-align:right;font-weight:700;color:${r.qty_normal>0?'var(--green)':'var(--muted)'}">${r.qty_normal}</td>
+        <td style="text-align:right;font-weight:700;color:${r.qty_mirror>0?'var(--green)':'var(--muted)'}">${r.qty_mirror}${pend?`<div style="font-size:9px;color:var(--amber);font-weight:400">${pend} en salida pendiente</div>`:''}</td>
+        <td style="text-align:right">${(r.ingresado_normal||0)+(r.ingresado_mirror||0)}</td>
+        <td style="font-size:11px">${u?`${esc(u.tipo)}<div style="font-size:9px;color:var(--muted)">${esc(u.folio||'')} · ${esc(String(u.fecha||'').slice(0,10))} · ${esc(u.usuario||'')}</div>`:''}</td></tr>`;}).join('')
+      || '<tr><td colspan="9"><div class="es">Sin piezas en el almacén de manufactura</div></td></tr>';
+    document.getElementById('ms-count').textContent = `${manufStock.length} pieza(s)`;
+  }catch(e){ toast('Error cargando piezas de manufactura: '+e,'er'); }
+}
+async function msMovimientos(i){
+  const r = manufStock[i]; if(!r) return;
+  // el listado solo trae el último movimiento; el historial completo se pide al abrir
+  try{ const d = await apiCall('GET',`/manuf-stock/movimientos?job=${encodeURIComponent(r.job)}&id=${encodeURIComponent(r.part_id)}`);
+       if(!d.error) r.movimientos = d.movimientos||[]; }catch(e){}
+  document.getElementById('ms-titulo').textContent = `${r.part_id} · Job ${r.job}`;
+  document.getElementById('ms-body').innerHTML = `<div style="font-size:12px;margin-bottom:8px">Existencia: <b>Normal ${r.qty_normal}</b> · <b>Mirror ${r.qty_mirror}</b> · Disponible para salida: Normal ${r.disponible_normal}, Mirror ${r.disponible_mirror}</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="font-size:10px;color:var(--muted);text-transform:uppercase"><th style="text-align:left">Fecha</th><th style="text-align:left">Movimiento</th><th style="text-align:left">Folio</th><th style="text-align:right">Normal</th><th style="text-align:right">Mirror</th><th style="text-align:left">Usuario</th></tr></thead><tbody>${
+    (r.movimientos||[]).slice().reverse().map(m=>`<tr style="border-bottom:1px solid var(--border)"><td>${esc(String(m.fecha||'').slice(0,16).replace('T',' '))}</td><td>${esc(m.tipo)}</td>
+      <td style="font-family:'DM Mono',monospace">${esc(m.folio||'')}</td>
+      ${['normal','mirror'].map(k=>`<td style="text-align:right;font-weight:700;color:${m[k]>0?'#15803d':(m[k]<0?'var(--red)':'var(--muted)')}">${m[k]>0?'+':''}${m[k]}</td>`).join('')}<td>${esc(m.usuario||'')}</td></tr>`).join('')}</tbody></table>`;
+  document.getElementById('mo-ms').classList.add('on');
+}
+
+// ══ Operaciones ▸ Órdenes de Producción ══
+const OP_COLOR = {'Pendiente':['#a16207','#fef3c7'],'En proceso':['#1d4ed8','#dbeafe'],'En pausa':['#b45309','#ffedd5'],'Concluida':['#15803d','#dcfce7'],'Cancelada':['#6b7280','#e5e7eb']};
+let opActual = null, opCambios = {};
+async function loadOPs(){
+  const job=(document.getElementById('op-flt-job')?.value||'').trim(), st=document.getElementById('op-flt-st')?.value||'';
+  const qs=new URLSearchParams(); if(job) qs.set('job',job); if(st) qs.set('status',st);
+  try{
+    const d = await apiCall('GET','/ordenes-produccion'+(qs.toString()?'?'+qs:''));
+    if(d.error){ document.getElementById('op-tb').innerHTML=`<tr><td colspan="8"><div class="es">${esc(d.error)}</div></td></tr>`; return; }
+    const hoy=new Date().toISOString().slice(0,10);
+    const badge=st=>{const [f,b]=OP_COLOR[st]||['#333','#eee']; return `<span style="font-size:11px;font-weight:700;padding:2px 10px;border-radius:10px;color:${f};background:${b}">${esc(st)}</span>`;};
+    document.getElementById('op-tb').innerHTML = (d.ordenes||[]).map(o=>{
+      const tarde = o.fecha_entrega && o.fecha_entrega<hoy && !['Concluida','Cancelada'].includes(o.status);
+      return `<tr class="tr-hover" style="cursor:pointer" onclick="opAbrir('${esc(o.folio)}')">
+        <td style="font-family:'DM Mono',monospace;font-weight:700;color:var(--gold)">${esc(o.folio)}</td>
+        <td style="font-family:'DM Mono',monospace">${esc(o.job)}</td>
+        <td>${o.piezas}<div style="font-size:10px;color:var(--muted);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc((o.ids||[]).join(', '))}</div></td>
+        <td style="text-align:center;font-weight:700">${o.prioridad??''}</td>
+        <td style="${tarde?'color:var(--red);font-weight:700':''}">${tarde?'⚠ ':''}${esc(o.fecha_entrega||'')}</td>
+        <td>${badge(o.status)}</td>
+        <td style="min-width:120px">${o.avance==null?'<span style="font-size:11px;color:var(--muted)">sin procesos</span>':`<div style="height:8px;background:rgba(0,0,0,.06);border-radius:4px"><div style="height:8px;width:${o.avance}%;background:#15803d;border-radius:4px"></div></div><div style="font-size:10px;color:var(--muted)">${o.procesos_hechos}/${o.procesos_total} · ${o.avance}%</div>`}</td>
+        <td style="font-size:11px">${esc(o.created_by||'')}<div style="font-size:9px;color:var(--muted)">${esc(String(o.created_at||'').slice(0,10))}</div></td></tr>`;}).join('')
+      || '<tr><td colspan="8"><div class="es">Sin órdenes de producción</div></td></tr>';
+    document.getElementById('op-count').textContent = `${(d.ordenes||[]).length} orden(es) · siguiente folio ${d.next_number}`;
+  }catch(e){ toast('Error cargando órdenes: '+e,'er'); }
+}
+async function opAbrir(folio){
+  try{
+    const d = await apiCall('GET','/ordenes-produccion/'+encodeURIComponent(folio));
+    if(d.error){ toast(d.error,'er'); return; }
+    opActual = d; opCambios = {};
+    opRender();
+    document.getElementById('mo-op').classList.add('on');
+  }catch(e){ toast('Error: '+e,'er'); }
+}
+function opRender(){
+  const d=opActual, o=d.orden, ed=d.puede_editar, cerrada=['Concluida','Cancelada'].includes(o.status);
+  const [f,b]=OP_COLOR[o.status]||['#333','#eee'];
+  document.getElementById('op-titulo').innerHTML = `🏗 ${esc(o.folio)} <span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:10px;color:${f};background:${b};vertical-align:middle">${esc(o.status)}</span>`;
+  const dis = ed ? '' : 'disabled';
+  const PC = {'No aplica':['var(--muted)','transparent'],'Pendiente':['#b45309','#ffedd5'],'Concluido':['#15803d','#dcfce7']};
+  const filas = (o.piezas||[]).map(p=>`<tr style="border-bottom:1px solid var(--border)">
+      <td style="font-family:'DM Mono',monospace;white-space:nowrap">${p.archivo_id?`<a href="/api/requisiciones/planos/${p.archivo_id}" target="_blank" style="color:var(--gold);text-decoration:none" title="Abrir plano">📄 ${esc(p.part_id)}</a>`:esc(p.part_id)}</td>
+      <td style="text-align:center"><b>${esc(p.rev_plano||'')}</b></td>
+      ${['tipo','material','acabado'].map(k=>`<td style="white-space:normal;max-width:120px;line-height:1.25;font-size:11px">${esc(p[k]||'')}</td>`).join('')}
+      <td style="text-align:center">${p.qty_normal??0}</td><td style="text-align:center">${p.qty_mirror??0}</td>
+      ${d.procesos.map(pr=>{ const cur=(opCambios[p.req_item_id]||{})[pr.k] || (p.procesos?.[pr.k]?.estado) || 'No aplica';
+        const inf=p.procesos?.[pr.k]; const [c,bg]=PC[cur];
+        return `<td style="text-align:center"><select ${dis} ${cerrada?'disabled':''} onchange="opSetProc('${esc(p.req_item_id)}','${pr.k}',this.value)"
+          style="font-size:9.5px;padding:2px 1px;width:84px;border:1px solid ${c==='var(--muted)'?'var(--border)':c};border-radius:4px;color:${c};background:${bg};font-weight:${cur==='No aplica'?'400':'700'}">
+          ${d.estados_proceso.map(e=>`<option value="${e}" ${cur===e?'selected':''}>${e==='Concluido'?'✔ Concluido':e}</option>`).join('')}</select>
+          ${cur==='Concluido'&&inf?.concluido_por&&!(opCambios[p.req_item_id]||{})[pr.k]?`<div style="font-size:9px;color:var(--muted)">${esc(inf.concluido_por)} ${esc(String(inf.concluido_fecha||'').slice(0,10))}</div>`:''}</td>`;}).join('')}
+    </tr>${opFilaAcciones(p, o, ed)}`).join('');
+  const hoy=new Date().toISOString().slice(0,10), tarde=o.fecha_entrega<hoy && !cerrada;
+  document.getElementById('op-body').innerHTML = `
+    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px">
+      <div><div style="font-size:9px;color:var(--muted);text-transform:uppercase">Job</div><div style="font-family:'DM Mono',monospace;font-weight:700;font-size:15px">${esc(o.job)}</div></div>
+      <label style="font-size:10px;color:var(--muted)">PRIORIDAD<br><input type="number" id="op-prio" min="1" value="${o.prioridad}" ${dis} style="width:80px;padding:5px"></label>
+      <label style="font-size:10px;color:${tarde?'var(--red)':'var(--muted)'}">ENTREGA REQUERIDA${tarde?' ⚠ VENCIDA':''}<br><input type="date" id="op-fecha" value="${esc(o.fecha_entrega)}" ${dis} style="padding:5px"></label>
+      <label style="font-size:10px;color:var(--muted)">ESTATUS<br><select id="op-status" ${dis} style="padding:5px;font-weight:700">${d.estatus.map(s=>`<option ${o.status===s?'selected':''}>${s}</option>`).join('')}</select></label>
+      <label style="font-size:10px;color:var(--muted);flex:1;min-width:200px">NOTAS<br><input type="text" id="op-notas" value="${esc(o.notas||'')}" ${dis} style="width:100%;padding:5px"></label>
+      <div style="min-width:160px"><div style="font-size:9px;color:var(--muted);text-transform:uppercase">Avance</div>
+        ${d.avance==null?'<span style="font-size:11px;color:var(--muted)">Configura los procesos de cada pieza</span>':`<div style="height:10px;background:rgba(0,0,0,.06);border-radius:5px"><div style="height:10px;width:${d.avance}%;background:#15803d;border-radius:5px"></div></div><div style="font-size:11px">${d.procesos_hechos} de ${d.procesos_total} procesos · ${d.avance}%</div>`}</div>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Matriz de procesos: por pieza, elige <b>Pendiente</b> en los procesos que aplican y márcalos <b>✔ Concluido</b> al terminar. ${cerrada?'<b>La orden está '+esc(o.status)+': los procesos no se pueden modificar.</b>':''}${ed?'':' <b>Solo lectura: tu usuario no puede modificar órdenes de producción.</b>'}</div>
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="font-size:10px;color:var(--muted);text-transform:uppercase;background:rgba(0,0,0,.04)"><th style="text-align:left;padding:6px">ID pieza</th><th>Rev.</th><th style="text-align:left">Tipo</th><th style="text-align:left">Material</th><th style="text-align:left">Acabado</th><th>Normal</th><th>Mirror</th>
+        ${d.procesos.map(pr=>`<th style="min-width:86px">${esc(pr.nombre)}</th>`).join('')}</tr></thead><tbody>${filas}</tbody></table></div>
+    <details style="margin-top:12px;font-size:11px;color:var(--muted)"><summary>Historial (${(o.historial||[]).length})</summary>
+      ${(o.historial||[]).slice().reverse().map(h=>`<div>${esc(String(h.fecha||'').slice(0,16).replace('T',' '))} · <b>${esc(h.usuario||'')}</b> · ${esc(h.accion||'')}</div>`).join('')}</details>`;
+  document.getElementById('btn-op-save').style.display = ed ? '' : 'none';
+  document.getElementById('btn-op-del').style.display = (USER_PERMS?.is_admin || (USER_PERMS?.permissions||{})['ops-op']==='full') && ['Pendiente','Cancelada'].includes(o.status) ? '' : 'none';
+}
+function opSetProc(rid, k, v){ (opCambios[rid] ||= {})[k] = v; }
+// Fila de acciones por pieza: Lote terminado e Ingresar al almacén (lotes completos o parciales)
+function opFilaAcciones(p, o, ed){
+  const rid = esc(p.req_item_id), cancel = o.status==='Cancelada';
+  const tn = +p.qty_normal||0, tm = +p.qty_mirror||0, inN = +p.ingresado_normal||0, inM = +p.ingresado_mirror||0;
+  const fN = Math.max(0, tn-inN), fM = Math.max(0, tm-inM), lt = p.lote_terminado;
+  const completo = fN<=0 && fM<=0;
+  const lote = lt
+    ? `<span style="color:#15803d;font-weight:700">✔ Lote terminado</span> <span style="color:var(--muted)">${esc(lt.por||'')} ${esc(String(lt.fecha||'').slice(0,10))}</span>${ed&&!cancel?` <a href="#" onclick="opTerminar('${rid}',false);return false" style="font-size:10px;color:var(--muted)">deshacer</a>`:''}`
+    : (ed&&!cancel ? `<button class="btn-reload" style="font-size:10px;padding:3px 10px" onclick="opTerminar('${rid}',true)">Marcar lote terminado</button>` : '<span style="color:var(--muted)">Lote en fabricación</span>');
+  const ingr = `Almacén: <b>Normal ${inN}/${tn}</b> · <b>Mirror ${inM}/${tm}</b>${completo?' <span style="color:#15803d;font-weight:700">✔ completo</span>':''}`;
+  const form = (!completo && !cancel && ed) ? `<span style="margin-left:10px">Ingresar: N <input type="number" id="op-in-n-${rid}" min="0" max="${fN}" value="${fN}" style="width:50px;font-size:11px;padding:2px">
+      M <input type="number" id="op-in-m-${rid}" min="0" max="${fM}" value="${fM}" style="width:50px;font-size:11px;padding:2px">
+      <button class="btn-reload" style="font-size:10px;padding:3px 10px;border-color:#15803d;color:#15803d" onclick="opIngresar('${rid}')">Ingresar al almacén</button></span>` : '';
+  return `<tr style="border-bottom:2px solid var(--border);background:rgba(0,0,0,.02)"><td></td><td colspan="${6+(opActual?.procesos?.length||6)}" style="font-size:11px;padding:4px 6px">${lote}<span style="margin-left:18px">${ingr}</span>${form}</td></tr>`;
+}
+async function opTerminar(rid, marcar){
+  const d = await apiCall('POST',`/ordenes-produccion/${encodeURIComponent(opActual.orden.folio)}/pieza/${encodeURIComponent(rid)}/terminar`,{terminado:marcar});
+  if(d.error){ toast(d.error,'er',6000); return; }
+  toast(marcar?'Lote terminado':'Lote reabierto','ok'); await opAbrir(opActual.orden.folio); loadOPs();
+}
+async function opIngresar(rid){
+  const n = parseFloat(document.getElementById('op-in-n-'+rid)?.value)||0, m = parseFloat(document.getElementById('op-in-m-'+rid)?.value)||0;
+  if(n+m<=0){ toast('Indica cuántas piezas Normal y/o Mirror se ingresan','er'); return; }
+  const d = await apiCall('POST',`/ordenes-produccion/${encodeURIComponent(opActual.orden.folio)}/pieza/${encodeURIComponent(rid)}/ingresar`,{normal:n, mirror:m});
+  if(d.error){ toast(d.error,'er',6000); return; }
+  toast(`Ingresado al almacén: Normal ${n}, Mirror ${m}`,'ok'); await opAbrir(opActual.orden.folio);
+  if(typeof loadManufStock==='function') loadManufStock();
+}
+async function opGuardar(){
+  if(!opActual) return;
+  const o=opActual.orden, body={procesos:opCambios};
+  const prio=parseInt(document.getElementById('op-prio').value)||o.prioridad, fecha=document.getElementById('op-fecha').value, st=document.getElementById('op-status').value, notas=document.getElementById('op-notas').value;
+  if(prio!==o.prioridad) body.prioridad=prio; if(fecha!==o.fecha_entrega) body.fecha_entrega=fecha; if(notas!==(o.notas||'')) body.notas=notas;
+  if(st!==o.status){
+    if(st==='Cancelada' && !confirm(`¿Cancelar ${o.folio}? Sus piezas regresan a "Solicitado" en el BOM de Manufactura.`)) return;
+    body.status=st;
+  }
+  const btn=document.getElementById('btn-op-save'); btn.disabled=true; btn.textContent='Guardando…';
+  try{
+    const d = await apiCall('PUT','/ordenes-produccion/'+encodeURIComponent(o.folio), body);
+    if(d.error){ toast(d.error,'er',7000); return; }
+    toast(`${o.folio} guardada`+(body.status?` · ${body.status}`:''),'ok');
+    await opAbrir(o.folio); loadOPs();
+    if(typeof reqRenderTab==='function' && reqCurrentJob) reqRenderTab();
+  }catch(e){ toast('Error: '+e,'er'); }
+  finally{ btn.disabled=false; btn.textContent='Guardar cambios'; }
+}
+function opPDF(){ if(opActual) window.open('/api/ordenes-produccion/'+encodeURIComponent(opActual.orden.folio)+'/pdf','_blank'); }
+async function opEliminar(){
+  if(!opActual || !confirm(`¿Eliminar ${opActual.orden.folio}? Sus piezas regresan a "Solicitado".`)) return;
+  const d = await apiCall('DELETE','/ordenes-produccion/'+encodeURIComponent(opActual.orden.folio));
+  if(d.error){ toast(d.error,'er'); return; }
+  closeMo('mo-op'); toast('Orden eliminada','ok'); loadOPs(); if(reqCurrentJob) reqRenderTab();
+}
+
+function reqRenderManuf(){
+  const tb = document.getElementById('req-tb');
+  document.getElementById('req-thead').innerHTML = `<tr><th>ID pieza</th><th style="text-align:center">Rev.</th><th>Tipo</th><th>Material</th><th>Acabado</th>
+    <th style="text-align:center">Normal</th><th style="text-align:center">Mirror</th>
+    <th>Fabricación</th><th>Estatus</th><th>Solicitante</th><th>Cambió Fabricación</th><th></th></tr>`;
+  const leg = document.getElementById('req-legend'); if(leg) leg.innerHTML = REQ_MANUF_STATUS.map(st=>`<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;color:${REQ_MANUF_COLOR[st][0]};background:${REQ_MANUF_COLOR[st][1]}">${st}</span>`).join('');
+  if(!reqItems.length){ tb.innerHTML = '<tr><td colspan="12"><div class="es">Sin planos. Usa "📄 Subir planos (PDF)" para agregar las piezas.</div></td></tr>'; return; }
+  const who = (u,f) => u ? `${esc(u)}<div style="font-size:9px;color:var(--muted)">${esc(String(f||'').slice(0,10))}</div>` : '<span style="color:var(--muted)">—</span>';
+  const edit = (it,campo) => `<span onclick="reqManufEditar('${esc(it.id)}','${campo}','${esc((it[campo]||'').replace(/'/g,''))}')" title="Clic para editar" style="cursor:pointer;${it[campo]?'':'color:var(--amber)'}">${it[campo]?esc(it[campo]):'capturar'}</span>`;
+  tb.innerHTML = reqItems.map(it=>{
+    const [fg,bg] = REQ_MANUF_COLOR[it.status] || ['var(--text)','transparent'];
+    const revs = it.revisiones||[], ult = revs[revs.length-1];
+    const hist = revs.slice(0,-1).reverse().map(r=>`<a href="/api/requisiciones/planos/${r.archivo_id}" target="_blank" title="${esc(r.filename)} · ${esc(String(r.fecha||'').slice(0,10))} · ${esc(r.usuario||'')}" style="font-size:10px;color:var(--muted);margin-left:4px">${esc(r.revision)}</a>`).join('');
+    return `<tr style="box-shadow:inset 4px 0 0 ${fg}">
+      <td style="font-family:'DM Mono',monospace;color:var(--gold)">${ult?`<a href="/api/requisiciones/planos/${ult.archivo_id}" target="_blank" title="Abrir plano (rev ${esc(ult.revision)})" style="color:var(--gold);text-decoration:none">📄 ${esc(it.part_number)}</a>`:esc(it.part_number)}</td>
+      <td style="text-align:center"><b>${esc(it.rev_plano||'—')}</b>${hist?`<div>${hist}</div>`:''}</td>
+      <td>${esc(it.description||'—')}</td>
+      <td>${edit(it,'material')}</td>
+      <td>${edit(it,'acabado')}</td>
+      ${['qty_normal','qty_mirror'].map(k=>`<td style="text-align:center"><input type="number" min="0" step="1" value="${it[k] ?? (k==='qty_normal'?(it.quantity||1):0)}"
+          onchange="reqManufSet('${esc(it.id)}','${k}',this.value)" style="width:56px;text-align:center;font-size:11px;padding:3px"></td>`).join('')}
+      <td><select onchange="reqManufSet('${esc(it.id)}','fabricacion',this.value)" ${(reqCubierto(it)||it.orden_produccion)?'disabled':''} style="font-size:11px;padding:4px 6px">
+        <option value="" ${!it.fabricacion?'selected':''}>—</option>${REQ_FABRICACION.map(f=>`<option ${it.fabricacion===f?'selected':''}>${f}</option>`).join('')}</select></td>
+      <td><select onchange="reqManufSet('${esc(it.id)}','status',this.value)" ${reqCubierto(it)?`disabled title="Comprada al 100%: para cambiarla elimina o cancela la orden"`:(it.orden_produccion?`disabled title="Lo controla la orden ${esc(it.orden_produccion)}"`:'')} style="font-size:11px;font-weight:600;padding:4px 6px;border:1px solid ${fg};border-radius:4px;background:${bg};color:${fg}">
+        ${REQ_MANUF_STATUS.map(s=>`<option ${it.status===s?'selected':''}>${s}</option>`).join('')}</select>${reqCubierto(it)?' 🔒':''}
+        ${(it.compras||[]).length?`<div style="font-size:9px;color:#15803d">${(it.compras||[]).map(c=>esc(c.po_number)+(c.cantidad>1?' ×'+c.cantidad:'')).join(', ')}</div>`:''}
+        ${it.orden_produccion?`<div style="font-size:10px"><a href="#" onclick="opAbrir('${esc(it.orden_produccion)}');return false" style="color:#1d4ed8">🏗 ${esc(it.orden_produccion)}</a></div>`:''}</td>
+      <td style="font-size:11px">${who(it.created_by, it.created_at)}</td>
+      <td style="font-size:11px">${who(it.fabricacion_por, it.fabricacion_fecha)}</td>
+      <td>${((parseFloat(it.cantidad_comprada)||0)>0||it.orden_produccion)?'<span style="color:var(--muted)" title="Tiene orden de compra o de producción: no se puede eliminar">—</span>':`<button class="fi-del" onclick="reqDeleteItem('${esc(it.id)}')">Eliminar</button>`}</td></tr>`;}).join('');
+}
+
 function reqRenderTable(){
+  const th = document.getElementById('req-thead');
+  if(th && REQ_THEAD_COMPRA===null && th.innerHTML.includes('No. Parte')) REQ_THEAD_COMPRA = th.innerHTML;
+  if(reqCurrentTipo==='manufactura'){ reqRenderManuf(); return; }
+  if(th && REQ_THEAD_COMPRA && !th.innerHTML.includes('No. Parte')) th.innerHTML = REQ_THEAD_COMPRA;
   const tb = document.getElementById('req-tb');
   if(!reqItems.length){
     tb.innerHTML = '<tr><td colspan="7"><div class="es"><span class="ei">📋</span><br>Sin renglones subidos para este BOM todavía.</div></td></tr>';
@@ -7522,6 +7833,7 @@ function reqRenderTable(){
     document.getElementById('req-tab-count').insertAdjacentHTML('afterend', `<span id="req-legend" style="margin-left:14px;display:inline-flex;gap:6px;flex-wrap:wrap;vertical-align:middle">${
       REQ_STATUS_OPCIONES.map(st=>`<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;color:${REQ_STATUS_COLOR[st][0]};background:${REQ_STATUS_COLOR[st][1]}">${st}</span>`).join('')}</span>`);
   }
+  document.getElementById('req-legend').innerHTML = REQ_STATUS_OPCIONES.map(st=>`<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;color:${REQ_STATUS_COLOR[st][0]};background:${REQ_STATUS_COLOR[st][1]}">${st}</span>`).join('');
   tb.innerHTML = reqItems.map(it=>{
     const [fg,bg] = REQ_STATUS_COLOR[it.status] || ['var(--text)','transparent'];
     const reas = parseFloat(it.cantidad_reasignada)||0, comp = parseFloat(it.cantidad_comprada)||0, pend = reqPendiente(it);
@@ -7539,23 +7851,24 @@ function reqRenderTable(){
           <button onclick="reqRevision('${esc(it.id)}','descartar')" class="btn-reload" style="font-size:10px;padding:2px 6px">Descartar</button></div></div>`:''}
       </td>
       <td>
-        <select onchange="reqUpdateStatus('${it.id}',this.value)" style="font-size:11px;font-weight:600;padding:4px 6px;border:1px solid ${fg};border-radius:4px;background:${bg};color:${fg}">
-          ${REQ_STATUS_OPCIONES.map(s=>`<option value="${s}" ${it.status===s?'selected':''}>${s}</option>`).join('')}
-        </select>
+        <select onchange="reqUpdateStatus('${it.id}',this.value)" ${reqCubierto(it)?`disabled title="${esc(it.status)} al 100%: no se puede cambiar. Para modificarlo, elimina o cancela la orden correspondiente."`:''}
+          style="font-size:11px;font-weight:600;padding:4px 6px;border:1px solid ${fg};border-radius:4px;background:${bg};color:${fg};${reqCubierto(it)?'cursor:not-allowed;opacity:.9':''}">
+          ${REQ_STATUS_OPCIONES.map(s=>`<option value="${s}" ${it.status===s?'selected':''} ${s==='Reas. Parcial'&&it.status!==s?'disabled':''}>${s}</option>`).join('')}
+        </select>${reqCubierto(it)?' <span title="Bloqueado: cubierto al 100%" style="font-size:11px">🔒</span>':''}
       </td>
+      <td style="font-size:11px">${reqQuienFecha(it.created_by, it.created_at)}</td>
+      <td style="font-size:11px">${['Comprado','Reasignado','Reas. Parcial'].includes(it.status) ? reqQuienFecha(it.comprador, it.comprador_fecha) : '<span style="color:var(--muted)">—</span>'}</td>
       <td id="req-stock-${esc(it.part_number)}" style="font-size:11px;color:var(--muted)">—</td>
-      <td><button class="fi-del" onclick="reqDeleteItem('${it.id}')">Eliminar</button></td>
+      <td>${(reas>0||comp>0) ? '<span title="Tiene reasignaciones u órdenes de compra: no se puede eliminar" style="font-size:11px;color:var(--muted)">—</span>' : `<button class="fi-del" onclick="reqDeleteItem('${it.id}')">Eliminar</button>`}</td>
     </tr>`;}).join('');
 }
 
 async function reqUpdateStatus(itemId, status){
   try{
     const r = await apiCall('PUT','/requisiciones/'+itemId,{status});
-    if(r.error){ toast(r.error,'er'); return; }
+    if(r.error){ toast(r.error,'er',7000); reqRenderTable(); return; }
     toast('Estatus actualizado ✓','ok');
-    const it = reqItems.find(x=>x.id===itemId);
-    if(it) it.status = status;
-    reqRenderTable();      // refresca el color del estatus
+    await reqRenderTab();  // el servidor puede ajustar estatus visible / comprador (Reas. Parcial, bloqueo)
   }catch(e){ toast('Error: '+e,'er'); }
 }
 
@@ -7564,6 +7877,10 @@ let reqOCValidado = false;
 const REQ_OC_CAT = {electrico:'electrico', mecanico:'mecanico', componentes_mayores:'major', manufactura:''};
 function reqOpenOC(){
   if(!reqCurrentJob){ toast('Selecciona un Job','er'); return; }
+  if(reqCurrentTipo==='manufactura') return reqOpenOCManuf();
+  document.getElementById('btn-req-oc-val').style.display='';
+  document.getElementById('btn-req-oc-go').textContent='2. Continuar a Orden de Compra';
+  document.getElementById('req-oc-ayuda').innerHTML='Renglones <b>Solicitado</b> u <b>Homologado</b> con cantidad pendiente (pedido − reasignado − ya comprado). Selecciona los que vas a comprar y valida existencias: lo que haya en Stock no se puede comprar.';
   const filas = reqItems.filter(it=>REQ_REASIGNABLES.includes(it.status) && reqPendiente(it)>0);
   reqOCValidado = false;
   document.getElementById('btn-req-oc-go').disabled = true;
@@ -7584,7 +7901,32 @@ function reqOpenOC(){
   reqOCCuenta();
   setTimeout(()=>document.getElementById('req-oc-filtro').focus(), 50);
 }
-function reqOCInvalidar(){ reqOCValidado=false; document.getElementById('btn-req-oc-go').disabled=true; reqOCCuenta(); }
+function reqOCInvalidar(){
+  if(reqCurrentTipo==='manufactura'){ reqOCValidado = reqOCSeleccion().length>0; document.getElementById('btn-req-oc-go').disabled=!reqOCValidado; reqOCCuenta(); return; }
+  reqOCValidado=false; document.getElementById('btn-req-oc-go').disabled=true; reqOCCuenta(); }
+// Manufactura: solo piezas con Fabricación "Externa" en Solicitado; sin validación de Stock
+function reqOpenOCManuf(){
+  const filas = reqItems.filter(it=>it.fabricacion==='Externa' && it.status==='Solicitado' && reqPendiente(it)>0);
+  document.getElementById('req-oc-msg').innerHTML = '';
+  document.getElementById('req-oc-filtro').value = '';
+  document.getElementById('btn-req-oc-val').style.display='none';     // piezas por fabricar: no se buscan en Stock
+  document.getElementById('btn-req-oc-go').textContent='Continuar a Orden de Compra';
+  document.getElementById('req-oc-ayuda').innerHTML='Piezas con Fabricación <b>Externa</b> en estatus <b>Solicitado</b>. Selecciona las que vas a mandar fabricar y la cantidad; en el siguiente paso eliges el proveedor y los precios.';
+  const otras = reqItems.filter(it=>it.fabricacion!=='Externa' && it.status==='Solicitado').length;
+  document.getElementById('req-oc-list').innerHTML = filas.length ? `<table style="width:100%;border-collapse:collapse;font-size:12px">
+    <thead><tr style="color:var(--muted);font-size:10px;text-transform:uppercase"><th style="width:28px"><input type="checkbox" id="req-oc-todos" checked onchange="reqOCMarcarVisibles(this.checked)"></th>
+      <th style="text-align:left">ID pieza</th><th>Rev.</th><th style="text-align:left">Tipo</th><th style="text-align:left">Material</th><th style="text-align:left">Acabado</th><th style="text-align:right">Normal</th><th style="text-align:right">Mirror (espejo)</th></tr></thead><tbody>${
+    filas.map(it=>{ const p=reqPendiente(it); return `<tr id="req-oc-row-${esc(it.id)}" class="req-oc-row" data-search="${esc([it.part_number,it.description,it.material,it.acabado].join(' ').toLowerCase())}" style="border-bottom:1px solid var(--border)">
+      <td><input type="checkbox" class="req-oc-chk" data-id="${esc(it.id)}" checked onchange="reqOCInvalidar()"></td>
+      <td style="font-family:'DM Mono',monospace;color:var(--gold)">${esc(it.part_number)}</td><td style="text-align:center"><b>${esc(it.rev_plano||'')}</b></td>
+      <td>${esc(it.description||'')}</td><td>${esc(it.material||'')}</td><td>${esc(it.acabado||'')}</td>
+      ${[['qn','qty_normal','comprado_normal'],['qm','qty_mirror','comprado_mirror']].map(([c,k,kc])=>{ const v=Math.max(0,(+(it[k] ?? (k==='qty_normal'?it.quantity:0))||0)-(+it[kc]||0));
+        return `<td style="text-align:right"><input type="number" class="req-oc-${c}" data-id="${esc(it.id)}" min="0" value="${v}" style="width:64px;font-size:11px;padding:3px" onchange="reqOCInvalidar()"></td>`;}).join('')}</tr>`;}).join('')}</tbody></table>`
+    : `<div style="padding:24px;text-align:center;color:var(--muted)">No hay piezas con Fabricación <b>Externa</b> en estatus Solicitado.${otras?`<br><span style="font-size:11px">${otras} pieza(s) Solicitada(s) sin Fabricación Externa: cámbiala en la tabla para poder comprarlas.</span>`:''}</div>`;
+  document.getElementById('mo-req-oc').classList.add('on');
+  reqOCInvalidar();
+  setTimeout(()=>document.getElementById('req-oc-filtro').focus(), 50);
+}
 // Filtro: solo oculta renglones; lo marcado se conserva aunque quede oculto.
 function reqOCFiltrar(q){
   const t = (q||'').trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -7611,10 +7953,14 @@ function reqOCCuenta(){
     todos.checked = v.length>0 && v.every(c=>c.checked); }
 }
 function reqOCSeleccion(){
+  if(reqCurrentTipo==='manufactura') return [...document.querySelectorAll('.req-oc-chk:checked:not(:disabled)')].map(c=>{
+    const it = reqItems.find(x=>String(x.id)===c.dataset.id), sel = k=>document.querySelector(`.req-oc-${k}[data-id="${CSS.escape(c.dataset.id)}"]`);
+    const qn = Math.max(0, parseFloat(sel('qn')?.value)||0), qm = Math.max(0, parseFloat(sel('qm')?.value)||0);
+    return it && qn+qm>0 ? {it, qn, qm, q:qn+qm} : null; }).filter(Boolean);
   return [...document.querySelectorAll('.req-oc-chk:checked:not(:disabled)')].map(c=>{
     const it = reqItems.find(x=>String(x.id)===c.dataset.id);
     const inp = document.querySelector(`.req-oc-qty[data-id="${CSS.escape(c.dataset.id)}"]`);
-    const q = Math.min(parseFloat(inp.value)||0, reqPendiente(it));
+    const q = reqCurrentTipo==='manufactura' ? (parseFloat(inp.value)||0) : Math.min(parseFloat(inp.value)||0, reqPendiente(it));
     return it && q>0 ? {it, q} : null; }).filter(Boolean);
 }
 async function reqValidarOC(){
@@ -7654,7 +8000,13 @@ async function reqContinuarOC(){
   if(js && ![...js.options].some(o=>o.value===job)) js.insertAdjacentHTML('beforeend', `<option value="${esc(job)}">${esc(job)}</option>`);
   if(js) js.value = job;
   gpoJobTypeChange();
-  gpoItems = sel.map(({it,q},i)=>({line:i+1, cat_type:REQ_OC_CAT[tipo]||'', cat_code:'', brand:(it.brand||'').toUpperCase(),
+  gpoItems = tipo==='manufactura'
+    ? sel.flatMap(({it,qn,qm})=>[['Normal',qn,'NORMAL'],['Mirror',qm,'MIRROR (espejo)']].filter(([,q])=>q>0).map(([variante,q,etq])=>({
+        cat_type:'', cat_code:'', brand:'', part_number:it.part_number, variante,
+        description:[it.description, it.material, it.acabado].filter(Boolean).join(' · ') + ` · ${etq}` + (it.rev_plano?` · Plano rev ${it.rev_plano}`:''),
+        label_code:'', quantity:q, unit_price:0, total:0, job,
+        notes:`Fabricación externa según plano ${it.part_number} rev ${it.rev_plano||''} — ${etq}`, req_item_id:it.id}))).map((x,i)=>({line:i+1, ...x}))
+    : sel.map(({it,q},i)=>({line:i+1, cat_type:REQ_OC_CAT[tipo]||'', cat_code:'', brand:(it.brand||'').toUpperCase(),
     part_number:it.part_number, description:it.description||'', label_code:'', quantity:q, unit_price:0, total:0,
     job, notes:'', req_item_id:it.id}));
   gpoRenderItems();
@@ -9211,13 +9563,18 @@ async function gpoMonedaChange() {
   if(moneda === 'MXN') {
     fxRow.style.display = '';
     try {
-      const d = await fetch('/api/fx/lookup?date='+new Date().toISOString().slice(0,10)).then(r=>r.json());
+      const hoy = new Date().toISOString().slice(0,10);
+      const d = await fetch('/api/fx/lookup?date='+hoy).then(r=>r.json());
       if(d.rate) {
         gpoCurrentFX = d.rate;
-        document.getElementById('gpo-fx-val').textContent  = d.rate.toFixed(4);
-        document.getElementById('gpo-fx-date').textContent = `(${d.date||'último disponible'})`;
+        document.getElementById('gpo-fx-val').textContent  = Number(d.rate).toFixed(4);
+        document.getElementById('gpo-fx-date').textContent = `(${d.date||hoy})`;
+      } else {
+        gpoCurrentFX = null;
+        document.getElementById('gpo-fx-val').textContent  = 'No disponible';
+        document.getElementById('gpo-fx-date').textContent = '— no hay tipo de cambio registrado para hoy; actualízalo en Finanzas ▸ Tipo de Cambio';
       }
-    } catch(e) { document.getElementById('gpo-fx-val').textContent = 'No disponible'; }
+    } catch(e) { gpoCurrentFX = null; document.getElementById('gpo-fx-val').textContent = 'No disponible'; }
   } else {
     fxRow.style.display = 'none';
     gpoCurrentFX = null;
@@ -9442,6 +9799,7 @@ async function saveGPO() {
       return;
     }
     if(d.error){toast(d.error,'er');return;}
+    if(d.advertencia) setTimeout(()=>alert('⚠ '+d.advertencia), 400);
     if(gpoItems.some(i=>i.req_item_id) && typeof reqRenderTab==='function' && reqCurrentJob) setTimeout(()=>reqRenderTab(),300);
     closeMo('mo-gpo');
     toast(`PO emitida: ${d.po_number} · ${gpoItems.length} items ✓`,'ok',6000);
@@ -9560,6 +9918,7 @@ async function pcSearch(q) {
   });
 }
 
+let pcConfigEncontrada = false;
 async function pcSelectPTSV(item) {
   document.getElementById('pc-ptsv-results').style.display='none';
   document.getElementById('pc-ptsv-search').value = item.label;
@@ -9571,7 +9930,13 @@ async function pcSelectPTSV(item) {
   let existingConfig = null;
   try {
     const d = await fetch(`/api/projconfig?q=${encodeURIComponent(item.label)}`).then(r=>r.json());
-    existingConfig = (d.records||[]).find(r=>r.ptsv===item.label);
+    // Comparación tolerante: sin distinguir mayúsculas, guiones ni espacios ("PT0067" = "PT-0067").
+    // Antes se exigía igualdad exacta y una configuración guardada con otro formato no se cargaba
+    // (el Job aparecía en ceros aunque los datos existieran). Si hay varias, la más reciente.
+    const _normPT = v => String(v||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+    existingConfig = (d.records||[]).filter(r=>_normPT(r.ptsv)===_normPT(item.label))
+      .sort((a,b)=>String(b.updated_at||'').localeCompare(String(a.updated_at||'')))[0] || null;
+    pcConfigEncontrada = !!existingConfig;
     if(existingConfig) (existingConfig.jobs||[]).forEach(j => { savedRows[j.job_number] = j; });
   } catch(e){}
 
@@ -9591,8 +9956,16 @@ async function pcSelectPTSV(item) {
   });
 
   pcJobRows = jobDetails;
+  await Promise.all([pcCargarCostos(), pcCargarHorasConsumidas(jobDetails.map(j=>j.job_number))]);
   pcRenderJobs(jobDetails, savedRows);
   document.getElementById('pc-empty').style.display='none';
+  // Aviso cuando el PT no tiene configuración guardada (para no confundir "sin datos" con "en cero")
+  const _av = document.getElementById('pc-sin-config');
+  if(_av) _av.remove();
+  if(!pcConfigEncontrada){
+    document.getElementById('pc-jobs-body')?.insertAdjacentHTML('beforebegin', `<div id="pc-sin-config" style="margin:0 0 12px;padding:10px 14px;border:1px solid var(--amber);background:rgba(245,158,11,.08);border-radius:8px;font-size:12px;color:#b45309">
+      ⚠ <b>${esc(item.label)}</b> no tiene configuración guardada: los estimados aparecen vacíos. Si esperabas ver datos, la configuración pudo guardarse con otro PT/SV.</div>`);
+  }
   document.getElementById('pc-table-wrap').style.display='';
   document.getElementById('btn-pc-save').disabled=false;
 
@@ -9610,6 +9983,46 @@ async function pcSelectPTSV(item) {
   pcSwitchTab('presupuesto');
 
   await pcLoadSavedList();
+}
+
+// Mano de obra del board de configuración: horas × costo promedio del perfil (USD/h)
+const PC_MO = [
+  ['diseno_mecanico','Diseño mecánico','Diseñador mecánico'],
+  ['soldadura','Soldadura','Soldador'],
+  ['manufactura','Manufactura','Operador de CNC'],
+  ['pintura','Pintura','Pintor'],
+  ['diseno_electrico','Diseño eléctrico','Diseñador eléctrico'],
+  ['plc','Programación de PLC','Programador de PLC'],
+  ['robots','Programación de robots','Programador de robots'],
+  ['simulacion','Simulación','Ingeniero de simulación'],
+  ['ensamble','Ensamble (electromecánico)','Mecánico de ensamble'],
+];
+let pcHorasCons = {}, pcHorasFecha = '';   // horas consumidas (Work Hours) por Job y línea
+async function pcCargarHorasConsumidas(jobs){
+  pcHorasCons = {}; pcHorasFecha = '';
+  if(!jobs.length) return;
+  try{ const d = await apiCall('GET','/projconfig/horas-consumidas?jobs='+encodeURIComponent(jobs.join(',')));
+       if(!d.error){ pcHorasCons = d.jobs||{}; pcHorasFecha = d.calculado||''; } }catch(e){}
+}
+const PC_MAT = [['est_material_mecanico','Material mecánico'],['est_material_electrico','Material eléctrico'],['est_major_items','Major items'],['est_servicios_externos','Servicios externos']];
+let pcCostosPerfil = {};   // {perfil: promedio USD/h}
+async function pcCargarCostos(){
+  try{ const d = await apiCall('GET','/costos-perfil');
+       pcCostosPerfil = Object.fromEntries((d.perfiles||[]).filter(p=>p.promedio!=null).map(p=>[p.perfil,p.promedio])); }
+  catch(e){ pcCostosPerfil = {}; }
+}
+// Suma de estimados de una tarjeta: materiales + (horas × costo) de cada línea + monto anterior sin horas
+function pcEstimados(row){
+  const f = field => parseFloat(row?.querySelector(`[data-field="${field}"]`)?.value)||0;
+  const mat = PC_MAT.reduce((a,[k])=>a+f(k),0);
+  const lineas = Object.fromEntries(PC_MO.map(([k])=>[k, f('mo_horas_'+k)*f('mo_costo_'+k)]));
+  const mo = Object.values(lineas).reduce((a,b)=>a+b,0) + f('est_mo_anterior');
+  return {mat, mo, lineas, total: mat+mo, anterior: f('est_mo_anterior')};
+}
+function pcActualizarCostos(idx){
+  const row=document.querySelector(`#pc-row-${idx}`); if(!row) return;
+  PC_MO.forEach(([k,,perfil])=>{ const inp=row.querySelector(`[data-field="mo_costo_${k}"]`); if(inp && pcCostosPerfil[perfil]!=null) inp.value=pcCostosPerfil[perfil]; });
+  pcCalc(idx); toast('Costos promedio actualizados con la tabla de perfiles','ok');
 }
 
 function pcRenderJobs(jobDetails, savedRows) {
@@ -9675,17 +10088,40 @@ function pcRenderJobs(jobDetails, savedRows) {
       </div>
 
       <div style="border-top:1px dashed var(--border);padding-top:12px">
-        <div style="${lbl};margin-bottom:8px">Estimados por Área</div>
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
-          <div><div style="font-size:10px;color:var(--muted);margin-bottom:3px">Ing. Mecánica</div><input class="pc-blue-field" data-field="est_ing_mecanica" type="number" min="0" step="0.01" value="${est.ing_mecanica}" placeholder="$0.00" oninput="pcCalc(${idx})" style="${estInp}"></div>
-          <div><div style="font-size:10px;color:var(--muted);margin-bottom:3px">Ing. Eléctrica</div><input class="pc-blue-field" data-field="est_ing_electrica" type="number" min="0" step="0.01" value="${est.ing_electrica}" placeholder="$0.00" oninput="pcCalc(${idx})" style="${estInp}"></div>
-          <div><div style="font-size:10px;color:var(--muted);margin-bottom:3px">Major Items</div><input class="pc-blue-field" data-field="est_major_items" type="number" min="0" step="0.01" value="${est.major_items}" placeholder="$0.00" oninput="pcCalc(${idx})" style="${estInp}"></div>
-          <div><div style="font-size:10px;color:var(--muted);margin-bottom:3px">Material Mecánico</div><input class="pc-blue-field" data-field="est_material_mecanico" type="number" min="0" step="0.01" value="${est.material_mecanico}" placeholder="$0.00" oninput="pcCalc(${idx})" style="${estInp}"></div>
-          <div><div style="font-size:10px;color:var(--muted);margin-bottom:3px">Material Eléctrico</div><input class="pc-blue-field" data-field="est_material_electrico" type="number" min="0" step="0.01" value="${est.material_electrico}" placeholder="$0.00" oninput="pcCalc(${idx})" style="${estInp}"></div>
-          <div><div style="font-size:10px;color:var(--muted);margin-bottom:3px">Servicios Externos</div><input class="pc-blue-field" data-field="est_servicios_externos" type="number" min="0" step="0.01" value="${est.servicios_externos}" placeholder="$0.00" oninput="pcCalc(${idx})" style="${estInp}"></div>
-          <div><div style="font-size:10px;color:var(--muted);margin-bottom:3px">Ensamble</div><input class="pc-blue-field" data-field="est_ensamble" type="number" min="0" step="0.01" value="${est.ensamble}" placeholder="$0.00" oninput="pcCalc(${idx})" style="${estInp}"></div>
+        <div style="display:flex;align-items:center;margin-bottom:8px"><div style="${lbl};margin:0">Estimados</div>
+          <button type="button" class="btn-reload" onclick="pcActualizarCostos(${idx})" title="Toma el costo promedio vigente de Proyectos ▸ Costo por Perfil" style="margin-left:auto;font-size:10px;padding:3px 10px">↻ Actualizar costos promedio</button></div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px">
+          ${PC_MAT.map(([k,n])=>`<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px">${n}</div><input class="pc-blue-field" data-field="${k}" type="number" min="0" step="0.01" value="${saved[k] ?? (k==='est_material_mecanico'?(saved.est_materiales??''):'')}" placeholder="$0.00" oninput="pcCalc(${idx})" style="${estInp}"></div>`).join('')}
         </div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">
+            <th style="text-align:left;padding:4px 6px">Mano de obra</th><th style="text-align:right;padding:4px 6px;width:110px">Horas</th>
+            <th style="text-align:right;padding:4px 6px;width:130px">Costo promedio USD/h</th><th style="text-align:right;padding:4px 6px;width:130px">Importe</th>
+            <th style="text-align:right;padding:4px 8px;width:150px;background:#dcfce7;color:#15803d" title="Horas registradas en Work Hours para este Job hasta ${esc(String(pcHorasFecha).replace('T',' '))}">Horas consumidas</th>
+            <th style="text-align:right;padding:4px 8px;width:130px;background:#dcfce7;color:#15803d" title="Horas consumidas × tarifa de cada trabajador (Hourly Rate), igual que el Job Report">Costo real</th></tr></thead>
+          <tbody>${PC_MO.map(([k,n,perfil])=>{ const c = saved['mo_costo_'+k] ?? pcCostosPerfil[perfil] ?? ''; return `<tr style="border-top:1px solid var(--border)">
+            <td style="padding:4px 6px">${n} <span style="font-size:10px;color:var(--muted)">· ${perfil}</span></td>
+            <td style="padding:3px 6px"><input class="pc-blue-field" data-field="mo_horas_${k}" type="number" min="0" step="0.5" value="${saved['mo_horas_'+k] ?? ''}" placeholder="0" oninput="pcCalc(${idx})" style="${estInp}"></td>
+            <td style="padding:3px 6px"><input class="pc-blue-field" data-field="mo_costo_${k}" type="number" min="0" step="0.01" value="${c}" placeholder="${pcCostosPerfil[perfil]==null?'sin dato':'0.00'}" oninput="pcCalc(${idx})" style="${estInp}" title="Promedio vigente: ${pcCostosPerfil[perfil]!=null?'$'+pcCostosPerfil[perfil]:'sin dato'}"></td>
+            <td id="pc-mo-${k}-${idx}" style="text-align:right;padding:4px 6px;font-family:'DM Mono',monospace">—</td>
+            <td id="pc-hc-${k}-${idx}" data-hc="${(pcHorasCons[j.job_number]?.lineas||{})[k]||0}" style="text-align:right;padding:4px 8px;background:rgba(220,252,231,.55);font-family:'DM Mono',monospace;font-weight:700">—</td>
+            <td id="pc-cr-${k}-${idx}" data-cr="${(pcHorasCons[j.job_number]?.costo||{})[k]||0}" style="text-align:right;padding:4px 8px;background:rgba(220,252,231,.55);font-family:'DM Mono',monospace;font-weight:700">—</td></tr>`;}).join('')}
+          ${(()=>{ const ant = saved.est_mo_anterior ?? ((saved.mo_horas_diseno_mecanico==null) ? ((+saved.est_ing_mecanica||0)+(+saved.est_ing_electrica||0)+(+saved.est_ensamble||0)) : 0);
+            return ant ? `<tr style="border-top:1px solid var(--border);background:rgba(245,158,11,.10)"><td style="padding:6px;color:#b45309;font-weight:700" title="Montos de mano de obra capturados antes de este formato (sin horas). Cuando captures las horas, ponlo en 0.">Mano de obra registrada antes (monto sin desglose por horas)</td><td></td><td></td>
+              <td style="padding:3px 6px"><input class="pc-blue-field" data-field="est_mo_anterior" type="number" min="0" step="0.01" value="${ant}" oninput="pcCalc(${idx})" style="${estInp}"></td><td></td><td></td></tr>` : ''; })()}
+          ${(()=>{ const o=pcHorasCons[j.job_number]?.otras||{}; const t=Object.values(o).reduce((a,b)=>a+b,0);
+            const hc=pcHorasCons[j.job_number]||{}, sinT=hc.horas_sin_tarifa||0;
+            return t ? `<tr style="border-top:1px solid var(--border)"><td style="padding:4px 6px;color:var(--muted)" title="${esc(Object.entries(o).map(([d,h])=>d+': '+h+' h').join(' · '))}">Otras horas (trabajador sin tarifa o sin perfil)</td><td></td><td></td><td></td>
+              <td style="text-align:right;padding:4px 8px;background:rgba(220,252,231,.55);font-family:'DM Mono',monospace;color:var(--muted)">${t.toLocaleString('en-US',{maximumFractionDigits:2})}</td>
+              <td style="text-align:right;padding:4px 8px;background:rgba(220,252,231,.55);font-family:'DM Mono',monospace;color:var(--muted)" title="${sinT?sinT+' h de trabajadores sin tarifa: su costo no se puede calcular':''}">$${(hc.otras_costo||0).toLocaleString('en-US',{minimumFractionDigits:2})}${sinT?' <span style="color:var(--amber)">⚠</span>':''}</td></tr>` : ''; })()}
+          ${(()=>{ const hc=pcHorasCons[j.job_number]; return hc ? `<tr style="border-top:2px solid var(--border);font-weight:700"><td style="padding:5px 6px" colspan="4">Total consumido</td>
+              <td style="text-align:right;padding:5px 8px;background:#dcfce7;font-family:'DM Mono',monospace">${(hc.total||0).toLocaleString('en-US',{maximumFractionDigits:2})} h</td>
+              <td id="pc-crtot-${idx}" data-cr="${hc.costo_total||0}" style="text-align:right;padding:5px 8px;background:#dcfce7;font-family:'DM Mono',monospace;color:#15803d">$${(hc.costo_total||0).toLocaleString('en-US',{minimumFractionDigits:2})}</td></tr>` : ''; })()}
+          </tbody>
+        </table>
         <div style="display:flex;justify-content:flex-end;gap:28px;margin-top:10px">
+          <div style="text-align:right"><div style="font-size:9px;color:var(--muted);text-transform:uppercase">Materiales</div><div id="pc-summat-${idx}" style="font-family:'DM Mono',monospace;font-size:12px">—</div></div>
+          <div style="text-align:right"><div style="font-size:9px;color:var(--muted);text-transform:uppercase">Mano de obra</div><div id="pc-summo-${idx}" style="font-family:'DM Mono',monospace;font-size:12px">—</div></div>
           <div style="text-align:right"><div style="font-size:9px;color:var(--muted);text-transform:uppercase">Suma</div>
             <div id="pc-suma-${idx}" style="font-family:'DM Mono',monospace;font-weight:700;font-size:13px">—</div></div>
           <div style="text-align:right"><div style="font-size:9px;color:var(--muted);text-transform:uppercase">Delta vs Internal Target</div>
@@ -9724,7 +10160,8 @@ function pcCalc(idx) {
   const revenue   = parseFloat(pcJobRows[idx]?.revenue)||0;
   const markupPct = f('markup_pct');
   const ahorroPct = f('ahorro_pct');
-  const estSum    = f('est_ing_mecanica') + f('est_ing_electrica') + f('est_major_items') + f('est_material_mecanico') + f('est_material_electrico') + f('est_servicios_externos') + f('est_ensamble');
+  const _est = pcEstimados(row);
+  const estSum    = _est.total;
   const fmt = v => '$'+Number(v).toLocaleString('en-US',{minimumFractionDigits:2});
 
   const montoMarkup = revenue - (revenue / (1 + markupPct/100));
@@ -9739,6 +10176,23 @@ function pcCalc(idx) {
   const sumaEl = document.getElementById(`pc-suma-${idx}`);
   const deltaEl = document.getElementById(`pc-delta-${idx}`);
   if(sumaEl) sumaEl.textContent = fmt(estSum);
+  PC_MO.forEach(([k])=>{ const el=document.getElementById(`pc-mo-${k}-${idx}`); if(el) el.textContent = _est.lineas[k] ? fmt(_est.lineas[k]) : '—';
+    const hc=document.getElementById(`pc-hc-${k}-${idx}`); if(!hc) return;
+    const cons=parseFloat(hc.dataset.hc)||0, est=parseFloat(row.querySelector(`[data-field="mo_horas_${k}"]`)?.value)||0;
+    const pct = est ? Math.round(cons/est*100) : null;
+    hc.innerHTML = (cons ? cons.toLocaleString('en-US',{maximumFractionDigits:2}) : '0')
+      + (pct!=null ? ` <span style="font-size:10px;font-weight:600;color:${pct>100?'var(--red)':(pct>=85?'var(--amber)':'#15803d')}">${pct}%</span>` : (cons?' <span style="font-size:10px;color:var(--red)" title="Hay horas consumidas sin horas estimadas">sin est.</span>':''));
+    hc.title = est ? `${cons} de ${est} h estimadas` : '';
+    const cr=document.getElementById(`pc-cr-${k}-${idx}`); if(cr){ const real=parseFloat(cr.dataset.cr)||0, imp=_est.lineas[k]||0;
+      cr.innerHTML = fmt(real) + (imp ? ` <span style="font-size:10px;font-weight:600;color:${real>imp?'var(--red)':(real>=imp*0.85?'var(--amber)':'#15803d')}">${Math.round(real/imp*100)}%</span>` : '');
+      cr.title = imp ? `${fmt(real)} de ${fmt(imp)} estimados` : ''; } });
+  const sm=document.getElementById(`pc-summat-${idx}`), so=document.getElementById(`pc-summo-${idx}`);
+  if(sm) sm.textContent = fmt(_est.mat); if(so) so.textContent = fmt(_est.mo);
+  // costo real total vs mano de obra estimada (incluye el monto anterior de proyectos pasados)
+  const ct=document.getElementById(`pc-crtot-${idx}`);
+  if(ct){ const real=parseFloat(ct.dataset.cr)||0, est=_est.mo;
+    ct.innerHTML = fmt(real) + (est ? ` <span style="font-size:10px;font-weight:600;color:${real>est?'var(--red)':(real>=est*0.85?'var(--amber)':'#15803d')}">${Math.round(real/est*100)}%</span>` : '');
+    ct.title = est ? `${fmt(real)} de ${fmt(est)} de mano de obra estimada` : ''; }
   if(deltaEl) {
     deltaEl.textContent = fmt(delta);
     deltaEl.style.color = estSum===0 ? 'var(--muted)' : deltaMatch ? 'var(--green)' : (delta<0 ? 'var(--red)' : 'var(--amber)');
@@ -9759,7 +10213,7 @@ function pcUpdateTotals() {
     const montoMarkup = revenue - (revenue / (1 + markupPct/100));
     const presOperativo = revenue - montoMarkup;
     const presDisponible = presOperativo - (presOperativo * ahorroPct / 100);
-    const estSum = f('est_ing_mecanica') + f('est_ing_electrica') + f('est_major_items') + f('est_material_mecanico') + f('est_material_electrico') + f('est_servicios_externos') + f('est_ensamble');
+    const estSum = pcEstimados(row).total;
     totRev += revenue; totA += presOperativo; totB += presDisponible; totSuma += estSum;
   });
   const fmt = v => '$'+Number(v).toLocaleString('en-US',{minimumFractionDigits:2});
@@ -9775,38 +10229,18 @@ function pcRenderResumenAreas() {
   const tb = document.getElementById('pc-resumen-areas-tb');
   if(!tb) return;
   const fmt = v => '$'+Number(v).toLocaleString('en-US',{minimumFractionDigits:2});
-  const cols = ['est_material_mecanico','est_material_electrico','est_major_items','est_servicios_externos','est_ing_mecanica','est_ing_electrica','est_ensamble'];
-  const totals = {est_material_mecanico:0, est_material_electrico:0, est_major_items:0, est_servicios_externos:0, est_ing_mecanica:0, est_ing_electrica:0, est_ensamble:0};
-
-  const rowsHtml = pcJobRows.map((j,idx) => {
-    const row = document.querySelector(`#pc-row-${idx}`);
+  const cols = [...PC_MAT.map(([k,n])=>[k,n]), ...PC_MO.map(([k,n])=>['mo_'+k,n])];
+  // Mano de obra de proyectos anteriores (sin horas): columna propia si algún Job la tiene
+  if(pcJobRows.some((_,idx)=>pcEstimados(document.querySelector(`#pc-row-${idx}`)).anterior>0)) cols.push(['est_mo_anterior','M.O. anterior (sin horas)']);
+  const tot = Object.fromEntries(cols.map(([k])=>[k,0]));
+  const rows = pcJobRows.map((j,idx)=>{ const row=document.querySelector(`#pc-row-${idx}`); const E=pcEstimados(row);
     const f = field => parseFloat(row?.querySelector(`[data-field="${field}"]`)?.value)||0;
-    const vals = {};
-    cols.forEach(c => { vals[c] = f(c); totals[c] += vals[c]; });
-    return `<tr>
-      <td style="font-weight:600">${esc(j.job_number)}</td>
-      <td style="text-align:right;font-family:'DM Mono',monospace">${fmt(vals.est_material_mecanico)}</td>
-      <td style="text-align:right;font-family:'DM Mono',monospace">${fmt(vals.est_material_electrico)}</td>
-      <td style="text-align:right;font-family:'DM Mono',monospace">${fmt(vals.est_major_items)}</td>
-      <td style="text-align:right;font-family:'DM Mono',monospace">${fmt(vals.est_servicios_externos)}</td>
-      <td style="text-align:right;font-family:'DM Mono',monospace">${fmt(vals.est_ing_mecanica)}</td>
-      <td style="text-align:right;font-family:'DM Mono',monospace">${fmt(vals.est_ing_electrica)}</td>
-      <td style="text-align:right;font-family:'DM Mono',monospace">${fmt(vals.est_ensamble)}</td>
-    </tr>`;
-  }).join('');
-
-  const totalRow = `<tr style="background:rgba(0,0,0,.055);font-weight:700">
-    <td>Presupuesto Proyecto</td>
-    <td style="text-align:right;font-family:'DM Mono',monospace;color:var(--gold)">${fmt(totals.est_material_mecanico)}</td>
-    <td style="text-align:right;font-family:'DM Mono',monospace;color:var(--gold)">${fmt(totals.est_material_electrico)}</td>
-    <td style="text-align:right;font-family:'DM Mono',monospace;color:var(--gold)">${fmt(totals.est_major_items)}</td>
-    <td style="text-align:right;font-family:'DM Mono',monospace;color:var(--gold)">${fmt(totals.est_servicios_externos)}</td>
-    <td style="text-align:right;font-family:'DM Mono',monospace;color:var(--gold)">${fmt(totals.est_ing_mecanica)}</td>
-    <td style="text-align:right;font-family:'DM Mono',monospace;color:var(--gold)">${fmt(totals.est_ing_electrica)}</td>
-    <td style="text-align:right;font-family:'DM Mono',monospace;color:var(--gold)">${fmt(totals.est_ensamble)}</td>
-  </tr>`;
-
-  tb.innerHTML = rowsHtml + totalRow;
+    const v = Object.fromEntries(cols.map(([k])=>[k, k.startsWith('mo_') ? E.lineas[k.slice(3)] : f(k)]));
+    cols.forEach(([k])=>tot[k]+=v[k]);
+    return `<tr><td style="font-weight:600">${esc(j.job_number)}</td>${cols.map(([k])=>`<td style="text-align:right;font-family:'DM Mono',monospace">${fmt(v[k])}</td>`).join('')}</tr>`; }).join('');
+  const thead = tb.closest('table')?.querySelector('thead');
+  if(thead) thead.innerHTML = `<tr><th>Job</th>${cols.map(([,n])=>`<th style="text-align:right">${n}</th>`).join('')}</tr>`;
+  tb.innerHTML = rows + `<tr style="background:rgba(0,0,0,.055);font-weight:700"><td>Presupuesto Proyecto</td>${cols.map(([k])=>`<td style="text-align:right;font-family:'DM Mono',monospace;color:var(--gold)">${fmt(tot[k])}</td>`).join('')}</tr>`;
 }
 
 async function pcSave() {
@@ -9822,18 +10256,24 @@ async function pcSave() {
     const montoMarkup = revenue - (revenue / (1 + markupPct/100));
     const presOperativo  = revenue - montoMarkup;
     const presDisponible = presOperativo - (presOperativo * ahorroPct / 100);
-    const estIngMec  = fn('est_ing_mecanica');
-    const estIngElec = fn('est_ing_electrica');
+    const E          = pcEstimados(row);
+    const L          = E.lineas;
     const estMajor   = fn('est_major_items');
     const estMatMec  = fn('est_material_mecanico');
     const estMatElec = fn('est_material_electrico');
     const estServExt = fn('est_servicios_externos');
-    const estEns     = fn('est_ensamble');
-    const sumaEst    = estIngMec + estIngElec + estMajor + estMatMec + estMatElec + estServExt + estEns;
+    // Campos anteriores, derivados de las líneas de mano de obra (los usan reportes existentes)
+    const r2 = v => Math.round(v*100)/100;
+    const estIngMec  = r2(L.diseno_mecanico + L.simulacion);
+    const estIngElec = r2(L.diseno_electrico + L.plc + L.robots);
+    const estEns     = r2(L.ensamble + L.soldadura + L.manufactura + L.pintura + E.anterior);
+    const sumaEst    = r2(E.total);
     // TARGET DE COMPRAS = Major Items + Material Eléctrico + Material Mecánico + Servicios Externos
-    // TARGET MANO DE OBRA = Ing. Mecánica + Ing. Eléctrica + Ensamble
+    // TARGET MANO DE OBRA = Σ (horas × costo promedio) de las 7 líneas + monto anterior sin horas
     const targetCompras = estMajor + estMatElec + estMatMec + estServExt;
-    const targetMO       = estIngMec + estIngElec + estEns;
+    const targetMO       = r2(E.mo);
+    const mo = {};
+    PC_MO.forEach(([k])=>{ mo['mo_horas_'+k]=fn('mo_horas_'+k); mo['mo_costo_'+k]=fn('mo_costo_'+k); mo['est_mo_'+k]=Math.round(L[k]*100)/100; });
     return {
       job_number:             j.job_number,
       customer:               j.customer||'',
@@ -9854,6 +10294,8 @@ async function pcSave() {
       est_material_electrico: estMatElec,
       est_servicios_externos: estServExt,
       est_ensamble:           estEns,
+      ...mo,
+      est_mo_anterior:        E.anterior,
       suma_estimados:         sumaEst,
       delta_vs_disponible:    presDisponible - sumaEst,
       // Campos heredados — se conservan para que Job Cost Report siga funcionando
@@ -10180,7 +10622,7 @@ async function imProcesar() {
     if(d.error){toast(d.error,'er');return;}
     closeMo('mo-ing-manual');
     toast(`✓ Ingreso procesado — ${d.apartados_created} item(s) en Apartados`,'ok',5000);
-    await loadIngreso();
+    await Promise.all([loadIngreso(), loadApartados()]);
   } catch(e){toast('Error: '+e.message,'er');}
   finally{btn.disabled=false;btn.textContent='✅ Procesar Ingreso';}
 }
@@ -10309,6 +10751,7 @@ async function ipoProcesar() {
       unit_cost:          parseFloat(it.unit_price||0),
       job:                it.job||'',
       notes:              '',
+      variante:           it.variante||'',
     };
   }).filter(it=>it.quantity_delivered>0);
   if(!items.length){ toast('Ingresa al menos una cantidad > 0','er'); return; }
@@ -10321,8 +10764,8 @@ async function ipoProcesar() {
     }).then(r=>r.json());
     if(d.error){toast(d.error,'er');return;}
     closeMo('mo-ing-po');
-    toast(`✓ Ingreso procesado — ${d.apartados_created} item(s) en Apartados`,'ok',5000);
-    await loadIngreso();
+    toast(`✓ Ingreso procesado — ${d.apartados_created} item(s) en Apartados${d.manufactura_ingresadas?` · ${d.manufactura_ingresadas} pieza(s) a Piezas de Manufactura`:''}`,'ok',5000);
+    await Promise.all([loadIngreso(), loadApartados(), (typeof loadManufStock==='function' ? loadManufStock() : null)]);
   } catch(e){toast('Error: '+e.message,'er');}
   finally{btn.disabled=false;btn.textContent='✅ Procesar Ingreso';}
 }
@@ -10333,7 +10776,7 @@ async function deleteIngreso(id) {
     const d = await fetch(`/api/ingreso/${id}`,{method:'DELETE'}).then(r=>r.json());
     if(d.error){toast(d.error,'er');return;}
     toast('Ingreso eliminado','ok');
-    await loadIngreso();
+    await Promise.all([loadIngreso(), loadApartados()]);
   } catch(e){toast('Error: '+e.message,'er');}
 }
 
@@ -10602,10 +11045,59 @@ async function salidaOpenModal() {
   sel.innerHTML = '<option value="">— Seleccionar Job —</option>'
     + '<option value="SHOPFLOOR">Shopfloor</option>'
     + (jobs||[]).map(j=>`<option value="${esc(j.job_number)}">${esc(j.job_number)} — ${esc(j.customer||'')}</option>`).join('');
+  salidaTab('compra');
   document.getElementById('mo-salida').classList.add('on');
 }
 
+// ── Pestañas del modal de salida: Compra (Apartados) / Manufactura (Piezas de Manufactura)
+let salidaTabActual = 'compra', salidaMf = [];
+function salidaTab(t){
+  salidaTabActual = t;
+  document.getElementById('sal-tab-compra').style.display = t==='compra' ? '' : 'none';
+  document.getElementById('sal-tab-manuf').style.display  = t==='manuf' ? '' : 'none';
+  document.getElementById('btn-sal-save').style.display   = t==='compra' ? '' : 'none';
+  [['compra','sal-tab-btn-compra'],['manuf','sal-tab-btn-manuf']].forEach(([k,id])=>{ const b=document.getElementById(id);
+    b.style.borderColor = k===t ? 'var(--red)' : ''; b.style.color = k===t ? 'var(--red)' : ''; b.style.fontWeight = k===t ? '700' : ''; });
+  if(t==='manuf') salidaCargarManuf();
+}
+async function salidaCargarManuf(){
+  const job = document.getElementById('sal-job').value;
+  const vacio = document.getElementById('sal-mf-empty'), cont = document.getElementById('sal-mf-content');
+  if(!job){ vacio.textContent='Selecciona un Job para ver las piezas de manufactura disponibles'; vacio.style.display=''; cont.style.display='none'; return; }
+  const d = await apiCall('GET','/manuf-stock?job='+encodeURIComponent(job));
+  if(d.error){ vacio.textContent=d.error; vacio.style.display=''; cont.style.display='none'; return; }
+  salidaMf = (d.records||[]).filter(r=>(r.disponible_normal||0)+(r.disponible_mirror||0)>0);
+  if(!salidaMf.length){ vacio.textContent=`No hay piezas de manufactura disponibles para el Job ${job}`; vacio.style.display=''; cont.style.display='none'; return; }
+  vacio.style.display='none'; cont.style.display='';
+  document.getElementById('sal-mf-tb').innerHTML = salidaMf.map((r,i)=>`<tr>
+    <td style="font-family:'DM Mono',monospace;color:var(--gold)">${esc(r.part_id)}</td><td>${esc(r.tipo||'')}</td><td>${esc(r.material||'')}</td>
+    <td style="text-align:right;font-weight:700">${r.disponible_normal}</td><td style="text-align:right;font-weight:700">${r.disponible_mirror}</td>
+    <td style="text-align:right"><input type="number" id="sal-mf-n-${i}" min="0" max="${r.disponible_normal}" value="0" style="width:60px;text-align:right;padding:3px" ${r.disponible_normal>0?'':'disabled'}></td>
+    <td style="text-align:right"><input type="number" id="sal-mf-m-${i}" min="0" max="${r.disponible_mirror}" value="0" style="width:60px;text-align:right;padding:3px" ${r.disponible_mirror>0?'':'disabled'}></td></tr>`).join('');
+}
+async function salidaGuardarManuf(){
+  const job = document.getElementById('sal-job').value;
+  const items = salidaMf.map((r,i)=>({origen:'manufactura', part_number:r.part_id,
+    qty_normal:parseFloat(document.getElementById('sal-mf-n-'+i)?.value)||0, qty_mirror:parseFloat(document.getElementById('sal-mf-m-'+i)?.value)||0}))
+    .filter(x=>x.qty_normal+x.qty_mirror>0);
+  if(!job || !items.length){ toast('Indica cuántas piezas salen','er'); return; }
+  const bad = items.find((x,_)=>{ const r=salidaMf.find(y=>y.part_id===x.part_number); return x.qty_normal>r.disponible_normal || x.qty_mirror>r.disponible_mirror; });
+  if(bad){ toast(`${bad.part_number}: la cantidad supera lo disponible`,'er'); return; }
+  const btn=document.getElementById('btn-sal-mf-save'); btn.disabled=true; btn.textContent='Registrando…';
+  try{
+    const d = await fetch('/api/salida',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({job, solicitante:USER_PERMS?.user||'', items})}).then(r=>r.json());
+    if(d.error){ toast(d.error,'er',6000); return; }
+    closeMo('mo-salida');
+    toast(`Salida ${d.record?.id||''} registrada · ${items.length} pieza(s) de manufactura (pendiente de surtir)`,'ok',5000);
+    if(typeof loadSalida==='function') loadSalida();
+    if(typeof loadManufStock==='function') loadManufStock();
+  }catch(e){ toast('Error: '+e,'er'); }
+  finally{ btn.disabled=false; btn.textContent='Registrar salida de piezas'; }
+}
+
 async function salidaCargarApartados() {
+  if(salidaTabActual==='manuf') salidaCargarManuf();
   const job = document.getElementById('sal-job').value;
   if(!job){
     document.getElementById('sal-apt-content').style.display='none';
@@ -13345,7 +13837,7 @@ async function saeProcesar() {
     if(d.error){ toast(d.error,'er'); return; }
     closeMo('mo-ing-sae');
     toast(`✓ Ingreso SAE ${d.record?.id||''} procesado — ${ingItems.length} item(s) en Apartados`, 'ok', 5000);
-    await loadIngreso();
+    await Promise.all([loadIngreso(), loadApartados()]);
   } catch(e){ toast('Error: '+e.message,'er'); }
   finally{ btn.disabled=false; btn.textContent='✅ Procesar Ingreso'; }
 }

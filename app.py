@@ -1305,6 +1305,138 @@ def api_import_jobs_excel():
 # ══════════════════════════════════════════════════════════════════
 #  ROUTES — HOURLY RATE  (/api/rates/*)
 # ══════════════════════════════════════════════════════════════════
+# Perfiles de trabajo → departamento en Hourly Rate (tarifas en USD/h por trabajador)
+# Cada perfil acepta uno o varios nombres de departamento (el primero es el que se muestra).
+PERFILES_COSTO = (
+    ("Pintor",                  ("MANUFACTURING - PAINT",)),
+    ("Soldador",                ("MANUFACTURING - WELD",)),
+    ("Mecánico de ensamble",    ("ASSEMBLY",)),
+    ("Diseñador mecánico",      ("MECHANIC ENG",)),
+    ("Diseñador eléctrico",     ("ELECTRIC ENG - DESIGN",)),
+    ("Programador de PLC",      ("ELECTRIC ENG - PLC",)),
+    ("Operador de CNC",         ("MANUFACTURING - CNC",)),
+    ("Programador de robots",   ("ELECTRIC ENG - ROBOTICS", "ELECTRIC ENG - ROBOTS", "ROBOTICS", "ROBOTS")),
+    ("Ingeniero de simulación", ("MECHANIC ENG - SIMULATION", "SIMULATION", "SIMULACION", "SIMULACIÓN")),
+)
+# Líneas de mano de obra del board de Configurar Proyecto → perfil
+LINEAS_MO = (
+    ("diseno_mecanico", "Diseño mecánico", "Diseñador mecánico"),
+    ("soldadura", "Soldadura", "Soldador"),
+    ("manufactura", "Manufactura", "Operador de CNC"),
+    ("pintura", "Pintura", "Pintor"),
+    ("diseno_electrico", "Diseño eléctrico", "Diseñador eléctrico"),
+    ("plc", "Programación de PLC", "Programador de PLC"),
+    ("robots", "Programación de robots", "Programador de robots"),
+    ("simulacion", "Simulación", "Ingeniero de simulación"),
+    ("ensamble", "Ensamble (electromecánico)", "Mecánico de ensamble"),
+)
+def _norm_depto(v): return " ".join(str(v or "").upper().split())
+
+@app.route("/api/costos-perfil", methods=["GET"])
+def api_costos_perfil():
+    """Costo promedio por hora (USD) por perfil de trabajo, calculado de las tarifas de
+    Hourly Rate del año. Solo promedios: no expone la tarifa de cada persona."""
+    # también lo consulta Configurar Proyecto (costo promedio de cada línea de mano de obra)
+    if not (can("view", "costos-perfil") or can("view", "projconfig")): return jsonify({"error": "Sin permiso"}), 403
+    try:
+        year = int(request.args.get("year", CURRENT_YEAR))
+        norm = lambda v: " ".join(str(v or "").upper().split())
+        por_depto = {}
+        for r in load_rates(year):
+            try: rate = float(r.get("rate") or 0)
+            except (TypeError, ValueError): continue
+            if rate > 0: por_depto.setdefault(norm(r.get("department")), []).append(rate)
+        filas = []
+        for perfil, deptos in PERFILES_COSTO:
+            v = [x for dp in deptos for x in por_depto.get(norm(dp), [])]
+            filas.append({"perfil": perfil, "departamento": deptos[0], "departamentos": list(deptos), "personas": len(v),
+                          "promedio": round(sum(v) / len(v), 2) if v else None,
+                          "minimo": round(min(v), 2) if v else None, "maximo": round(max(v), 2) if v else None})
+        con = [f["promedio"] for f in filas if f["promedio"] is not None]
+        return jsonify({"year": year, "perfiles": filas, "available_years": available_years(),
+                        "promedio_general": round(sum(con) / len(con), 2) if con else None})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/projconfig/horas-consumidas", methods=["GET"])
+def api_projconfig_horas_consumidas():
+    """Horas consumidas hasta hoy por Job y por línea de mano de obra. Toma Work Hours
+    (todos los años con registros; mismo criterio de coincidencia de Job que el Job
+    Report) y clasifica cada hora por el departamento del trabajador en Hourly Rate."""
+    if not (can("view", "projconfig") or can("view", "report")): return jsonify({"error": "Sin permiso"}), 403
+    try:
+        jobs = [j.strip().upper() for j in (request.args.get("jobs") or "").split(",") if j.strip()]
+        if not jobs: return jsonify({"error": "Indica los Jobs"}), 400
+        if len(jobs) > 60: return jsonify({"error": "Máximo 60 Jobs por consulta"}), 400
+        years = set(available_years()) | set(wh_available_years()) | {CURRENT_YEAR}
+        if _orm and _orm.DB_ENABLED:
+            try:
+                s_y = _orm.get_session()
+                try: years |= {int(y[0]) for y in s_y.query(_orm.WorkHour.year).distinct().all() if y[0]}
+                finally: s_y.close()
+            except Exception as e:
+                print(f"[DB] horas consumidas: no se pudieron leer los años de work_hours: {e}")
+        years = sorted(years)
+        # departamento de cada trabajador (el del año más reciente en que aparece)
+        depto_emp, tarifa_anio, tarifa_ult = {}, {}, {}
+        for y in years:
+            for r in load_rates(y):
+                if not r.get("employee"): continue
+                e = normalize_name(r["employee"])
+                depto_emp[e] = _norm_depto(r.get("department"))
+                try:
+                    t = float(r.get("rate") or 0)
+                    if t > 0: tarifa_anio.setdefault(y, {})[e] = t; tarifa_ult[e] = t
+                except (TypeError, ValueError): pass
+        def tarifa(rec, y, e):
+            """Igual que el Job Report: cost_per_hour del registro si existe; si no, la
+            tarifa del trabajador en ese año; si no, su tarifa más reciente."""
+            try:
+                cph = float(rec.get("cost_per_hour") or 0)
+                if cph > 0: return cph
+            except (TypeError, ValueError): pass
+            return tarifa_anio.get(y, {}).get(e) or tarifa_ult.get(e) or 0.0
+        depto_perfil = {_norm_depto(d): perfil for perfil, deptos in PERFILES_COSTO for d in deptos}
+        perfil_linea = {perfil: k for k, _n, perfil in LINEAS_MO}
+        out = {}
+        wh_anio = {}
+        def wh_de(y, job_main):
+            # con varios Jobs se lee cada año una sola vez y se filtra en memoria
+            if len(jobs) <= 3: return wh_load_matching(y, job_main)
+            if y not in wh_anio: wh_anio[y] = wh_load(y)
+            return [r for r in wh_anio[y] if job_main.upper() in (r.get("work_code") or "").upper()]
+        for jn in jobs:
+            job_main = "-".join(jn.split("-")[:2]) if "-" in jn else jn
+            acc = {k: 0.0 for k, _n, _p in LINEAS_MO}; costo = {k: 0.0 for k, _n, _p in LINEAS_MO}
+            otras, otras_costo, horas_sin_tarifa = {}, 0.0, 0.0
+            for y in years:
+                for r in wh_de(y, job_main):
+                    try: h = float(r.get("hours") or 0)
+                    except (TypeError, ValueError): continue
+                    if h <= 0: continue
+                    e = normalize_name(r.get("employee", ""))
+                    dep = depto_emp.get(e, "")
+                    t = tarifa(r, y, e)
+                    if not t: horas_sin_tarifa += h
+                    k = perfil_linea.get(depto_perfil.get(dep, ""))
+                    c_reg = round(h * t, 2)        # redondeo por registro, igual que el Job Report
+                    if k: acc[k] += h; costo[k] += c_reg
+                    else:
+                        clave = dep or "SIN TARIFA"
+                        otras[clave] = otras.get(clave, 0.0) + h
+                        otras_costo += c_reg
+            out[jn] = {"lineas": {k: round(v, 2) for k, v in acc.items()},
+                       "costo": {k: round(v, 2) for k, v in costo.items()},
+                       "otras": {k: round(v, 2) for k, v in sorted(otras.items())},
+                       "otras_costo": round(otras_costo, 2),
+                       "horas_sin_tarifa": round(horas_sin_tarifa, 2),
+                       "total": round(sum(acc.values()) + sum(otras.values()), 2),
+                       "costo_total": round(sum(costo.values()) + otras_costo, 2)}
+        return jsonify({"jobs": out, "calculado": datetime.datetime.now().isoformat(timespec="minutes"),
+                        "lineas": [{"k": k, "nombre": n, "perfil": p} for k, n, p in LINEAS_MO]})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/api/rates", methods=["GET"])
 def api_get_rates():
     try:
@@ -6699,13 +6831,20 @@ def api_fx_auto_status():
     })
 
 
+@app.route("/api/fx/lookup", methods=["GET"])
 def api_fx_lookup():
-    """Quick single-date lookup: ?date=YYYY-MM-DD"""
+    """Quick single-date lookup: ?date=YYYY-MM-DD
+    (La función existía pero sin su @app.route: el formulario de Orden de Compra
+    recibía 404 y mostraba "No disponible" al elegir MXN.)"""
     try:
-        date_str = request.args.get("date", "")
+        date_str = request.args.get("date", "") or datetime.date.today().isoformat()
         fx_all   = fx_load_all()
         rate     = fx_rate_for_date(date_str, fx_all)
-        return jsonify({"date": date_str, "rate": rate, "found": rate is not None})
+        usada = date_str
+        if rate is not None:     # fecha real del tipo de cambio (fin de semana → último día hábil)
+            d0 = datetime.datetime.strptime(date_str[:10], "%Y-%m-%d").date()
+            usada = next((k for k in ((d0 - datetime.timedelta(days=o)).isoformat() for o in range(8)) if k in fx_all), date_str)
+        return jsonify({"date": usada, "requested": date_str, "rate": rate, "found": rate is not None})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -7213,7 +7352,9 @@ def api_dashboard_purchasing():
                     fr = min(1.0, reas / q) if q > 0 else 0.0
                     fr_reas.append(fr)
                     comp = float(r.get("cantidad_comprada") or 0)
-                    if comp: fr_ord.append(min(1.0 - fr, comp / q) if q > 0 else 0.0)
+                    if tipo == "manufactura":
+                        fr_ord.append(1.0 if r.get("status") in ("Comprado", "Orden interna", "Fabricado") else 0.0)
+                    elif comp: fr_ord.append(min(1.0 - fr, comp / q) if q > 0 else 0.0)
                     else:    fr_ord.append((1.0 - fr) if r.get("status") == "Comprado" else 0.0)   # marcado a mano
                 # última actualización: alta, edición, reasignaciones y cambios de cantidad por carga
                 fechas = [str(r.get(k) or "") for r in rows for k in ("updated_at", "created_at") if r.get(k)]
@@ -7582,7 +7723,7 @@ ADMIN_USER  = _os.environ.get("ADMIN_USER", "guillermo")
 
 MODULES = [
     # Proyectos
-    "jobs", "pt", "sv", "rates", "quotes",
+    "jobs", "pt", "sv", "rates", "quotes", "costos-perfil",
     # Ventas
     "cpo",
     # Compras — Catálogos
@@ -7592,7 +7733,7 @@ MODULES = [
     # Compras — Documentos
     "gpo", "po", "ivp", "reassign", "consig-reassign", "recovery", "compras-requisicion",
     # Almacenes
-    "stock", "consignacion", "ingreso", "apartados", "salida",
+    "stock", "consignacion", "ingreso", "apartados", "manuf-stock", "salida",
     # Servicio
     "viaticos", "gastos-viaje", "envios",
     # Reportes y Configuración
@@ -8004,7 +8145,7 @@ PROFILES = {
         "personal-listado": LEVEL_NONE,
         "ops-capacidad": LEVEL_NONE,
         "ops-ot": LEVEL_VIEW,
-        "ops-op": LEVEL_VIEW,
+        "ops-op": LEVEL_CREATE,
         "ops-os": LEVEL_NONE,
     },
     "OPERATIVE LEADING": {
@@ -8062,6 +8203,8 @@ PROFILES = {
 # Si algún perfil debe verlos distinto, basta con agregar la llave explícita
 # en PROFILES arriba: setdefault no la pisa.
 for _prof in PROFILES.values():
+    _prof.setdefault("costos-perfil", _prof.get("rates", LEVEL_NONE))   # mismas tarifas → mismo acceso
+    _prof.setdefault("manuf-stock", _prof.get("apartados", LEVEL_NONE))
     _prof.setdefault("consignacion", _prof.get("stock", LEVEL_NONE))
     _prof.setdefault("consig-reassign", _prof.get("reassign", LEVEL_NONE))
 
@@ -10053,8 +10196,7 @@ def _req_revert_order(order_number, jobs, order_items=None):
                 continue
             d["reasignaciones"] = [r for r in regs if r.get("order_number") != order_number]
             d["cantidad_reasignada"] = max(0.0, float(d.get("cantidad_reasignada") or 0) - quitar)
-            if d.get("status") == "Reasignado" and float(d.get("quantity") or 0) - d["cantidad_reasignada"] > 0:
-                d["status"] = "Solicitado"; row.status = "Solicitado"
+            _req_aplicar_estatus(d, row)
             row.data = d
             _orm_flag_modified(row, "data")
             n += 1
@@ -10374,7 +10516,7 @@ def api_upload_prov_file(clave):
 #  Construido directo sobre PostgreSQL (módulo nuevo).
 # ══════════════════════════════════════════════════════════════════
 REQ_TIPOS = ("electrico", "mecanico", "componentes_mayores", "manufactura")
-REQ_STATUS = ("Solicitado", "Comprado", "Cancelado", "Reasignado", "Homologado")
+REQ_STATUS = ("Solicitado", "Comprado", "Cancelado", "Reasignado", "Homologado", "Reas. Parcial")
 
 def _req_gen_item_id():
     return "BOM-" + datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
@@ -10504,8 +10646,7 @@ def api_requisiciones_upload():
                     d["quantity"] = nueva
                     d.pop("revision", None)
                     d.setdefault("cambios_cantidad", []).append({"de": actual, "a": nueva, "fecha": ahora, "usuario": user, "origen": "carga de requisición"})
-                    if d.get("status") == "Reasignado" and nueva - float(d.get("cantidad_reasignada") or 0) > 0:
-                        d["status"] = "Solicitado"; row.status = "Solicitado"
+                    _req_aplicar_estatus(d, row)
                     res["actualizados"].append({"part_number": d.get("part_number"), "de": actual, "a": nueva})
                 else:
                     # Baja la cantidad, o el renglón ya está Comprado/Cancelado: no se toca,
@@ -10534,11 +10675,70 @@ def api_requisiciones_update(item_id):
             if not row:
                 return jsonify({"error": "Renglón no encontrado"}), 404
             nuevo_status = data.get("status")
-            if nuevo_status:
+            es_manuf = (row.tipo or row.data.get("tipo")) == "manufactura"
+            if es_manuf:
+                # BOM de Manufactura: sus propios estatus y la Fabricación (con quién la cambió)
+                cambia_fab = "fabricacion" in data and str(data.get("fabricacion") or "") != row.data.get("fabricacion", "")
+                op = row.data.get("orden_produccion")
+                if op and ((nuevo_status and nuevo_status != row.data.get("status")) or cambia_fab):
+                    return jsonify({"error": f"Esta pieza está en la Orden de Producción {op}; su estatus y fabricación los "
+                                             "controla la orden (concluirla → Fabricado, cancelarla → Solicitado)."}), 400
+                data.pop("quantity", None)       # en manufactura quantity = normal + mirror (no directa)
+                if ("qty_normal" in data or "qty_mirror" in data) and op:
+                    return jsonify({"error": f"La pieza está en la Orden de Producción {op}; sus cantidades no se pueden cambiar."}), 400
+                if "qty_normal" in data or "qty_mirror" in data:
+                    try:
+                        qn = max(0.0, float(data.get("qty_normal", row.data.get("qty_normal", 1)) or 0))
+                        qm = max(0.0, float(data.get("qty_mirror", row.data.get("qty_mirror", 0)) or 0))
+                    except (TypeError, ValueError):
+                        return jsonify({"error": "Cantidad inválida"}), 400
+                    row.data["qty_normal"], row.data["qty_mirror"] = qn, qm
+                    row.data["quantity"] = qn + qm            # cantidad requerida = normal + mirror
+                    _req_aplicar_estatus(row.data, row)
+                if _req_cubierto(row.data) and ((nuevo_status and nuevo_status != row.data.get("status")) or cambia_fab):
+                    return jsonify({"error": "Esta pieza ya está comprada al 100% (orden de compra emitida); su estatus y su "
+                                             "fabricación no se pueden modificar. Para cambiarlos, elimina o cancela la orden."}), 400
+                if nuevo_status and nuevo_status != row.data.get("status"):
+                    if nuevo_status not in REQ_STATUS_MANUF:
+                        return jsonify({"error": f"Estatus inválido. Debe ser uno de: {', '.join(REQ_STATUS_MANUF)}"}), 400
+                    row.data["status"] = nuevo_status; row.status = nuevo_status
+                    row.data["status_por"] = session.get("user", ""); row.data["status_fecha"] = datetime.datetime.now().isoformat()
+                if "fabricacion" in data:
+                    fab = str(data.get("fabricacion") or "")
+                    if fab and fab not in REQ_FABRICACION:
+                        return jsonify({"error": f"Fabricación inválida. Debe ser: {', '.join(REQ_FABRICACION)}"}), 400
+                    if fab != row.data.get("fabricacion", ""):
+                        row.data["fabricacion"] = fab
+                        row.data["fabricacion_por"] = session.get("user", "")
+                        row.data["fabricacion_fecha"] = datetime.datetime.now().isoformat()
+                for campo in ("material", "acabado"):
+                    if campo in data: row.data[campo] = str(data[campo]).strip()
+                nuevo_status = None           # ya se procesó arriba
+            if nuevo_status and nuevo_status != row.data.get("status"):
                 if nuevo_status not in REQ_STATUS:
                     return jsonify({"error": f"Estatus inválido. Debe ser uno de: {', '.join(REQ_STATUS)}"}), 400
-                row.data["status"] = nuevo_status
-                row.status = nuevo_status
+                if _req_cubierto(row.data):
+                    return jsonify({"error": f"Este material ya está {row.data.get('status')} al 100% "
+                                             f"(reasignado {float(row.data.get('cantidad_reasignada') or 0):g}, "
+                                             f"comprado {float(row.data.get('cantidad_comprada') or 0):g}); su estatus no se puede modificar. "
+                                             "Para cambiarlo, elimina o cancela la orden correspondiente."}), 400
+                if nuevo_status == "Reas. Parcial":
+                    return jsonify({"error": "\"Reas. Parcial\" lo asigna el sistema al reasignar solo una parte desde Stock."}), 400
+                reas_parcial = float(row.data.get("cantidad_reasignada") or 0) > 0
+                if reas_parcial and nuevo_status in ("Solicitado", "Homologado"):
+                    # con reasignación parcial el estatus visible sigue siendo "Reas. Parcial";
+                    # lo elegido queda como estatus base para cuando se revierta la reasignación
+                    row.data["status_base"] = nuevo_status
+                else:
+                    row.data["status"] = nuevo_status
+                    row.status = nuevo_status
+                    if nuevo_status in ("Solicitado", "Homologado"):
+                        row.data["status_base"] = nuevo_status
+                    if nuevo_status in ("Comprado", "Reasignado"):      # marcado a mano
+                        row.data["comprador"] = session.get("user", "")
+                        row.data["comprador_fecha"] = datetime.datetime.now().isoformat()
+                    else:
+                        row.data.pop("comprador", None); row.data.pop("comprador_fecha", None)
             for campo in ("brand", "part_number", "description", "quantity"):
                 if campo in data:
                     row.data[campo] = data[campo]
@@ -10552,8 +10752,7 @@ def api_requisiciones_update(item_id):
                         "de": row.data.get("quantity"), "a": rev["cantidad_nueva"], "fecha": datetime.datetime.now().isoformat(),
                         "usuario": session.get("user", ""), "origen": "revisión aceptada"})
                     row.data["quantity"] = rev["cantidad_nueva"]
-                    if row.data.get("status") == "Reasignado" and float(rev["cantidad_nueva"]) - float(row.data.get("cantidad_reasignada") or 0) > 0:
-                        row.data["status"] = "Solicitado"; row.status = "Solicitado"
+                    _req_aplicar_estatus(row.data, row)
                 row.data.pop("revision", None)
             row.data["updated_by"] = session.get("user", ""); row.data["updated_at"] = datetime.datetime.now().isoformat()
             _orm_flag_modified(row, "data")
@@ -10573,6 +10772,17 @@ def api_requisiciones_delete(item_id):
     try:
         s = _orm.get_session()
         try:
+            row = s.query(_orm.RequisicionCompra).filter(_orm.RequisicionCompra.item_id == item_id).one_or_none()
+            if row is not None and row.data.get("orden_produccion"):
+                return jsonify({"error": f"La pieza está en la Orden de Producción {row.data['orden_produccion']}; cancélala o quítala de la orden primero."}), 400
+            if row is not None and (float(row.data.get("cantidad_reasignada") or 0) > 0 or float(row.data.get("cantidad_comprada") or 0) > 0):
+                # Borrarlo dejaría órdenes RA / PO apuntando a un renglón inexistente
+                return jsonify({"error": "Este renglón tiene reasignaciones u órdenes de compra registradas; no se puede eliminar. "
+                                         "Elimina o cancela primero esas órdenes."}), 400
+            if row is not None and (row.tipo or row.data.get("tipo")) == "manufactura":
+                ids = [r.get("archivo_id") for r in (row.data.get("revisiones") or []) if r.get("archivo_id")]
+                if ids:
+                    s.query(_orm.PlanoPDF).filter(_orm.PlanoPDF.id.in_(ids)).delete(synchronize_session=False)
             deleted = s.query(_orm.RequisicionCompra).filter(_orm.RequisicionCompra.item_id == item_id).delete()
             s.commit()
         finally:
@@ -10583,7 +10793,48 @@ def api_requisiciones_delete(item_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-REQ_ESTATUS_REASIGNABLES = ("Solicitado", "Homologado")   # Comprado/Cancelado/Reasignado no se reasignan
+REQ_ESTATUS_REASIGNABLES = ("Solicitado", "Homologado", "Reas. Parcial")   # Comprado/Cancelado/Reasignado no se reasignan
+REQ_ESTATUS_AUTO = ("Comprado", "Reasignado", "Reas. Parcial")   # los pone el sistema según cantidades
+
+def _req_cubierto(d):
+    """¿Reasignado + comprado cubre el 100% de lo pedido? (cantidades registradas por el sistema)"""
+    q = float(d.get("quantity") or 0)
+    return q > 0 and float(d.get("cantidad_reasignada") or 0) + float(d.get("cantidad_comprada") or 0) >= q
+
+def _req_aplicar_estatus(d, row=None):
+    """Recalcula el estatus de un renglón a partir de sus cantidades (Cancelado no se toca):
+      - cubierto al 100%        → "Comprado" (si hubo compra) o "Reasignado" (todo salió de Stock)
+      - reasignado en parte     → "Reas. Parcial"
+      - sin reasignar           → su estatus base (Solicitado / Homologado)
+    El estatus base se guarda en status_base al pasar a un estatus automático."""
+    st = d.get("status") or "Solicitado"
+    if st == "Cancelado":
+        return st
+    if st not in REQ_ESTATUS_AUTO:
+        d["status_base"] = st
+    base = d.get("status_base") or "Solicitado"
+    reas = float(d.get("cantidad_reasignada") or 0); comp = float(d.get("cantidad_comprada") or 0)
+    if _req_cubierto(d):
+        nuevo = "Comprado" if comp > 0 else "Reasignado"
+    elif reas > 0:
+        nuevo = "Reas. Parcial"
+    else:
+        nuevo = base if st in REQ_ESTATUS_AUTO else st
+    if nuevo != st:
+        if nuevo in REQ_ESTATUS_AUTO:
+            # Comprador = autor del último movimiento (reasignación o compra) que sigue vigente;
+            # así, al revertir una orden queda quien realmente reasignó/compró, no quien la eliminó.
+            hist = sorted((d.get("reasignaciones") or []) + (d.get("compras") or []), key=lambda h: str(h.get("fecha") or ""))
+            from flask import has_request_context
+            actor = session.get("user", "") if has_request_context() else ""
+            d["comprador"] = (hist[-1].get("usuario") if hist else "") or actor
+            d["comprador_fecha"] = (hist[-1].get("fecha") if hist else "") or datetime.datetime.now().isoformat()
+        elif st in REQ_ESTATUS_AUTO:
+            d.pop("comprador", None); d.pop("comprador_fecha", None)   # se revirtió
+    d["status"] = nuevo
+    if row is not None:
+        row.status = nuevo
+    return nuevo
 
 def _req_con_pendiente(item):
     """Copia del renglón con cantidad_reasignada y cantidad_pendiente (= pedida − reasignada).
@@ -10595,6 +10846,10 @@ def _req_con_pendiente(item):
     it["cantidad_reasignada"] = reas
     it["cantidad_comprada"] = comp
     it["cantidad_pendiente"] = max(0.0, qty - reas - comp)
+    if not it.get("comprador") and it.get("status") in REQ_ESTATUS_AUTO:
+        hist = sorted((it.get("reasignaciones") or []) + (it.get("compras") or []), key=lambda h: str(h.get("fecha") or ""))
+        if hist and hist[-1].get("usuario"):
+            it["comprador"] = hist[-1]["usuario"]; it["comprador_fecha"] = hist[-1].get("fecha")
     return it
 
 def _req_match_index(records):
@@ -10656,10 +10911,15 @@ def _req_registrar_compra(po_number, po_items):
             if not row: continue
             d = row.data
             d["cantidad_comprada"] = float(d.get("cantidad_comprada") or 0) + float(it["quantity"])
-            d.setdefault("compras", []).append({"po_number": po_number, "cantidad": it["quantity"], "unit_price": it.get("unit_price"),
+            var = str(it.get("variante") or "")
+            if var in ("Normal", "Mirror"):
+                k = "comprado_normal" if var == "Normal" else "comprado_mirror"
+                d[k] = float(d.get(k) or 0) + float(it["quantity"])
+            if d.get("tipo") == "manufactura" and d["cantidad_comprada"] > float(d.get("quantity") or 0):
+                d["quantity"] = d["cantidad_comprada"]     # el plano no trae cantidad: manda lo que se ordenó
+            d.setdefault("compras", []).append({"po_number": po_number, "cantidad": it["quantity"], "variante": var, "unit_price": it.get("unit_price"),
                                                 "fecha": ahora, "usuario": session.get("user", "")})
-            if _req_con_pendiente(d)["cantidad_pendiente"] <= 0:
-                d["status"] = "Comprado"; row.status = "Comprado"
+            _req_aplicar_estatus(d, row)
             row.data = d; _orm_flag_modified(row, "data"); n += 1
         s.commit()
         return n
@@ -10679,15 +10939,555 @@ def _req_revert_po(po_number):
             regs = d.get("compras") or []
             quitar = sum(float(r.get("cantidad") or 0) for r in regs if str(r.get("po_number", "")).upper() == num)
             if not quitar: continue
+            for r in regs:
+                if str(r.get("po_number", "")).upper() == num and r.get("variante") in ("Normal", "Mirror"):
+                    k = "comprado_normal" if r["variante"] == "Normal" else "comprado_mirror"
+                    d[k] = max(0.0, float(d.get(k) or 0) - float(r.get("cantidad") or 0))
             d["compras"] = [r for r in regs if str(r.get("po_number", "")).upper() != num]
             d["cantidad_comprada"] = max(0.0, float(d.get("cantidad_comprada") or 0) - quitar)
-            if d.get("status") == "Comprado" and _req_con_pendiente(d)["cantidad_pendiente"] > 0:
-                d["status"] = "Solicitado"; row.status = "Solicitado"
+            _req_aplicar_estatus(d, row)
             row.data = d; _orm_flag_modified(row, "data"); n += 1
         s.commit()
         return n
     finally:
         s.close()
+
+# ══════════════════════════════════════════════════════════════════
+#  BOM DE MANUFACTURA — planos PDF
+# ══════════════════════════════════════════════════════════════════
+REQ_STATUS_MANUF = ("Solicitado", "Comprado", "Orden interna", "Fabricado")
+REQ_FABRICACION  = ("Interna", "Externa", "Mixta")
+PLANO_MAX_BYTES  = 25 * 1024 * 1024
+
+def _rev_letra(n):
+    """1→A, 2→B … 26→Z, 27→AA."""
+    s = ""
+    while n > 0:
+        n, r = divmod(n - 1, 26)
+        s = chr(65 + r) + s
+    return s
+
+def _plano_id(filename):
+    """ID de la pieza = nombre del PDF sin extensión. Se quita un sufijo de revisión
+    del nombre ("_revA", "-rev B", " REV.C") para que un plano revisado quede como nueva
+    revisión de la misma pieza y no como pieza distinta."""
+    base = re.sub(r"\.pdf$", "", _os.path.basename(str(filename or "")).strip(), flags=re.I)
+    base = re.sub(r"[\s_\-]+rev\.?\s*[A-Za-z0-9]{1,3}$", "", base, flags=re.I)
+    return base.strip().upper()
+
+def _extraer_cajetin(data):
+    """Material, Acabado (FINISH) y Tipo (DESCRIPTION) del cajetín del plano (1ª página).
+    El texto de un PDF no sale en orden de lectura, así que cada valor se ubica por
+    posición: la primera línea que queda justo debajo de su etiqueta, dentro de su celda
+    (MATERIAL termina donde empieza FINISH; FINISH donde empieza WEIGHT)."""
+    import pdfplumber
+    out = {"tipo": "", "material": "", "acabado": ""}
+    with pdfplumber.open(io.BytesIO(data)) as pdf:
+        ws = pdf.pages[0].extract_words()
+    def etiqueta(t):
+        c = [w for w in ws if w["text"].endswith(":") and w["text"].upper().rstrip(":") == t]
+        return max(c, key=lambda w: w["top"]) if c else None
+    L = {k: etiqueta(k) for k in ("DESCRIPTION", "MATERIAL", "FINISH", "WEIGHT")}
+    def debajo(lab, x_fin, alto=30):
+        if not lab: return ""
+        got = [w for w in ws if lab["bottom"] - 1 < w["top"] < lab["bottom"] + alto
+               and w["x0"] >= lab["x0"] - 4 and w["x1"] <= x_fin and not w["text"].endswith(":")]
+        if not got: return ""
+        t0 = min(w["top"] for w in got)
+        return " ".join(w["text"] for w in sorted([w for w in got if abs(w["top"] - t0) < 3], key=lambda w: w["x0"])).strip()
+    M, F, W, D = L["MATERIAL"], L["FINISH"], L["WEIGHT"], L["DESCRIPTION"]
+    if M: out["material"] = debajo(M, (F["x0"] - 2) if F else M["x0"] + 120)
+    if F: out["acabado"]  = debajo(F, (W["x0"] - 2) if W else F["x0"] + 120)
+    if D: out["tipo"]     = debajo(D, (D["x0"] + (W["x0"] - D["x0"]) * 0.75) if W else D["x0"] + 200)
+    return out
+
+@app.route("/api/requisiciones/planos", methods=["POST"])
+def api_requisiciones_planos_upload():
+    """Sube uno o varios planos PDF al BOM de Manufactura de un Job. Por archivo:
+    ID = nombre del PDF; revisión A la primera vez y B, C… si ya existía esa pieza;
+    material / acabado / tipo desde el cajetín. El PDF queda guardado en la base."""
+    if not can("create", "compras-requisicion"): return jsonify({"error": "Sin permiso"}), 403
+    if not (_orm and _orm.DB_ENABLED):
+        return jsonify({"error": "Este módulo requiere la base de datos — contacta a soporte."}), 400
+    job = (request.form.get("job") or "").strip()
+    files = request.files.getlist("files")
+    if not job: return jsonify({"error": "Falta seleccionar el Job"}), 400
+    if not files: return jsonify({"error": "No se recibieron archivos"}), 400
+    user, ahora = session.get("user", ""), datetime.datetime.now().isoformat()
+    res = []
+    s = _orm.get_session()
+    try:
+        filas = {}
+        for r in s.query(_orm.RequisicionCompra).filter(_orm.RequisicionCompra.job == job, _orm.RequisicionCompra.tipo == "manufactura").all():
+            filas.setdefault(_plano_id(r.data.get("part_number")), r)
+        for f in files:
+            nombre = _os.path.basename(f.filename or "")
+            data = f.read()
+            if not nombre.lower().endswith(".pdf") or not data.startswith(b"%PDF"):
+                res.append({"archivo": nombre, "error": "No es un PDF"}); continue
+            if len(data) > PLANO_MAX_BYTES:
+                res.append({"archivo": nombre, "error": "Supera 25 MB"}); continue
+            pid = _plano_id(nombre)
+            try:
+                caj = _extraer_cajetin(data); aviso = [k for k in ("tipo", "material", "acabado") if not caj[k]]
+            except Exception as e:
+                caj = {"tipo": "", "material": "", "acabado": ""}; aviso = [f"no se pudo leer el cajetín ({e})"]
+            row = filas.get(pid)
+            n_rev = len((row.data.get("revisiones") or [])) + 1 if row else 1
+            rev = _rev_letra(n_rev)
+            plano = _orm.PlanoPDF(job=job, part_id=pid, revision=rev, filename=nombre, size=len(data), content=data, uploaded_by=user)
+            s.add(plano); s.flush()
+            entrada = {"revision": rev, "archivo_id": plano.id, "filename": nombre, "fecha": ahora, "usuario": user, **caj}
+            if row is None:
+                item = {"id": _req_gen_item_id(), "job": job, "tipo": "manufactura", "part_number": pid,
+                        "description": caj["tipo"], "material": caj["material"], "acabado": caj["acabado"],
+                        "brand": "", "quantity": 1, "qty_normal": 1, "qty_mirror": 0, "status": "Solicitado", "fabricacion": "",
+                        "rev_plano": rev, "revisiones": [entrada], "created_by": user, "created_at": ahora}
+                row = _orm.RequisicionCompra(data=item, item_id=item["id"], job=job, tipo="manufactura", status="Solicitado")
+                s.add(row); filas[pid] = row
+            else:
+                d = row.data
+                d.setdefault("revisiones", []).append(entrada)
+                d["rev_plano"] = rev   # (no "revision": ese campo es el aviso de cantidad por revisar)
+                for campo, v in (("description", caj["tipo"]), ("material", caj["material"]), ("acabado", caj["acabado"])):
+                    if v: d[campo] = v                     # lo que traiga el plano nuevo manda
+                d["updated_at"] = ahora
+                row.data = d; _orm_flag_modified(row, "data")
+            res.append({"archivo": nombre, "id": pid, "revision": rev, "nuevo": n_rev == 1, **caj, "sin_dato": aviso})
+        s.commit()
+    finally:
+        s.close()
+    return jsonify({"ok": True, "resultados": res})
+
+@app.route("/api/requisiciones/planos/<int:plano_id>", methods=["GET"])
+def api_requisiciones_plano_pdf(plano_id):
+    if not can("view", "compras-requisicion"): return jsonify({"error": "Sin permiso"}), 403
+    if not (_orm and _orm.DB_ENABLED): return jsonify({"error": "Requiere base de datos"}), 400
+    s = _orm.get_session()
+    try:
+        p = s.query(_orm.PlanoPDF).filter(_orm.PlanoPDF.id == plano_id).one_or_none()
+        if not p: return jsonify({"error": "Plano no encontrado"}), 404
+        nombre = f"{p.part_id}_rev{p.revision}.pdf"
+        return Response(bytes(p.content), mimetype="application/pdf",
+                        headers={"Content-Disposition": f'inline; filename="{nombre}"'})
+    finally:
+        s.close()
+
+# ══════════════════════════════════════════════════════════════════
+#  ÓRDENES DE PRODUCCIÓN (Operaciones ▸ Órdenes de Producción) — folio MNO-000001
+# ══════════════════════════════════════════════════════════════════
+OP_STATUS   = ("Pendiente", "En proceso", "En pausa", "Concluida", "Cancelada")
+OP_PROCESOS = (("corte", "Corte"), ("soldadura", "Soldadura"), ("cnc", "CNC"),
+               ("torno", "Torno"), ("fresa", "Fresa"), ("pintura", "Pintura"))
+OP_PROC_EST = ("No aplica", "Pendiente", "Concluido")
+
+def _op_avance(rec):
+    """(procesos concluidos, procesos que aplican) sumando todas las piezas."""
+    hechos = total = 0
+    for p in rec.get("piezas") or []:
+        for k, _ in OP_PROCESOS:
+            e = (p.get("procesos") or {}).get(k, {}).get("estado", "No aplica")
+            if e != "No aplica":
+                total += 1; hechos += e == "Concluido"
+    return hechos, total
+
+def _op_resumen(rec):
+    h, t = _op_avance(rec)
+    return {**{k: rec.get(k) for k in ("folio", "job", "prioridad", "fecha_entrega", "status", "created_by", "created_at", "updated_at")},
+            "piezas": len(rec.get("piezas") or []), "procesos_hechos": h, "procesos_total": t,
+            "avance": round(h / t * 100) if t else None,
+            "ids": [p.get("part_id") for p in rec.get("piezas") or []]}
+
+def _op_sync_requisicion(s, rec, estado_pieza=None, desligar=False):
+    """Refleja la orden en los renglones del BOM de Manufactura."""
+    ahora, user = datetime.datetime.now().isoformat(), session.get("user", "")
+    for p in rec.get("piezas") or []:
+        row = s.query(_orm.RequisicionCompra).filter(_orm.RequisicionCompra.item_id == str(p.get("req_item_id"))).one_or_none()
+        if not row: continue
+        d = row.data
+        if desligar:
+            if d.get("orden_produccion") == rec["folio"]:
+                d.pop("orden_produccion", None); d["status"] = "Solicitado"; row.status = "Solicitado"
+        else:
+            d["orden_produccion"] = rec["folio"]
+            if estado_pieza: d["status"] = estado_pieza; row.status = estado_pieza
+        d["status_por"], d["status_fecha"] = user, ahora
+        row.data = d; _orm_flag_modified(row, "data")
+
+def _op_get(s, folio):
+    return s.query(_orm.OrdenProduccion).filter(_orm.OrdenProduccion.folio == folio.upper()).one_or_none()
+
+def _op_requiere_db():
+    if not (_orm and _orm.DB_ENABLED):
+        return jsonify({"error": "Este módulo requiere la base de datos — contacta a soporte."}), 400
+
+def _sesion_propia():
+    """Sesión SQLAlchemy independiente (no la scoped_session del hilo). Necesaria cuando,
+    con la transacción abierta, se llaman helpers como salida_save()/apartado_save() que
+    usan y cierran la sesión compartida del hilo: con la compartida, esos helpers
+    cerraban nuestra transacción, perdían el descuento preparado y liberaban el bloqueo."""
+    return _orm.SessionLocal.session_factory()
+
+def _pg_lock(s, clave):
+    """Bloqueo transaccional de PostgreSQL (se libera al commit/rollback). Serializa
+    operaciones de manufactura entre los workers de gunicorn — el `lock` de Python solo
+    protege un proceso. (Auditoría rev47: A04, A05, A06)"""
+    if _orm and _orm.DB_ENABLED:
+        from sqlalchemy import text
+        s.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": clave})
+
+# ── Almacén de Piezas de Manufactura ─────────────────────────────
+def _mstock_mov(s, job, pieza, normal, mirror, tipo, folio, nota=""):
+    """Suma (o resta, con cantidades negativas) existencias Normal / Mirror de una pieza
+    en el almacén de manufactura y registra el movimiento. Crea el registro si no existe."""
+    job = str(job).strip().upper(); pid = str(pieza.get("part_id") or pieza.get("part_number") or "").strip().upper()
+    clave = f"{job}|{pid}"
+    row = s.query(_orm.ManufStock).filter(_orm.ManufStock.clave == clave).one_or_none()
+    ahora, user = datetime.datetime.now().isoformat(), session.get("user", "")
+    if row is None:
+        d = {"clave": clave, "job": job, "part_id": pid, "qty_normal": 0.0, "qty_mirror": 0.0,
+             "ingresado_normal": 0.0, "ingresado_mirror": 0.0, "movimientos": [], "created_at": ahora}
+        row = _orm.ManufStock(clave=clave, job=job, data=d); s.add(row)
+    d = row.data
+    info = {"tipo": pieza.get("tipo") or pieza.get("description"), "material": pieza.get("material"),
+            "acabado": pieza.get("acabado"), "rev_plano": pieza.get("rev_plano"), "archivo_id": pieza.get("archivo_id")}
+    d.update({k: v for k, v in info.items() if v})
+    n, m = float(normal or 0), float(mirror or 0)
+    if d["qty_normal"] + n < -1e-9 or d["qty_mirror"] + m < -1e-9:
+        raise ValueError(f"{pid}: existencia insuficiente (Normal {d['qty_normal']:g}, Mirror {d['qty_mirror']:g})")
+    d["qty_normal"] = round(d["qty_normal"] + n, 4); d["qty_mirror"] = round(d["qty_mirror"] + m, 4)
+    if n > 0: d["ingresado_normal"] = round(d.get("ingresado_normal", 0) + n, 4)
+    if m > 0: d["ingresado_mirror"] = round(d.get("ingresado_mirror", 0) + m, 4)
+    d.setdefault("movimientos", []).append({"tipo": tipo, "folio": folio, "normal": n, "mirror": m,
+                                            "fecha": ahora, "usuario": user, "nota": nota})
+    d["updated_at"] = ahora
+    row.data = d; _orm_flag_modified(row, "data")
+    return d
+
+def _mstock_pendientes(job=None):
+    """{(JOB, ID): (normal, mirror)} comprometido en salidas Pendientes de manufactura."""
+    out = {}
+    for r in salida_load():
+        if r.get("status") != "Pendiente": continue
+        if job and str(r.get("job", "")).upper() != job.upper(): continue
+        for it in r.get("items") or []:
+            if it.get("origen") != "manufactura": continue
+            k = (str(r.get("job", "")).upper(), str(it.get("part_number", "")).upper())
+            n, m = out.get(k, (0.0, 0.0))
+            out[k] = (n + float(it.get("qty_normal") or 0), m + float(it.get("qty_mirror") or 0))
+    return out
+
+@app.route("/api/manuf-stock", methods=["GET"])
+def api_manuf_stock():
+    if not (can("view", "manuf-stock") or can("view", "salida")): return jsonify({"error": "Sin permiso"}), 403
+    if (r := _op_requiere_db()): return r
+    job = (request.args.get("job") or "").strip().upper(); q = (request.args.get("q") or "").strip().upper()
+    s = _orm.get_session()
+    try:
+        qry = s.query(_orm.ManufStock)
+        if job: qry = qry.filter(_orm.ManufStock.job == job)
+        recs = [r.data for r in qry.order_by(_orm.ManufStock.job.asc()).all()]
+    finally:
+        s.close()
+    pend = _mstock_pendientes(job or None)
+    out = []
+    for d in recs:
+        if q and q not in d.get("part_id", "") and q not in d.get("job", ""): continue
+        pn, pm = pend.get((d["job"], d["part_id"]), (0.0, 0.0))
+        movs = d.get("movimientos") or []
+        d = {**d, "movimientos": movs[-1:], "total_movimientos": len(movs)}   # historial completo: /movimientos
+        out.append({**d, "pendiente_normal": pn, "pendiente_mirror": pm,
+                    "disponible_normal": max(0.0, d["qty_normal"] - pn), "disponible_mirror": max(0.0, d["qty_mirror"] - pm)})
+    return jsonify({"records": out, "total": len(out)})
+
+@app.route("/api/manuf-stock/movimientos", methods=["GET"])
+def api_manuf_stock_movimientos():
+    if not (can("view", "manuf-stock") or can("view", "salida")): return jsonify({"error": "Sin permiso"}), 403
+    if (r := _op_requiere_db()): return r
+    clave = f'{(request.args.get("job") or "").strip().upper()}|{(request.args.get("id") or "").strip().upper()}'
+    s = _orm.get_session()
+    try:
+        row = s.query(_orm.ManufStock).filter(_orm.ManufStock.clave == clave).one_or_none()
+        return jsonify({"movimientos": (row.data.get("movimientos") or []) if row else []})
+    finally:
+        s.close()
+
+@app.route("/api/ordenes-produccion/<folio>/pieza/<rid>/terminar", methods=["POST"])
+def api_op_pieza_terminar(folio, rid):
+    """Marca (o desmarca) el lote de una pieza como terminado. Para marcarlo, los
+    procesos que aplican a esa pieza deben estar concluidos."""
+    if not can("edit", "ops-op"): return jsonify({"error": "Sin permiso"}), 403
+    if (r := _op_requiere_db()): return r
+    marcar = bool((request.get_json() or {}).get("terminado", True))
+    s = _orm.get_session()
+    try:
+        row = _op_get(s, folio)
+        if not row: return jsonify({"error": "Orden no encontrada"}), 404
+        rec = row.data
+        if rec.get("status") == "Cancelada": return jsonify({"error": "La orden está cancelada"}), 400
+        p = next((x for x in rec.get("piezas") or [] if str(x.get("req_item_id")) == str(rid)), None)
+        if not p: return jsonify({"error": "Pieza no encontrada en la orden"}), 404
+        if marcar:
+            pend = [n for k, n in OP_PROCESOS if (p.get("procesos") or {}).get(k, {}).get("estado") == "Pendiente"]
+            if pend: return jsonify({"error": f"{p['part_id']}: faltan procesos por concluir ({', '.join(pend)})"}), 400
+            if not any((p.get("procesos") or {}).get(k, {}).get("estado") == "Concluido" for k, _ in OP_PROCESOS):
+                return jsonify({"error": f"{p['part_id']}: configura y concluye al menos un proceso antes de marcar el lote terminado"}), 400
+            p["lote_terminado"] = {"por": session.get("user", ""), "fecha": datetime.datetime.now().isoformat()}
+        else:
+            p.pop("lote_terminado", None)
+        rec.setdefault("historial", []).append({"fecha": datetime.datetime.now().isoformat(), "usuario": session.get("user", ""),
+                                                "accion": f"{p['part_id']} · Lote {'terminado' if marcar else 'reabierto'}"})
+        row.data = rec; _orm_flag_modified(row, "data"); s.commit()
+    finally:
+        s.close()
+    return jsonify({"ok": True})
+
+@app.route("/api/ordenes-produccion/<folio>/pieza/<rid>/ingresar", methods=["POST"])
+def api_op_pieza_ingresar(folio, rid):
+    """Ingresa al Almacén de Piezas de Manufactura un lote completo o parcial de una
+    pieza (Normal y Mirror por separado, sin pasar de lo que falta por ingresar)."""
+    if not (can("edit", "ops-op") or can("create", "ingreso")): return jsonify({"error": "Sin permiso"}), 403
+    if (r := _op_requiere_db()): return r
+    data = request.get_json() or {}
+    try:
+        n = float(data.get("normal") or 0); m = float(data.get("mirror") or 0)
+    except (TypeError, ValueError):
+        return jsonify({"error": "Cantidad inválida"}), 400
+    if n < 0 or m < 0 or n + m <= 0: return jsonify({"error": "Indica cuántas piezas Normal y/o Mirror se ingresan"}), 400
+    s = _orm.get_session()
+    try:
+        _pg_lock(s, f"op|{folio.upper()}")     # reintentos o clics dobles no sobreingresan
+        row = _op_get(s, folio)
+        if not row: return jsonify({"error": "Orden no encontrada"}), 404
+        rec = row.data
+        if rec.get("status") == "Cancelada": return jsonify({"error": "La orden está cancelada"}), 400
+        p = next((x for x in rec.get("piezas") or [] if str(x.get("req_item_id")) == str(rid)), None)
+        if not p: return jsonify({"error": "Pieza no encontrada en la orden"}), 404
+        falta_n = float(p.get("qty_normal") or 0) - float(p.get("ingresado_normal") or 0)
+        falta_m = float(p.get("qty_mirror") or 0) - float(p.get("ingresado_mirror") or 0)
+        if n > falta_n + 1e-9 or m > falta_m + 1e-9:
+            return jsonify({"error": f"{p['part_id']}: faltan por ingresar Normal {falta_n:g} y Mirror {falta_m:g}"}), 400
+        _mstock_mov(s, rec["job"], p, n, m, "Ingreso · Orden de Producción", rec["folio"])
+        p["ingresado_normal"] = float(p.get("ingresado_normal") or 0) + n
+        p["ingresado_mirror"] = float(p.get("ingresado_mirror") or 0) + m
+        ahora = datetime.datetime.now().isoformat()
+        p.setdefault("ingresos", []).append({"normal": n, "mirror": m, "fecha": ahora, "usuario": session.get("user", "")})
+        rec.setdefault("historial", []).append({"fecha": ahora, "usuario": session.get("user", ""),
+                                                "accion": f"{p['part_id']} · Ingreso al almacén: Normal {n:g}, Mirror {m:g}"})
+        row.data = rec; _orm_flag_modified(row, "data"); s.commit()
+    finally:
+        s.close()
+    return jsonify({"ok": True, "ingresado_normal": p["ingresado_normal"], "ingresado_mirror": p["ingresado_mirror"]})
+
+@app.route("/api/ordenes-produccion", methods=["GET"])
+def api_op_list():
+    if not can("view", "ops-op"): return jsonify({"error": "Sin permiso"}), 403
+    if (r := _op_requiere_db()): return r
+    job, st = (request.args.get("job") or "").strip().upper(), request.args.get("status") or ""
+    s = _orm.get_session()
+    try:
+        q = s.query(_orm.OrdenProduccion)
+        if job: q = q.filter(_orm.OrdenProduccion.job == job)
+        recs = [r.data for r in q.order_by(_orm.OrdenProduccion.id.desc()).all()]
+    finally:
+        s.close()
+    if st: recs = [r for r in recs if r.get("status") == st]
+    return jsonify({"ordenes": [_op_resumen(r) for r in recs], "next_number": f"MNO-{int(_doc_counter_load().get('MNO', 0) or 0) + 1:06d}",
+                    "estatus": OP_STATUS, "procesos": [{"k": k, "nombre": n} for k, n in OP_PROCESOS]})
+
+@app.route("/api/ordenes-produccion/<folio>", methods=["GET"])
+def api_op_get(folio):
+    if not can("view", "ops-op"): return jsonify({"error": "Sin permiso"}), 403
+    if (r := _op_requiere_db()): return r
+    s = _orm.get_session()
+    try:
+        row = _op_get(s, folio)
+        if not row: return jsonify({"error": "Orden no encontrada"}), 404
+        rec = row.data
+    finally:
+        s.close()
+    return jsonify({"orden": rec, **_op_resumen(rec), "estatus": OP_STATUS,
+                    "procesos": [{"k": k, "nombre": n} for k, n in OP_PROCESOS], "estados_proceso": OP_PROC_EST,
+                    "puede_editar": can("edit", "ops-op")})
+
+@app.route("/api/ordenes-produccion", methods=["POST"])
+def api_op_create():
+    """Crea una Orden de Producción desde el BOM de Manufactura con piezas de
+    Fabricación "Interna" en estatus Solicitado (que no estén ya en otra orden)."""
+    if not can("create", "ops-op"): return jsonify({"error": "Sin permiso para crear Órdenes de Producción"}), 403
+    if (r := _op_requiere_db()): return r
+    data = request.get_json() or {}
+    job = str(data.get("job") or "").strip()
+    ids = [str(i) for i in (data.get("req_item_ids") or [])]
+    if not job or not ids: return jsonify({"error": "Falta el Job o las piezas"}), 400
+    try: prioridad = int(data.get("prioridad") or 0)
+    except (TypeError, ValueError): return jsonify({"error": "Prioridad inválida"}), 400
+    fecha = str(data.get("fecha_entrega") or "").strip()[:10]
+    if prioridad < 1: return jsonify({"error": "Indica el número de prioridad (1 = más urgente)"}), 400
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", fecha): return jsonify({"error": "Indica la fecha de entrega requerida"}), 400
+    user, ahora = session.get("user", ""), datetime.datetime.now().isoformat()
+    s = _orm.get_session()
+    try:
+        _pg_lock(s, f"op-crear|{job}")         # dos usuarios no pueden ordenar la misma pieza a la vez
+        filas = {r.item_id: r for r in s.query(_orm.RequisicionCompra).filter(_orm.RequisicionCompra.item_id.in_(ids)).all()}
+        piezas = []
+        for i in ids:
+            row = filas.get(i)
+            if not row: return jsonify({"error": "Una de las piezas ya no existe en el BOM"}), 400
+            d = row.data
+            if d.get("tipo") != "manufactura" or row.job != job:
+                return jsonify({"error": f"{d.get('part_number')} no pertenece al BOM de Manufactura del Job {job}"}), 400
+            if d.get("fabricacion") != "Interna":
+                return jsonify({"error": f"{d.get('part_number')}: solo piezas con Fabricación \"Interna\""}), 400
+            if d.get("orden_produccion"):
+                return jsonify({"error": f"{d.get('part_number')} ya está en la orden {d['orden_produccion']}"}), 400
+            if d.get("status") != "Solicitado":
+                return jsonify({"error": f"{d.get('part_number')} está {d.get('status')}; solo se ordenan piezas Solicitadas"}), 400
+            revs = d.get("revisiones") or []
+            piezas.append({"req_item_id": i, "part_id": d.get("part_number"), "tipo": d.get("description", ""),
+                           "material": d.get("material", ""), "acabado": d.get("acabado", ""),
+                           "rev_plano": d.get("rev_plano", ""), "archivo_id": revs[-1].get("archivo_id") if revs else None,
+                           "qty_normal": d.get("qty_normal", d.get("quantity", 1)), "qty_mirror": d.get("qty_mirror", 0),
+                           "procesos": {k: {"estado": "No aplica"} for k, _ in OP_PROCESOS}})
+        folio = _doc_next_number("MNO", width=6)
+        rec = {"folio": folio, "job": job, "prioridad": prioridad, "fecha_entrega": fecha, "status": "Pendiente",
+               "notas": str(data.get("notas") or "").strip(), "piezas": piezas,
+               "historial": [{"fecha": ahora, "usuario": user, "accion": "Creada"}],
+               "created_by": user, "created_at": ahora, "updated_at": ahora}
+        s.add(_orm.OrdenProduccion(data=rec, folio=folio, job=job))
+        _op_sync_requisicion(s, rec, estado_pieza="Orden interna")
+        s.commit()
+    finally:
+        s.close()
+    return jsonify({"ok": True, "folio": folio, "orden": rec})
+
+@app.route("/api/ordenes-produccion/<folio>", methods=["PUT"])
+def api_op_update(folio):
+    """Estatus, prioridad, fecha de entrega, notas y matriz de procesos por pieza
+    ({req_item_id: {proceso: "No aplica" | "Pendiente" | "Concluido"}})."""
+    if not can("edit", "ops-op"): return jsonify({"error": "Sin permiso para modificar Órdenes de Producción"}), 403
+    if (r := _op_requiere_db()): return r
+    data = request.get_json() or {}
+    user, ahora = session.get("user", ""), datetime.datetime.now().isoformat()
+    s = _orm.get_session()
+    try:
+        row = _op_get(s, folio)
+        if not row: return jsonify({"error": "Orden no encontrada"}), 404
+        rec = row.data; hist = rec.setdefault("historial", [])
+        previo = rec.get("status")
+        cerrada = previo in ("Concluida", "Cancelada")
+        if "procesos" in data and not cerrada:
+            por_id = {str(p.get("req_item_id")): p for p in rec.get("piezas") or []}
+            for rid, procs in (data.get("procesos") or {}).items():
+                p = por_id.get(str(rid))
+                if not p: continue
+                for k, estado in (procs or {}).items():
+                    if k not in dict(OP_PROCESOS) or estado not in OP_PROC_EST: continue
+                    act = p.setdefault("procesos", {}).setdefault(k, {"estado": "No aplica"})
+                    if act.get("estado") != estado:
+                        act["estado"] = estado
+                        if estado == "Concluido": act["concluido_por"], act["concluido_fecha"] = user, ahora
+                        else: act.pop("concluido_por", None); act.pop("concluido_fecha", None)
+                        hist.append({"fecha": ahora, "usuario": user, "accion": f"{p.get('part_id')} · {dict(OP_PROCESOS)[k]}: {estado}"})
+        if "prioridad" in data:
+            try: rec["prioridad"] = max(1, int(data["prioridad"]))
+            except (TypeError, ValueError): return jsonify({"error": "Prioridad inválida"}), 400
+        if "fecha_entrega" in data and re.match(r"^\d{4}-\d{2}-\d{2}$", str(data["fecha_entrega"])[:10]):
+            rec["fecha_entrega"] = str(data["fecha_entrega"])[:10]
+        if "notas" in data: rec["notas"] = str(data["notas"] or "").strip()
+        nuevo = data.get("status")
+        if nuevo and nuevo != previo:
+            if nuevo not in OP_STATUS: return jsonify({"error": f"Estatus inválido: {', '.join(OP_STATUS)}"}), 400
+            if nuevo == "Concluida":
+                h, t = _op_avance(rec)
+                if h < t: return jsonify({"error": f"Faltan procesos por concluir ({h} de {t}); no se puede concluir la orden."}), 400
+                if t == 0: return jsonify({"error": "La orden no tiene procesos configurados; configura al menos uno por pieza antes de concluirla."}), 400
+                sin = [p.get("part_id") for p in rec.get("piezas") or []
+                       if not any((p.get("procesos") or {}).get(k, {}).get("estado") != "No aplica" for k, _ in OP_PROCESOS)]
+                if sin: return jsonify({"error": f"Piezas sin ningún proceso configurado: {', '.join(sin)}"}), 400
+            rec["status"] = nuevo
+            hist.append({"fecha": ahora, "usuario": user, "accion": f"Estatus: {previo} → {nuevo}"})
+            if nuevo == "Concluida":   _op_sync_requisicion(s, rec, estado_pieza="Fabricado")
+            elif nuevo == "Cancelada": _op_sync_requisicion(s, rec, desligar=True)
+            elif previo in ("Concluida", "Cancelada"):
+                # se reabre: las piezas vuelven a quedar en la orden, si siguen libres
+                for p in rec.get("piezas") or []:
+                    r2 = s.query(_orm.RequisicionCompra).filter(_orm.RequisicionCompra.item_id == str(p.get("req_item_id"))).one_or_none()
+                    if r2 is not None and r2.data.get("orden_produccion") not in (None, rec["folio"]):
+                        return jsonify({"error": f"{p.get('part_id')} ya está en la orden {r2.data['orden_produccion']}; no se puede reabrir."}), 400
+                _op_sync_requisicion(s, rec, estado_pieza="Orden interna")
+        rec["updated_at"], rec["updated_by"] = ahora, user
+        row.data = rec; _orm_flag_modified(row, "data")
+        s.commit()
+    finally:
+        s.close()
+    return jsonify({"ok": True, "orden": rec, **_op_resumen(rec)})
+
+@app.route("/api/ordenes-produccion/<folio>", methods=["DELETE"])
+def api_op_delete(folio):
+    if not can("delete", "ops-op"): return jsonify({"error": "Sin permiso"}), 403
+    if (r := _op_requiere_db()): return r
+    s = _orm.get_session()
+    try:
+        row = _op_get(s, folio)
+        if not row: return jsonify({"error": "Orden no encontrada"}), 404
+        if row.data.get("status") not in ("Pendiente", "Cancelada"):
+            return jsonify({"error": "Solo se eliminan órdenes Pendientes o Canceladas; cancélala primero."}), 400
+        _op_sync_requisicion(s, row.data, desligar=True)
+        s.delete(row); s.commit()
+    finally:
+        s.close()
+    return jsonify({"ok": True})
+
+@app.route("/api/ordenes-produccion/<folio>/pdf", methods=["GET"])
+def api_op_pdf(folio):
+    """Estatus de la orden en una página lista para imprimir o guardar como PDF."""
+    if not can("view", "ops-op"): return jsonify({"error": "Sin permiso"}), 403
+    if (r := _op_requiere_db()): return r
+    s = _orm.get_session()
+    try:
+        row = _op_get(s, folio)
+        if not row: return jsonify({"error": "Orden no encontrada"}), 404
+        rec = row.data
+    finally:
+        s.close()
+    E = _html.escape
+    h, t = _op_avance(rec)
+    col = {"Pendiente": "#a16207", "En proceso": "#1d4ed8", "En pausa": "#b45309", "Concluida": "#15803d", "Cancelada": "#6b7280"}
+    celda = {"No aplica": ('<span style="color:#bbb">—</span>'), "Pendiente": '<span style="color:#b45309;font-weight:bold">Pendiente</span>'}
+    filas = []
+    for p in rec.get("piezas") or []:
+        tds = []
+        for k, _n in OP_PROCESOS:
+            pr = (p.get("procesos") or {}).get(k, {})
+            e = pr.get("estado", "No aplica")
+            if e == "Concluido":
+                quien = E(pr.get("concluido_por", "")) + " " + E(str(pr.get("concluido_fecha", ""))[:10])
+                txt = '<span style="color:#15803d;font-weight:bold">&#10004;</span><div style="font-size:8px;color:#666">' + quien + "</div>"
+            else:
+                txt = celda.get(e, "")
+            tds.append('<td style="text-align:center">' + txt + "</td>")
+        filas.append(f"""<tr><td><b>{E(p.get('part_id',''))}</b></td><td style="text-align:center">{E(p.get('rev_plano',''))}</td>
+          <td>{E(p.get('tipo',''))}</td><td>{E(p.get('material',''))}</td><td>{E(p.get('acabado',''))}</td>
+          <td style="text-align:center">{p.get('qty_normal',0):g}</td><td style="text-align:center">{p.get('qty_mirror',0):g}</td>{''.join(tds)}
+          <td style="text-align:center">{float(p.get('ingresado_normal') or 0):g}/{float(p.get('qty_normal') or 0):g} · {float(p.get('ingresado_mirror') or 0):g}/{float(p.get('qty_mirror') or 0):g}</td>
+          <td style="text-align:center">{'<b style="color:#15803d">&#10004;</b>' if p.get('lote_terminado') else '—'}</td></tr>""")
+    html = f"""<!DOCTYPE html><html><head><meta charset="UTF-8"><title>{E(rec['folio'])}</title><style>
+      body{{font-family:Arial,sans-serif;font-size:11px;color:#222;margin:28px}} h1{{font-size:18px;color:#c8102e;margin:0 0 4px}}
+      .meta{{display:flex;gap:28px;flex-wrap:wrap;margin:10px 0 14px;font-size:11px}} .meta b{{display:block;font-size:9px;color:#888;text-transform:uppercase;letter-spacing:.5px}}
+      table{{width:100%;border-collapse:collapse}} th{{background:#1f3864;color:#fff;padding:6px;font-size:9px;text-transform:uppercase}}
+      td{{padding:6px;border-bottom:1px solid #ddd;vertical-align:middle}} .st{{display:inline-block;padding:3px 10px;border-radius:10px;color:#fff;font-weight:bold;background:{col.get(rec.get('status'),'#555')}}}
+      .foot{{margin-top:22px;font-size:9px;color:#999;border-top:1px solid #ddd;padding-top:6px}} @media print{{.noprint{{display:none}}}}
+    </style></head><body>
+    <div class="noprint" style="text-align:right;margin-bottom:10px"><button onclick="window.print()">Imprimir / Guardar como PDF</button></div>
+    <h1>Orden de Producción {E(rec['folio'])}</h1><span class="st">{E(rec.get('status',''))}</span>
+    <div class="meta"><div><b>Job</b>{E(rec.get('job',''))}</div><div><b>Prioridad</b>{rec.get('prioridad','')}</div>
+      <div><b>Entrega requerida</b>{E(rec.get('fecha_entrega',''))}</div><div><b>Avance</b>{h} de {t} procesos{f' ({round(h/t*100)}%)' if t else ''}</div>
+      <div><b>Creada por</b>{E(rec.get('created_by',''))} · {E(str(rec.get('created_at',''))[:10])}</div></div>
+    {f"<p><b>Notas:</b> {E(rec.get('notas',''))}</p>" if rec.get('notas') else ''}
+    <table><tr><th>ID pieza</th><th>Rev.</th><th>Tipo</th><th>Material</th><th>Acabado</th><th>Normal</th><th>Mirror</th>{''.join(f'<th>{n}</th>' for _k, n in OP_PROCESOS)}<th>Almacén N · M</th><th>Lote terminado</th></tr>{''.join(filas)}</table>
+    <div class="foot">Persico México · Generado {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}</div></body></html>"""
+    return Response(html, mimetype="text/html")
 
 @app.route("/api/requisiciones/validar-oc", methods=["POST"])
 def api_requisiciones_validar_oc():
@@ -10773,9 +11573,8 @@ def api_requisiciones_reasignar_stock():
                     d["cantidad_reasignada"] = float(d.get("cantidad_reasignada") or 0) + res["asignado"]
                     d.setdefault("reasignaciones", []).append({"order_number": body["order_number"], "cantidad": res["asignado"],
                                                                "fecha": ahora, "usuario": session.get("user", "")})
-                    pend = max(0.0, float(d.get("quantity") or 0) - d["cantidad_reasignada"])
-                    if pend <= 0:
-                        d["status"] = "Reasignado"; row.status = "Reasignado"
+                    _req_aplicar_estatus(d, row)
+                    pend = _req_con_pendiente(d)["cantidad_pendiente"]
                     row.data = d
                     _orm_flag_modified(row, "data")
                     res["pendiente"] = pend
@@ -11172,6 +11971,13 @@ def api_create_gpo():
         esquema_tributario = data.get("esquema_tributario") or None
         moneda    = str(data.get("moneda","USD")).upper()
         fx_rate   = float(data.get("fx_rate") or 1.0) if moneda=="MXN" else 1.0
+        fx_hoy    = fx_rate_for_date(datetime.date.today().isoformat(), fx_load_all())
+        if moneda == "MXN" and fx_rate <= 1.0:
+            # Antes una orden en MXN sin tipo de cambio se guardaba con 1.0 (total_usd = pesos).
+            if not fx_hoy:
+                return jsonify({"error": "No hay tipo de cambio MXN/USD registrado para hoy (ni en los 7 días previos). "
+                                         "Actualízalo en Finanzas ▸ Tipo de Cambio antes de emitir una orden en pesos."}), 400
+            fx_rate = float(fx_hoy)
         if not items:
             return jsonify({"error": "La PO debe tener al menos un item"}), 400
         if not esquema_tributario or not esquema_tributario.get("folio"):
@@ -11180,18 +11986,25 @@ def api_create_gpo():
         # ni más de lo pendiente (pedido − reasignado − ya comprado).
         ligados = [it for it in items if it.get("req_item_id")]
         if ligados:
-            en_stock = _req_en_stock(ligados)
+            filas = _req_rows([it["req_item_id"] for it in ligados])
+            es_manuf = lambda it: (filas.get(str(it["req_item_id"])) or {}).get("tipo") == "manufactura"
+            # Piezas del BOM de Manufactura: se fabrican afuera, no se buscan en Stock;
+            # solo se pueden comprar las marcadas con Fabricación "Externa".
+            for it in [x for x in ligados if es_manuf(x)]:
+                f = filas[str(it["req_item_id"])]
+                if f.get("fabricacion") != "Externa":
+                    return jsonify({"error": f"{it.get('part_number')}: solo se compran piezas con Fabricación \"Externa\" (tiene \"{f.get('fabricacion') or 'sin definir'}\")"}), 400
+            en_stock = _req_en_stock([x for x in ligados if not es_manuf(x)])
             if en_stock:
                 return jsonify({"error": "Hay materiales con existencia en Stock; no se pueden comprar. Se quitaron de la orden: reasígnalos desde la requisición.",
                                 "en_stock": en_stock}), 409
-            filas = _req_rows([it["req_item_id"] for it in ligados])
             for it in ligados:
                 f = filas.get(str(it["req_item_id"]))
                 if not f:
                     return jsonify({"error": f"El renglón de requisición de {it.get('part_number')} ya no existe"}), 400
                 if f.get("status") not in REQ_ESTATUS_REASIGNABLES:
                     return jsonify({"error": f"{it.get('part_number')} ya está {f.get('status')} en la requisición"}), 400
-                if float(it.get("quantity") or 0) > f["cantidad_pendiente"]:
+                if f.get("tipo") != "manufactura" and float(it.get("quantity") or 0) > f["cantidad_pendiente"]:
                     return jsonify({"error": f"{it.get('part_number')}: se piden {it.get('quantity')} pero solo quedan {f['cantidad_pendiente']:g} pendientes"}), 400
         with lock:
             po_number = gpo_alloc_number()
@@ -11220,6 +12033,7 @@ def api_create_gpo():
                     "job":         item_job,
                     "notes":       str(it.get("notes","")).strip(),
                     "req_item_id": str(it.get("req_item_id") or ""),
+                    "variante":    str(it.get("variante") or ""),      # Normal / Mirror (piezas de manufactura)
                 })
             subtotal     = round(sum(i["total"] for i in po_items), 2)
             iva_amt      = round(subtotal * iva_pct / 100, 2)
@@ -11276,7 +12090,7 @@ def api_create_gpo():
                     "subtotal":             it["total"],
                     "moneda":               moneda,          # ← CRITICAL: store currency
                     "tipo_cambio":          fx_rate if moneda=="MXN" else 1.0,
-                    "subtotal_mxn":         round(it["total"] * fx_rate, 2) if moneda=="MXN" else it["total"],
+                    "subtotal_mxn":         it["total"] if moneda=="MXN" else round(it["total"] * (fx_hoy or 1.0), 2),
                     "estatus":              "Emitida",
                     "descuento_financiero": 0,
                     "pct_descuento":        0,
@@ -11307,7 +12121,9 @@ def api_create_gpo():
             req_actualizados = _req_registrar_compra(po_number, po_items)
         except Exception as e:
             print(f"[REQ] No se pudo registrar la compra {po_number} en la requisición: {e}")
-            req_actualizados = None
+            return jsonify({"ok": True, "po_number": po_number, "record": rec, "requisicion_renglones": None,
+                            "advertencia": f"La orden {po_number} se emitió, pero no se pudo actualizar la requisición ({e}). "
+                                           "Revísala: los renglones pueden seguir como pendientes."})
         return jsonify({"ok": True, "po_number": po_number, "record": rec, "requisicion_renglones": req_actualizados})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -11446,7 +12262,7 @@ def api_gpo_modificar(po_number):
                             else:
                                 new_sub = 0.0
                             ir["subtotal"]     = new_sub
-                            ir["subtotal_mxn"] = round(new_sub * fx_rate, 2) if moneda=="MXN" else new_sub
+                            ir["subtotal_mxn"] = new_sub if moneda=="MXN" else round(new_sub * fx_rate, 2)
                             ir["estatus"]      = "Cierre Anticipado"
                             changed = True
                     if changed:
@@ -11547,7 +12363,7 @@ def api_gpo_modificar(po_number):
                                 "subtotal":             it["total"],
                                 "moneda":               moneda,
                                 "tipo_cambio":          fx_rate if moneda=="MXN" else 1.0,
-                                "subtotal_mxn":         round(it["total"]*fx_rate,2) if moneda=="MXN" else it["total"],
+                                "subtotal_mxn":         it["total"] if moneda=="MXN" else round(it["total"]*fx_rate,2),
                                 "estatus":              "Emitida",
                                 "descuento_financiero": 0,
                                 "pct_descuento":        0,
@@ -11940,7 +12756,10 @@ def api_get_projconfig():
         records = projcfg_load()
         q = request.args.get("q","").upper()
         if q:
-            records = [r for r in records if q in r.get("ptsv","").upper()]
+            # sin distinguir guiones/espacios: "PT0067", "PT 0067" y "PT-0067" son el mismo PT
+            nq = re.sub(r"[^A-Z0-9]", "", q)
+            records = [r for r in records if q in r.get("ptsv","").upper()
+                       or (nq and nq in re.sub(r"[^A-Z0-9]", "", r.get("ptsv","").upper()))]
         return jsonify({"records": records})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -11954,7 +12773,9 @@ def api_create_projconfig():
         if not ptsv: return jsonify({"error":"PT/SV requerido"}), 400
         with lock:
             records = projcfg_load()
-            existing = next((r for r in records if r.get("ptsv","").upper()==ptsv), None)
+            _n = lambda v: re.sub(r"[^A-Z0-9]", "", str(v or "").upper())
+            existing = next((r for r in records if _n(r.get("ptsv")) == _n(ptsv)), None)
+            if existing: ptsv = existing.get("ptsv", ptsv).upper()     # conservar el nombre ya guardado
 
             jobs_in = data.get("jobs", [])
             if not can("delete", "projconfig") and existing:
@@ -11969,7 +12790,7 @@ def api_create_projconfig():
                             j[f] = 0
 
             # Remove existing config for same PT/SV (overwrite)
-            records = [r for r in records if r.get("ptsv","").upper() != ptsv]
+            records = [r for r in records if _n(r.get("ptsv")) != _n(ptsv)]
             rec = {
                 "id":         f"PC-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}",
                 "ptsv":       ptsv,
@@ -12308,6 +13129,7 @@ def api_create_ingreso():
                     "total":             round(qty_del * uc, 2),
                     "job":               job_val,
                     "notes":             str(it.get("notes","")).strip(),
+                    "variante":          str(it.get("variante") or ""),
                 })
             if not ing_items:
                 return jsonify({"error": "Ningún item con cantidad > 0"}), 400
@@ -12326,9 +13148,49 @@ def api_create_ingreso():
             ingresos.append(rec)
             ingreso_save(ingresos)
 
+            # ── Piezas del BOM de Manufactura compradas con GPO → Almacén de Piezas de
+            #    Manufactura (Normal primero hasta lo requerido, el resto Mirror).
+            manuf_ok = []
+            if tipo == "gpo" and po_num and _orm and _orm.DB_ENABLED:
+                g = next((x for x in gpo_load() if x.get("po_number", "").upper() == po_num), None)
+                ligados = {str(i.get("part_number", "")).upper(): i.get("req_item_id") for i in (g or {}).get("items", []) if i.get("req_item_id")}
+                variantes = {(str(i.get("part_number", "")).upper(), i.get("variante") or ""): i.get("req_item_id")
+                             for i in (g or {}).get("items", []) if i.get("req_item_id")}
+                if ligados:
+                    s_m = _orm.get_session()
+                    try:
+                        for it in ing_items:
+                            rid = ligados.get(it["part_number"].upper())
+                            if not rid: continue
+                            rr = s_m.query(_orm.RequisicionCompra).filter(_orm.RequisicionCompra.item_id == str(rid)).one_or_none()
+                            if rr is None or rr.data.get("tipo") != "manufactura": continue
+                            d = rr.data
+                            q = float(it["quantity_delivered"])
+                            var = it.get("variante") or ""
+                            if var == "Normal":   n, m = q, 0.0            # renglón NORMAL de la orden
+                            elif var == "Mirror": n, m = 0.0, q            # renglón MIRROR de la orden
+                            else:                                          # órdenes anteriores sin variante
+                                falta_n = max(0.0, float(d.get("qty_normal", d.get("quantity", 1)) or 0) - float(d.get("recibido_normal") or 0))
+                                n = min(q, falta_n); m = q - n
+                            revs = d.get("revisiones") or []
+                            _mstock_mov(s_m, d.get("job") or it["job"],
+                                        {"part_id": d.get("part_number"), "tipo": d.get("description"), "material": d.get("material"),
+                                         "acabado": d.get("acabado"), "rev_plano": d.get("rev_plano"),
+                                         "archivo_id": revs[-1].get("archivo_id") if revs else None},
+                                        n, m, "Ingreso · Orden de Compra", po_num)
+                            d["recibido_normal"] = float(d.get("recibido_normal") or 0) + n
+                            d["recibido_mirror"] = float(d.get("recibido_mirror") or 0) + m
+                            rr.data = d; _orm_flag_modified(rr, "data")
+                            manuf_ok.append(it["part_number"].upper())
+                        s_m.commit()
+                    finally:
+                        s_m.close()
+
             # ── Registrar en Apartados (estructura consolidada por No. Parte)
             apartados = apartado_load()
             for it in ing_items:
+                if it["part_number"].upper() in manuf_ok:
+                    continue            # ya entró al Almacén de Piezas de Manufactura
                 # qty_del > 0 is guaranteed by the filter above
                 pnum = it["part_number"]
                 job  = it["job"]
@@ -12433,7 +13295,8 @@ def api_create_ingreso():
                         po_save(yr, ipo_recs)
 
         return jsonify({"ok": True, "record": rec,
-                        "apartados_created": sum(1 for it in ing_items if it["quantity_delivered"]>0)})
+                        "apartados_created": sum(1 for it in ing_items if it["quantity_delivered"]>0 and it["part_number"].upper() not in manuf_ok),
+                        "manufactura_ingresadas": len(manuf_ok)})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -14407,7 +15270,37 @@ def api_create_salida():
         with lock:
             now = datetime.datetime.now().isoformat()
             sal_items = []
+            # Renglones de Piezas de Manufactura: Normal / Mirror contra lo disponible
+            # (existencia − salidas pendientes) del almacén de manufactura de ese Job.
+            manuf = [it for it in items if it.get("origen") == "manufactura"]
+            if manuf:
+                if not (_orm and _orm.DB_ENABLED): return jsonify({"error": "Requiere base de datos"}), 400
+                agrup = {}
+                for it in manuf:          # renglones repetidos de la misma pieza se suman
+                    pid = str(it.get("part_number", "")).strip().upper()
+                    n = float(it.get("qty_normal") or 0); m = float(it.get("qty_mirror") or 0)
+                    if n < 0 or m < 0: return jsonify({"error": f"{pid}: cantidad negativa"}), 400
+                    a = agrup.setdefault(pid, [0.0, 0.0]); a[0] += n; a[1] += m
+                s_m = _sesion_propia()
+                try:
+                    _pg_lock(s_m, f"mstock-salida|{job}")
+                    pend = _mstock_pendientes(job)
+                    for pid, (n, m) in agrup.items():
+                        if n + m <= 0: continue
+                        st = s_m.query(_orm.ManufStock).filter(_orm.ManufStock.clave == f"{job}|{pid}").one_or_none()
+                        if st is None: return jsonify({"error": f"{pid} no tiene existencias para el Job {job}"}), 400
+                        pn, pm = pend.get((job, pid), (0.0, 0.0))
+                        dn, dm = st.data["qty_normal"] - pn, st.data["qty_mirror"] - pm
+                        if n > dn + 1e-9 or m > dm + 1e-9:
+                            return jsonify({"error": f"{pid}: disponible Normal {dn:g}, Mirror {dm:g}"}), 400
+                        sal_items.append({"origen": "manufactura", "part_number": pid, "brand": "",
+                                          "description": " · ".join(x for x in (st.data.get("tipo"), st.data.get("material")) if x),
+                                          "cat_code": "", "label_code": "", "qty_normal": n, "qty_mirror": m,
+                                          "quantity": n + m, "unit_cost": 0.0, "total": 0.0})
+                finally:
+                    s_m.close()
             for it in items:
+                if it.get("origen") == "manufactura": continue
                 qty = float(it.get("quantity",0))
                 uc  = float(it.get("unit_cost",0) or 0)
                 if qty <= 0: continue
@@ -14439,8 +15332,26 @@ def api_surtir_salida(sal_id):
             if not rec: return jsonify({"error":"Salida no encontrada"}), 404
             if rec.get("status")=="Surtida": return jsonify({"error":"Ya fue surtida"}), 400
             now = datetime.datetime.now().isoformat()
+            manuf = [it for it in rec.get("items",[]) if it.get("origen") == "manufactura"]
+            s_m = None
+            if manuf:
+                # Piezas de manufactura: el descuento se prepara (flush) pero se confirma
+                # DESPUÉS de guardar la salida como Surtida; si algo falla antes, se revierte
+                # y la salida sigue Pendiente sin descuento. (Auditoría rev47: A03)
+                s_m = _sesion_propia()
+                try:
+                    _pg_lock(s_m, f"mstock-salida|{rec['job'].upper()}")
+                    for it in manuf:
+                        _mstock_mov(s_m, rec["job"], {"part_id": it["part_number"]}, -float(it.get("qty_normal") or 0),
+                                    -float(it.get("qty_mirror") or 0), "Salida de almacén", rec["id"])
+                    s_m.flush()
+                except ValueError as e:
+                    s_m.rollback(); s_m.close(); return jsonify({"error": str(e)}), 400
+                except Exception:
+                    s_m.rollback(); s_m.close(); raise
             apartados = apartado_load()
             for it in rec.get("items",[]):
+                if it.get("origen") == "manufactura": continue
                 pnum=it["part_number"].upper(); job=rec["job"].upper(); qty=float(it.get("quantity",0))
                 apt=next((a for a in apartados if a.get("part_number","").upper()==pnum),None)
                 if apt:
@@ -14452,7 +15363,14 @@ def api_surtir_salida(sal_id):
                     apt["updated_at"]=now
             apartado_save(apartados)
             rec["status"]="Surtida"; rec["surtido_at"]=now; rec["surtido_by"]=session.get("user","")
-            salida_save(records)
+            try:
+                salida_save(records)
+                if s_m is not None: s_m.commit()
+            except Exception:
+                if s_m is not None: s_m.rollback()
+                raise
+            finally:
+                if s_m is not None: s_m.close()
         return jsonify({"ok": True, "record": rec})
     except Exception as e: return jsonify({"error": str(e)}), 500
 
@@ -14463,7 +15381,23 @@ def api_delete_salida(sal_id):
         with lock:
             records=salida_load(); new=[r for r in records if r["id"]!=sal_id]
             if len(new)==len(records): return jsonify({"error":"Salida no encontrada"}), 404
-            salida_save(new)
+            rec = next(r for r in records if r["id"]==sal_id)
+            manuf = [it for it in rec.get("items",[]) if it.get("origen")=="manufactura"]
+            if rec.get("status")=="Surtida" and manuf and _orm and _orm.DB_ENABLED:
+                # regresar las piezas con un movimiento compensatorio (queda trazabilidad)
+                s_m = _sesion_propia()
+                try:
+                    _pg_lock(s_m, f"mstock-salida|{rec['job'].upper()}")
+                    for it in manuf:
+                        _mstock_mov(s_m, rec["job"], {"part_id": it["part_number"]}, float(it.get("qty_normal") or 0),
+                                    float(it.get("qty_mirror") or 0), "Cancelación de salida", rec["id"])
+                    salida_save(new); s_m.commit()
+                except Exception:
+                    s_m.rollback(); raise
+                finally:
+                    s_m.close()
+            else:
+                salida_save(new)
         return jsonify({"ok": True})
     except Exception as e: return jsonify({"error": str(e)}), 500
 

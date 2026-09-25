@@ -156,3 +156,49 @@ Probado en Chromium a 1366 px con descripciones de 130 a 170 caracteres:
 - **Modificar OC:** total recalculado $520.00 (2×80 + 3×120). La lectura por posición
   devuelve descripción, No. de parte, marca, cantidad y precio correctos en cada renglón.
 - Sin errores de JavaScript.
+
+---
+# rev40 — Tipo de cambio "No disponible" al emitir órdenes en MXN
+
+## Causa (existía desde antes de rev08)
+El formulario de Orden de Compra pide el tipo de cambio a `GET /api/fx/lookup`.
+La función `api_fx_lookup()` estaba en el código, pero **sin su `@app.route`**: el
+servidor respondía 404 y la pantalla mostraba "No disponible".
+
+**Consecuencia:** el formulario enviaba `fx_rate = null` y el servidor lo tomaba como
+**1.0**. Toda orden en pesos quedaba con tipo de cambio 1 y un `total_usd` igual al monto
+en pesos.
+- **Costo del Job:** no se afectaba, porque la IPO convierte a dólares con la tabla de
+  tipos de cambio según su fecha.
+- **Sí se afectaban:** el `total_usd` y el `fx_rate` guardados en la orden.
+
+## Corrección
+- **Ruta:** se registra `@app.route("/api/fx/lookup")`. Ahora devuelve el tipo de cambio
+  y la **fecha real** usada (en fin de semana o día festivo, el último día hábil, hasta
+  7 días atrás).
+- **Formulario:** muestra "17.6425 MXN/USD (fecha)". Si no hay tipo de cambio registrado,
+  lo indica y dice dónde actualizarlo.
+- **Servidor, orden en MXN sin tipo de cambio válido:** usa el de la tabla para hoy. Si
+  no existe, **rechaza la orden** con un mensaje claro en lugar de guardarla con 1.0.
+- **`subtotal_mxn` de la IPO:** había dos fórmulas contradictorias. En creación y
+  modificación multiplicaba el total por el tipo de cambio aun cuando los precios ya
+  estaban en pesos; con el tipo de cambio correcto habría quedado ×17. Se unificó con
+  la fórmula que ya usaba otra ruta: **MXN → el total tal cual; USD → total × tipo de
+  cambio**. Este campo solo se usa en exportaciones.
+
+## Órdenes existentes
+Las órdenes en MXN emitidas antes de este cambio tienen `fx_rate = 1` y `total_usd` en
+pesos. **No se corrigieron automáticamente.** Se puede hacer con una migración que tome
+el tipo de cambio de su fecha de emisión.
+
+## Cómo se probó
+- **PostgreSQL:**
+  - La ruta existe (antes 404).
+  - Sin tipo de cambio: la orden MXN se rechaza.
+  - Con tipo de cambio de ayer: el lookup devuelve 17.6425 y la fecha real; la orden
+    usa ese valor (2,000 MXN → 113.36 USD); la IPO queda con subtotal_mxn 2,000 (no ×17).
+  - Si el formulario envía el tipo de cambio, se respeta.
+  - Orden en USD: subtotal_mxn = total × tipo de cambio.
+- **Chromium:** al elegir MXN aparece "17.6425 MXN/USD (2026-09-24)"; sin tipo de cambio,
+  el aviso correspondiente.
+- **Regresión:** suites de orden de compra desde requisición y de folios consecutivos OK.

@@ -176,3 +176,60 @@ contra los renglones que ya existen para ese Job y ese tipo (Eléctrico, Mecáni
   - Otro tipo se agrega aparte.
 - **Chromium:** carga desde la pantalla con el resumen completo, aviso de revisión en el
   renglón, "⚠ 1 por revisar" en el conteo y "Aceptar" aplicado. Sin errores de JavaScript.
+
+---
+# rev35 — Estatus bloqueado al 100 %, "Reas. Parcial", Solicitante y Comprador
+
+## Reglas de estatus (una sola función en el servidor: `_req_aplicar_estatus`)
+Se recalcula en cada reasignación, compra, reversión (eliminar o cancelar RA/PO), carga
+con mayor cantidad y revisión aceptada:
+
+| Situación (por cantidades registradas) | Estatus |
+|---|---|
+| reasignado + comprado ≥ pedido, con compra | **Comprado** 🔒 |
+| reasignado ≥ pedido, sin compra | **Reasignado** 🔒 |
+| reasignado en parte, con pendiente | **Reas. Parcial** (nuevo, color turquesa) |
+| sin reasignar | su estatus base: Solicitado u Homologado |
+
+- **Bloqueo al 100 %:** el selector queda deshabilitado con 🔒 y el servidor rechaza el
+  cambio con el motivo. Para modificarlo, se elimina o cancela la orden RA o PO; el
+  estatus se recalcula solo.
+- **Reas. Parcial:**
+  - Lo asigna el sistema; no se puede elegir a mano (aparece deshabilitado en la lista).
+  - Se puede seguir reasignando, comprar (orden de compra desde la requisición) o cancelar.
+  - Al revertir toda la reasignación, el renglón vuelve a su **estatus base**. Si era
+    Homologado, regresa a Homologado.
+  - Si con reasignación parcial se elige Solicitado u Homologado, eso queda como estatus
+    base y lo visible sigue siendo "Reas. Parcial".
+- **Marcados a mano:** "Comprado" o "Reasignado" puestos a mano, sin cantidades
+  registradas (compras hechas fuera del sistema), se pueden corregir como antes.
+- **Eliminar renglón:** ya no se permite si tiene reasignaciones u órdenes de compra; el
+  botón no aparece y el servidor lo rechaza. Así ninguna orden queda apuntando a un
+  renglón inexistente.
+
+## Columnas nuevas en la tabla de requisición
+- **Solicitante:** usuario que subió la requisición, con fecha (`created_by`).
+- **Comprador:** usuario que dejó el renglón en Comprado, Reasignado o Reas. Parcial, con
+  fecha.
+  - Se toma del último movimiento vigente (reasignación o compra). Si se elimina una
+    orden, queda quien realmente reasignó o compró, no quien eliminó.
+  - En los marcados a mano, es quien cambió el estatus.
+  - En renglones anteriores a este cambio, se toma de su historial cuando existe.
+
+## Cómo se probó
+- **PostgreSQL (15 verificaciones, con dos usuarios: "ana" sube y "compras" reasigna y compra):**
+  - Solicitante ana.
+  - A1: 2 de 5 desde Stock → Reas. Parcial, Comprador compras. Luego se compra el resto
+    → Comprado 🔒; cambiar su estatus da 400.
+  - "Reas. Parcial" a mano da 400.
+  - B1 Comprado a mano → corregible.
+  - C1 Homologado + reasignación parcial → Reas. Parcial con base Homologado; al eliminar
+    la RA vuelve a su base.
+  - Eliminar la PO de A1 → regresa a Reas. Parcial con Comprador compras, no admin.
+  - Renglón reasignado no se puede eliminar.
+- **Regresión:** suites de orden de compra, eliminación de reasignaciones, carga sin
+  duplicados y folios; todas OK. La única expectativa ajustada: un renglón reasignado al
+  100 % cuya cantidad sube ahora queda **Reas. Parcial** (antes Solicitado).
+- **Chromium:** Reas. Parcial en turquesa y editable; Reasignado y Comprado con 🔒 y
+  selector deshabilitado; columnas Solicitante y Comprador con usuario y fecha. Sin
+  errores de JavaScript.
