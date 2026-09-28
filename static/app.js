@@ -10386,6 +10386,8 @@ function pcRenderResumenAreas() {
 
 async function pcSave() {
   if(!pcCurrentPTSV) return;
+  const _malas = pcFechasInvalidasTiming();
+  if(_malas.length && !confirm(`El Timing tiene ${_malas.length} fecha(s) no válida(s):\n\n${_malas.map(m=>`• ${m.actividad} — ${m.campo}: ${m.valor}`).join('\n')}\n\nRevisa el año (4 dígitos). ¿Guardar de todos modos?`)) { pcSwitchTab('timing'); return; }
   const jobsData = pcJobRows.map((j,idx) => {
     const row = document.querySelector(`#pc-row-${idx}`);
     if(!row) return null;
@@ -11763,6 +11765,20 @@ function pcToggleGroup(toggleEl){
 }
 let _pcCollapsedGroups = new Set();
 
+// rev56: un <input type="date"> acepta años de 5-6 dígitos (ej. "202626-09-04") si se
+// teclea un dígito de más. new Date() los convierte en "Invalid Date" y una sola fecha así
+// dejaba todo el Gantt en NaN (encabezado "Invalid Date", barras sin dibujar).
+// _pcFecha solo acepta AAAA-MM-DD reales entre 2000 y 2100.
+function _pcFecha(v){
+  const m = String(v||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(!m) return null;
+  const y=+m[1], mo=+m[2], d=+m[3];
+  if(y<2000 || y>2100) return null;
+  const f = new Date(y, mo-1, d);
+  return (f.getFullYear()===y && f.getMonth()===mo-1 && f.getDate()===d) ? f : null;
+}
+const _pcFechaMala = v => !!v && !_pcFecha(v);
+
 function _pcF(tr,field){
   const el=tr.querySelector(`[data-field="${field}"]`);
   if(!el) return '';
@@ -11789,7 +11805,7 @@ function pcUpdateTimingCalcs() {
     const fReal = _pcF(tr,'fecha_real_finalizacion');
     const prevKey = normKey(prev);
     const prevNotFound = !fIni && prev && !endDateMap[prevKey];
-    let fCond = fIni ? new Date(fIni+'T00:00:00') : null;
+    let fCond = _pcFecha(fIni);
     if(!fCond && prev && endDateMap[prevKey]) {
       fCond = new Date(endDateMap[prevKey]); fCond.setDate(fCond.getDate()+1);
     }
@@ -11809,8 +11825,8 @@ function pcUpdateTimingCalcs() {
         }
       }
       if(statEl){
-        if(fReal) {
-          const fRealDate = new Date(fReal+'T00:00:00');
+        if(_pcFecha(fReal)) {
+          const fRealDate = _pcFecha(fReal);
           const diffDays = Math.round((fRealDate - fObj) / 86400000);
           if(diffDays > 0)      statEl.innerHTML = `<span style="color:var(--red);font-weight:700">⚠ RETRASO +${diffDays}d</span>`;
           else if(diffDays < 0) statEl.innerHTML = `<span style="color:var(--green);font-weight:700">✓ ADELANTO ${diffDays}d</span>`;
@@ -11852,9 +11868,40 @@ function pcUpdateTimingCalcs() {
 
   _pcLastEndDateMap = endDateMap;
   _pcLastGroupRanges = groupRanges;
+  pcMarcarFechasInvalidas();
   pcRenderGantt([...tb.rows], endDateMap, groupRanges);
 }
 let _pcLastEndDateMap = {};
+
+// rev56: resalta en rojo las fechas del Timing que no son válidas y muestra un aviso arriba
+// de la tabla. Regresa la lista [{actividad, campo, valor}].
+const PC_T_FECHAS = [['fecha_inicial','Fecha inicial'], ['fecha_real_finalizacion','Fecha real de finalización']];
+function pcFechasInvalidasTiming(){
+  const tb = document.getElementById('pc-timing-body'); if(!tb) return [];
+  const out = [];
+  [...tb.rows].forEach(tr=>{ if(tr.dataset.tipo==='grupo') return;
+    PC_T_FECHAS.forEach(([f,n])=>{ const v=_pcF(tr,f); if(_pcFechaMala(v)) out.push({actividad:_pcF(tr,'actividad')||'(sin nombre)', campo:n, valor:v}); }); });
+  return out;
+}
+function pcMarcarFechasInvalidas(){
+  const tb = document.getElementById('pc-timing-body'); if(!tb) return;
+  [...tb.rows].forEach(tr=>PC_T_FECHAS.forEach(([f])=>{
+    const el = tr.querySelector(`[data-field="${f}"]`); if(!el) return;
+    const mala = _pcFechaMala(el.value);
+    el.style.outline = mala ? '2px solid var(--red)' : '';
+    el.style.background = mala ? 'rgba(200,16,46,.08)' : '';
+    el.title = mala ? `Fecha no válida: "${el.value}". Revisa el año (debe tener 4 dígitos). No se usa en el cálculo ni en el diagrama.` : '';
+  }));
+  const malas = pcFechasInvalidasTiming();
+  let av = document.getElementById('pc-timing-alerta');
+  const scroll = document.getElementById('pc-timing-scroll');
+  if(!av && scroll){ av = document.createElement('div'); av.id='pc-timing-alerta'; scroll.parentNode.insertBefore(av, scroll); }
+  if(!av) return;
+  av.style.cssText = malas.length ? 'margin:0 0 10px;padding:9px 12px;border:1px solid rgba(200,16,46,.35);background:rgba(200,16,46,.06);border-radius:8px;font-size:11.5px;color:var(--red)' : 'display:none';
+  av.innerHTML = malas.length ? `<b>⚠ ${malas.length} fecha(s) no válida(s)</b> — no se toman en cuenta en el cálculo ni en el diagrama hasta corregirlas: `
+    + malas.map(m=>`${esc(m.actividad)} · ${m.campo}: <code>${esc(m.valor)}</code>`).join(' · ') : '';
+}
+
 let _pcGanttZoom = 'semanas';   // 'dias' | 'semanas' | 'meses'
 function pcSetGanttZoom(mode){
   _pcGanttZoom = mode;
@@ -11936,7 +11983,7 @@ function pcRenderGantt(rows, endDateMap, groupRanges) {
     const fRealStr = _pcF(tr,'fecha_real_finalizacion');
     if(!act) return;
 
-    let start = fIni ? new Date(fIni+'T00:00:00') : null;
+    let start = _pcFecha(fIni);
     if(!start && prev && endDateMap[prev.trim().toUpperCase()]) {
       start = new Date(endDateMap[prev.trim().toUpperCase()]);
       start.setDate(start.getDate()+1);
@@ -11945,7 +11992,7 @@ function pcRenderGantt(rows, endDateMap, groupRanges) {
 
     const end = new Date(start);
     end.setDate(end.getDate() + Math.max(dias, 1));
-    const fReal = fRealStr ? new Date(fRealStr+'T00:00:00') : null;
+    const fReal = _pcFecha(fRealStr);
     activityEntries.push({act, start, end, dias, cumpl, mile, fReal, grupo: grupo||null});
   });
 
@@ -12686,7 +12733,7 @@ function pcDashRenderJobs(local, srv){
 const _pcD0 = d => { const x = new Date(d); x.setHours(0,0,0,0); return x; };
 const _pcISO = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 const _pcLunes = d => { const x=_pcD0(d); x.setDate(x.getDate()-((x.getDay()+6)%7)); return x; };
-const _pcParseISO = v => (v && /^\d{4}-\d{2}-\d{2}/.test(v)) ? _pcD0(v.slice(0,10)+'T00:00:00') : null;
+const _pcParseISO = v => _pcFecha(String(v||'').slice(0,10));
 const _pcParseMX = v => { const m = String(v||'').match(/^(\d{2})\/(\d{2})\/(\d{4})$/); return m ? new Date(+m[3], +m[2]-1, +m[1]) : null; };
 const _pcFD = d => d ? d.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}) : '—';
 const PC_LINEA_COLOR = {diseno_mecanico:'#1f3864', simulacion:'#6b7fb5', diseno_electrico:'#2569a0', plc:'#38a3d8', robots:'#7cc6e8',
@@ -13171,7 +13218,7 @@ function pcGetTimingDateRange() {
     const dias  = parseInt(_pcF(tr,'dias_estimados'))||0;
     if(!activ) return;
     const prevKey = (prev||'').trim().toUpperCase();
-    let fCond = fIni ? new Date(fIni+'T00:00:00') : null;
+    let fCond = _pcFecha(fIni);
     if(!fCond && prev && endDateMap[prevKey]) {
       fCond = new Date(endDateMap[prevKey]); fCond.setDate(fCond.getDate()+1);
     }
