@@ -1023,8 +1023,12 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
 
         <!-- ── Tabs ── -->
         <div style="display:flex;gap:4px;margin-bottom:18px;border-bottom:1px solid var(--border);padding-bottom:0">
-          <button id="pc-tab-presupuesto" onclick="pcSwitchTab('presupuesto')"
+          <button id="pc-tab-dashboard" onclick="pcSwitchTab('dashboard')"
             style="padding:8px 18px;background:var(--red);border:none;color:#fff;font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;cursor:pointer;border-radius:6px 6px 0 0">
+            Dashboard
+          </button>
+          <button id="pc-tab-presupuesto" onclick="pcSwitchTab('presupuesto')"
+            style="padding:8px 18px;background:rgba(0,0,0,.055);border:none;color:var(--muted);font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;cursor:pointer;border-radius:6px 6px 0 0">
             Presupuesto
           </button>
           <button id="pc-tab-timing" onclick="pcSwitchTab('timing')"
@@ -1046,7 +1050,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
         </div>
 
         <!-- ══════════ TAB: PRESUPUESTO ══════════ -->
-        <div id="pc-content-presupuesto">
+        <div id="pc-content-presupuesto" style="display:none">
           <div id="pc-jobs-body" style="display:flex;flex-direction:column;gap:16px"></div>
           <div class="pc-full-only" style="display:flex;justify-content:flex-end;gap:32px;margin-top:16px;padding:12px 16px;background:#1f3864;border-radius:8px">
             <div style="text-align:right">
@@ -1181,7 +1185,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
         <div id="pc-content-cambios" style="display:none">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
             <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--red)">🔄 Control de Cambios</div>
-            <button onclick="pcAddCambioRow()" class="btn-sec" style="font-size:11px;padding:5px 12px">+ Cambio</button>
+            <button onclick="pcAddCambioRow()" class="btn-sec" style="font-size:11px;padding:5px 12px;width:auto">+ Cambio</button>
           </div>
           <div style="overflow-x:auto">
             <table class="tbl" style="font-size:11px;min-width:1000px">
@@ -1197,6 +1201,11 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
               <tbody id="pc-cambios-body"></tbody>
             </table>
           </div>
+        </div>
+
+        <!-- ══════════ TAB: DASHBOARD DEL PROYECTO ══════════ -->
+        <div id="pc-content-dashboard">
+          <div id="pc-dash-body"></div>
         </div>
 
         <!-- ══════════ TAB: PLAN DE PERSONAL ══════════ -->

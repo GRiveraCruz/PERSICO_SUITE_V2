@@ -9982,25 +9982,26 @@ async function runSvImport(){
 //  CONFIGURAR PROYECTO
 // ════════════════════════════════════════════════════════
 let pcCurrentPTSV = null, pcJobRows = [];
-let pcCurrentTab = 'presupuesto';
+let pcCurrentTab = 'dashboard';   // rev53: el Dashboard es la primera pestaña
 let pcPersonalSaved = [];      // filas guardadas [{employee, days:{date:hours}}]
 let pcPersonalRatesMap = {};   // {employee: rate} del Hourly Rate Register del año vigente
 let pcPersonalRange = null;    // {start: Date, end: Date} derivado de Timing
 let _pcPersonalRowSeq = 0;
 
-function pcSwitchTab(tab) {
+function pcSwitchTab(tab, opts={}) {
   pcCurrentTab = tab;
-  const tabs = {presupuesto:'pc-tab-presupuesto', timing:'pc-tab-timing', abiertos:'pc-tab-abiertos', cambios:'pc-tab-cambios', personal:'pc-tab-personal'};
+  const tabs = {presupuesto:'pc-tab-presupuesto', dashboard:'pc-tab-dashboard', timing:'pc-tab-timing', abiertos:'pc-tab-abiertos', cambios:'pc-tab-cambios', personal:'pc-tab-personal'};
   Object.entries(tabs).forEach(([k,id])=>{
     const el = document.getElementById(id); if(!el) return;
     el.style.background = k===tab ? 'var(--red)' : 'rgba(0,0,0,.055)';
     el.style.color      = k===tab ? '#fff' : 'var(--muted)';
   });
-  ['presupuesto','timing','abiertos','cambios','personal'].forEach(k=>{
+  ['presupuesto','dashboard','timing','abiertos','cambios','personal'].forEach(k=>{
     const el = document.getElementById(`pc-content-${k}`); if(el) el.style.display = (k===tab)?'':'none';
   });
   if(tab==='timing') pcUpdateTimingCalcs();
   if(tab==='personal') pcRefreshPersonalTab();
+  if(tab==='dashboard' && !opts.sinRender) pcRenderDashboard();
 }
 
 async function pcSearch(q) {
@@ -10083,7 +10084,11 @@ async function pcSelectPTSV(item) {
 
   // Render timing section — small delay to ensure DOM is visible
   const savedTiming = (existingConfig?.timing) || [];
-  setTimeout(() => pcRenderTiming(savedTiming), 50);
+  // rev53: el Dashboard (pestaña inicial) se dibuja cuando el Timing ya está cargado
+  const _dashBody = document.getElementById('pc-dash-body');
+  if(_dashBody) _dashBody.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted);font-size:12px">Cargando dashboard…</div>';
+  _pcDashTok++;   // descarta un cálculo pendiente del PT anterior
+  setTimeout(() => { pcRenderTiming(savedTiming); if(pcCurrentTab==='dashboard') pcRenderDashboard(); }, 50);
 
   // Puntos Abiertos y Control de Cambios
   pcRenderPuntos(existingConfig?.puntos_abiertos || []);
@@ -10092,7 +10097,7 @@ async function pcSelectPTSV(item) {
   // Plan de Personal — se renderiza al entrar a su pestaña (depende del rango de Timing)
   pcPersonalSaved = existingConfig?.plan_personal || [];
 
-  pcSwitchTab('presupuesto');
+  pcSwitchTab('dashboard', {sinRender:true});
 
   await pcLoadSavedList();
 }
@@ -12442,6 +12447,407 @@ function pcGetCambiosData() {
     quien_autoriza:  tr.querySelector('[data-field="quien_autoriza"]')?.value||'',
     estatus:         tr.querySelector('[data-field="estatus"]')?.value||'EN ESPERA',
   })).filter(r=>r.descripcion);
+}
+
+// ════════════════════════════════════════════════════════
+//  CONFIGURAR PROYECTO — DASHBOARD DEL PROYECTO
+//  Todo sale de lo que está en pantalla (aunque no se haya guardado), salvo el
+//  estatus de los Jobs y los costos reales del resultado operativo, que calcula
+//  el servidor con la misma fórmula del Job Report.
+// ════════════════════════════════════════════════════════
+let _pcDashTok = 0;
+let _pcDash = {ptsv:'', tok:0, srv:null, calculado:''};   // último cálculo del servidor (para el PDF)
+const PC_DASH_CARD = 'background:#fff;border-radius:14px;box-shadow:0 4px 18px rgba(0,0,0,.08);padding:18px 20px;min-width:0';
+const PC_DASH_ST = {Open:'#2563eb', WIP:'#f59e0b', Closed:'#16a34a', Cancelled:'#9ca3af', Otro:'#a855f7'};
+function pcDashStatus(s){
+  const u = String(s||'').trim().toUpperCase();
+  if(u==='OPEN') return 'Open';
+  if(u==='WIP') return 'WIP';
+  if(['DONE','CLOSED','CLOSE','CERRADO'].includes(u)) return 'Closed';
+  if(u.startsWith('CANCEL')) return 'Cancelled';
+  return u ? 'Otro' : '';
+}
+const _pcH = v => Number(v||0).toLocaleString('en-US',{maximumFractionDigits:1});
+const _pcM = v => (v<0?'-':'')+'$'+Math.abs(Number(v||0)).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0});
+
+// Datos por Job tomados de la pestaña Presupuesto (horas planeadas, Internal Target)
+function pcDashJobsLocal(){
+  return (pcJobRows||[]).map((j,idx)=>{
+    const row = document.querySelector(`#pc-row-${idx}`);
+    const f = k => parseFloat(row?.querySelector(`[data-field="${k}"]`)?.value)||0;
+    const plan = Object.fromEntries(PC_MO.map(([k])=>[k, f('mo_horas_'+k)]));
+    const revenue = parseFloat(j.revenue)||0, mk = f('markup_pct'), ah = f('ahorro_pct');
+    const presOp = revenue / (1 + mk/100);
+    const hc = pcHorasCons[j.job_number] || {};
+    return { job_number:j.job_number, customer:j.customer, plan,
+      horas_plan: Object.values(plan).reduce((a,b)=>a+b,0),
+      cons: hc.lineas||{}, horas_cons: hc.total||0,
+      presupuesto_disponible: row ? Math.round((presOp - presOp*ah/100)*100)/100 : null };
+  });
+}
+
+function pcDashPie(items, vacio){
+  const its = items.filter(x=>x.value>0), tot = its.reduce((a,x)=>a+x.value,0);
+  if(!tot) return `<div style="padding:40px 0;text-align:center;color:var(--muted);font-size:12px">${vacio}</div>`;
+  const R=80, r=48, cx=100, cy=100; let a0=-Math.PI/2, sl='';
+  const pt = (rad,a)=>`${cx+rad*Math.cos(a)},${cy+rad*Math.sin(a)}`;
+  its.forEach(x=>{
+    const a1 = a0 + x.value/tot*2*Math.PI, big=(a1-a0)>Math.PI?1:0;
+    sl += its.length===1
+      ? `<circle cx="${cx}" cy="${cy}" r="${(R+r)/2}" fill="none" stroke="${x.color}" stroke-width="${R-r}"><title>${x.label}: ${x.value}</title></circle>`
+      : `<path d="M${pt(R,a0)} A${R},${R} 0 ${big} 1 ${pt(R,a1)} L${pt(r,a1)} A${r},${r} 0 ${big} 0 ${pt(r,a0)} Z" fill="${x.color}" stroke="#fff" stroke-width="2"><title>${x.label}: ${x.value}</title></path>`;
+    const am=(a0+a1)/2, pct=x.value/tot*100;
+    if(pct>=7) sl += `<text x="${cx+(R+r)/2*Math.cos(am)}" y="${cy+(R+r)/2*Math.sin(am)+4}" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">${pct.toFixed(0)}%</text>`;
+    a0=a1;
+  });
+  sl += `<text x="${cx}" y="${cy-2}" text-anchor="middle" font-size="26" font-weight="700" fill="#1a1a1a">${tot}</text><text x="${cx}" y="${cy+16}" text-anchor="middle" font-size="10" fill="#888">puntos</text>`;
+  const leg = items.map(x=>`<div style="display:flex;align-items:center;gap:8px;font-size:12px;margin:6px 0">
+      <span style="width:12px;height:12px;border-radius:3px;background:${x.color}"></span>${x.label}
+      <b style="margin-left:auto;padding-left:14px">${x.value}</b><span style="color:var(--muted);width:46px;text-align:right">${(x.value/tot*100).toFixed(0)}%</span></div>`).join('');
+  return `<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;justify-content:center"><svg viewBox="0 0 200 200" style="width:160px;height:160px" role="img" aria-label="Puntos abiertos por estatus">${sl}</svg><div style="min-width:170px">${leg}</div></div>`;
+}
+
+function pcRenderDashboard(){
+  const box = document.getElementById('pc-dash-body');
+  if(!box) return;
+  if(!pcCurrentPTSV){ box.innerHTML = `<div style="${PC_DASH_CARD};text-align:center;color:var(--muted);padding:40px">Selecciona un PT o SV para ver su dashboard.</div>`; return; }
+  const tok = ++_pcDashTok;
+  pcUpdateTimingCalcs();                      // refresca el Gantt con lo que hay en Timing
+  const local = pcDashJobsLocal();
+  _pcDash = {ptsv: pcCurrentPTSV, tok, srv: null, calculado: ''};
+  const hp = local.reduce((a,j)=>a+j.horas_plan,0), hcT = local.reduce((a,j)=>a+j.horas_cons,0);
+  const pctH = hp ? Math.round(hcT/hp*100) : null;
+  const colPct = p => p==null ? 'var(--muted)' : p>100 ? 'var(--red)' : p>=85 ? 'var(--amber)' : 'var(--green)';
+  const lbl = t => `<div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);margin-bottom:8px">${t}</div>`;
+  const header = document.getElementById('pc-header-info')?.textContent || pcCurrentPTSV;
+  const cliente = header.includes('—') ? header.split('—').slice(1).join('—').trim() : '';
+  const esSV = /^SV/i.test(pcCurrentPTSV);
+
+  // Horas por línea (planeadas vs consumidas) de todo el proyecto
+  const lineas = PC_MO.map(([k,n])=>({n, p:local.reduce((a,j)=>a+(j.plan[k]||0),0), c:local.reduce((a,j)=>a+(j.cons[k]||0),0)})).filter(x=>x.p||x.c);
+  const otras = Math.max(0, hcT - lineas.reduce((a,x)=>a+x.c,0));
+  const maxL = Math.max(1, ...lineas.map(x=>Math.max(x.p,x.c)));
+  const barrasLineas = lineas.length ? lineas.map(x=>{ const p = x.p ? Math.round(x.c/x.p*100) : null; return `
+    <div style="display:grid;grid-template-columns:150px 1fr 150px;gap:10px;align-items:center;font-size:11px;margin:5px 0">
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(x.n)}">${esc(x.n)}</span>
+      <div style="position:relative;height:14px;background:rgba(0,0,0,.05);border-radius:4px">
+        <div style="position:absolute;inset:0 auto 0 0;width:${x.p/maxL*100}%;background:#c7d2e6;border-radius:4px" title="Planeadas ${_pcH(x.p)} h"></div>
+        <div style="position:absolute;top:3px;bottom:3px;left:0;width:${x.c/maxL*100}%;background:${x.p&&x.c>x.p?'#c8102e':'#1f3864'};border-radius:3px" title="Consumidas ${_pcH(x.c)} h"></div>
+      </div>
+      <span style="text-align:right;font-family:'DM Mono',monospace">${_pcH(x.c)} / ${_pcH(x.p)} h ${p!=null?`<b style="color:${colPct(p)}">${p}%</b>`:'<span style="color:var(--red)" title="Horas consumidas sin horas planeadas">sin plan</span>'}</span>
+    </div>`;}).join('') + (otras>0.05?`<div style="font-size:10px;color:var(--muted);margin-top:4px">+ ${_pcH(otras)} h consumidas de trabajadores sin tarifa o sin perfil</div>`:'')
+    : `<div style="font-size:12px;color:var(--muted);padding:10px 0">Sin horas planeadas ni consumidas.</div>`;
+
+  // Puntos abiertos
+  const puntos = pcGetPuntosData();
+  const nP = k => puntos.filter(r=>r.estatus===k).length;
+  const pie = pcDashPie([{label:'Abiertos', value:nP('OPEN'), color:'#f59e0b'}, {label:'Cerrados', value:nP('CLOSE'), color:'#16a34a'}, {label:'Informativos', value:nP('INFO'), color:'#2569a0'}], 'Sin puntos en la Lista de Puntos Abiertos');
+  const hoy = new Date().toISOString().slice(0,10);
+  const vencidos = puntos.filter(r=>r.estatus==='OPEN' && r.fecha_compromiso && r.fecha_compromiso < hoy).length;
+
+  // Timing
+  const tim = pcGetTimingData().filter(r=>r.tipo!=='grupo');
+  const statTxt = [...document.querySelectorAll('#pc-timing-body tr:not([data-tipo="grupo"]) .pc-t-status')].map(el=>el.textContent||'');
+  const nCumpl = tim.filter(r=>r.cumplido || r.fecha_real_finalizacion).length;
+  const nRet = statTxt.filter(t=>t.includes('RETRASO')).length;
+  const miles = tim.filter(r=>r.milestone_facturacion);
+  const timingCard = pcLastGanttSVG ? `
+    <div style="display:flex;gap:22px;flex-wrap:wrap;margin-bottom:12px;font-size:12px">
+      <div><div style="font-size:10px;color:var(--muted)">Actividades</div><b style="font-size:18px">${tim.length}</b></div>
+      <div><div style="font-size:10px;color:var(--muted)">Cumplidas</div><b style="font-size:18px;color:var(--green)">${nCumpl}</b></div>
+      <div><div style="font-size:10px;color:var(--muted)">Con retraso</div><b style="font-size:18px;color:${nRet?'var(--red)':'var(--text)'}">${nRet}</b></div>
+      ${miles.length?`<div><div style="font-size:10px;color:var(--muted)">Milestones de facturación</div><b style="font-size:18px">${miles.length}</b></div>`:''}
+      <div style="margin-left:auto;text-align:right"><div style="font-size:10px;color:var(--muted)">Periodo</div><b style="font-family:'DM Mono',monospace">${esc(pcLastGanttMeta?.minD||'')} → ${esc(pcLastGanttMeta?.maxD||'')}</b></div>
+    </div>
+    <div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px;padding:8px">${pcLastGanttSVG}</div>
+    <div style="font-size:10px;color:var(--muted);margin-top:6px">Copia de solo lectura de la pestaña Timing. Verde = cumplida · ámbar = en curso · rojo = vencida · ★ milestone de facturación · ◆ fecha real.</div>`
+    : `<div style="font-size:12px;color:var(--muted);padding:20px 0;text-align:center">Sin Timing configurado (captura actividades con fecha en la pestaña Timing).</div>`;
+
+  // Control de cambios
+  const cambios = pcGetCambiosData().sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha)));
+  const nC = k => cambios.filter(c=>c.estatus===k).length;
+  const fd = v => v ? v.split('-').reverse().join('/') : '—';
+  const MAXC = 8;
+  const cambiosCard = cambios.length ? `
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+      ${[['Total',cambios.length,'var(--text)'],['Autorizados',nC('AUTORIZADO'),pcCambioEstatusColor('AUTORIZADO')],['En espera',nC('EN ESPERA'),pcCambioEstatusColor('EN ESPERA')],['Cancelados',nC('CANCELADO'),pcCambioEstatusColor('CANCELADO')]]
+        .map(([l,v,c])=>`<div style="flex:1;min-width:110px;border:1px solid var(--border);border-radius:10px;padding:10px 12px"><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px">${l}</div><div style="font-size:22px;font-weight:700;color:${c}">${v}</div></div>`).join('')}
+    </div>
+    <div style="overflow-x:auto"><table style="width:100%;font-size:11px;border-collapse:collapse">
+      <thead><tr>${['Fecha','Descripción','Impacto','Solicita','Autoriza','Estatus'].map(h=>`<th style="text-align:left;padding:6px 8px;cursor:default">${h}</th>`).join('')}</tr></thead>
+      <tbody>${cambios.slice(0,MAXC).map(c=>`<tr style="cursor:default"><td style="padding:6px 8px;white-space:nowrap;font-family:'DM Mono',monospace">${fd(c.fecha)}</td><td style="padding:6px 8px">${esc(c.descripcion)}</td><td style="padding:6px 8px;color:var(--muted2)">${esc(c.impacto)}</td><td style="padding:6px 8px">${esc(c.quien_solicita)}</td><td style="padding:6px 8px">${esc(c.quien_autoriza)}</td><td style="padding:6px 8px;font-weight:700;color:${pcCambioEstatusColor(c.estatus)};white-space:nowrap">${esc(c.estatus)}</td></tr>`).join('')}</tbody>
+    </table></div>
+    ${cambios.length>MAXC?`<div style="font-size:11px;color:var(--muted);margin-top:6px">Se muestran los ${MAXC} más recientes de ${cambios.length}. El detalle completo está en la pestaña Control de Cambios.</div>`:''}`
+    : `<div style="font-size:12px;color:var(--muted);padding:20px 0;text-align:center">Sin cambios registrados.</div>`;
+
+  box.innerHTML = `
+  <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+    <div>
+      <div style="font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted)">Dashboard del proyecto · ${esSV?'SV':'PT'} number</div>
+      <div style="font-family:'DM Mono',monospace;font-size:30px;font-weight:700;line-height:1.1">${esc(pcCurrentPTSV)}</div>
+      ${cliente?`<div style="font-size:12px;color:var(--muted2)">${esc(cliente)}</div>`:''}
+    </div>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
+      <span id="pc-dash-calc" style="font-size:11px;color:var(--muted)">Calculando resultado operativo…</span>
+      <button class="btn-reload" onclick="pcRenderDashboard()" style="width:auto;font-size:11px;padding:5px 12px">Actualizar</button>
+      <button id="pc-dash-pdf" class="btn-sec" onclick="pcDashReportePDF()" disabled title="Disponible cuando termine el cálculo del resultado operativo" style="width:auto;font-size:11px;padding:5px 14px">Reporte PDF</button>
+    </div>
+  </div>
+  <div style="font-size:11px;color:var(--muted);margin:-6px 0 14px">Refleja lo que está en pantalla, incluso cambios sin guardar. Horas consumidas: Work Hours${pcHorasFecha?` al ${esc(String(pcHorasFecha).replace('T',' ').slice(0,16))}`:''}.</div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-bottom:16px">
+    <div style="${PC_DASH_CARD}">${lbl('Jobs del proyecto')}<div style="font-size:30px;font-weight:700">${local.length}</div><div id="pc-dash-stchips" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;font-size:11px;color:var(--muted)">…</div></div>
+    <div style="${PC_DASH_CARD}">${lbl('Horas planeadas')}<div style="font-size:30px;font-weight:700;font-family:'DM Mono',monospace">${_pcH(hp)}<span style="font-size:14px;color:var(--muted)"> h</span></div><div style="font-size:11px;color:var(--muted)">Suma de las líneas de mano de obra de todos los Jobs</div></div>
+    <div style="${PC_DASH_CARD}">${lbl('Horas consumidas')}<div style="font-size:30px;font-weight:700;font-family:'DM Mono',monospace;color:${colPct(pctH)}">${_pcH(hcT)}<span style="font-size:14px;color:var(--muted)"> h</span></div>
+      <div style="height:6px;background:rgba(0,0,0,.07);border-radius:3px;margin:8px 0 4px;overflow:hidden"><div style="height:100%;width:${Math.min(100,pctH||0)}%;background:${colPct(pctH)}"></div></div>
+      <div style="font-size:11px;color:var(--muted)">${pctH!=null?`${pctH}% de lo planeado · ${hp-hcT>=0?_pcH(hp-hcT)+' h disponibles':_pcH(hcT-hp)+' h sobre lo planeado'}`:'Sin horas planeadas'}</div></div>
+    <div style="${PC_DASH_CARD}">${lbl('Resultado operativo')}<div id="pc-dash-ro" style="font-size:30px;font-weight:700;font-family:'DM Mono',monospace;color:var(--muted)">…</div><div id="pc-dash-ro-sub" style="font-size:11px;color:var(--muted)">Calculando…</div></div>
+  </div>
+
+  <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px">
+    <div style="${PC_DASH_CARD};flex:2 1 560px">${lbl('Jobs asociados')}<div id="pc-dash-jobs" style="overflow-x:auto"></div></div>
+    <div style="${PC_DASH_CARD};flex:1 1 300px">${lbl('Lista de puntos abiertos')}${pie}
+      ${vencidos?`<div style="margin-top:8px;font-size:11px;color:var(--red);text-align:center">⚠ ${vencidos} punto(s) abierto(s) con fecha compromiso vencida</div>`:''}</div>
+  </div>
+
+  <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px">
+    <div style="${PC_DASH_CARD};flex:1 1 460px">${lbl('Horas por línea de mano de obra · consumidas / planeadas')}${barrasLineas}</div>
+    <div style="${PC_DASH_CARD};flex:1 1 360px">${lbl('Resultado operativo · desglose')}<div id="pc-dash-ro-det" style="font-size:12px;color:var(--muted)">Calculando…</div></div>
+  </div>
+
+  <div style="${PC_DASH_CARD};margin-bottom:16px">${lbl('Timing del proyecto')}${timingCard}</div>
+  <div style="${PC_DASH_CARD};margin-bottom:16px">${lbl('Resumen del control de cambios')}${cambiosCard}</div>`;
+
+  pcDashRenderJobs(local, null);
+  pcDashCargarServidor(local, tok);
+}
+
+function pcDashRenderJobs(local, srv){
+  const el = document.getElementById('pc-dash-jobs'); if(!el) return;
+  const byJn = Object.fromEntries((srv||[]).map(r=>[r.job_number, r]));
+  const th = 'text-align:left;padding:6px 8px;cursor:default;white-space:nowrap';
+  const td = 'padding:7px 8px;border-top:1px solid var(--border);white-space:nowrap';
+  const tr = local.map(j=>{
+    const r = byJn[j.job_number];
+    const st = r ? pcDashStatus(r.status) : '';
+    const p = j.horas_plan ? Math.round(j.horas_cons/j.horas_plan*100) : null;
+    const ro = r && r.resultado_operativo!=null ? r.resultado_operativo : null;
+    return `<tr style="cursor:default">
+      <td style="${td};font-family:'DM Mono',monospace;font-weight:700">${esc(j.job_number)}</td>
+      <td style="${td};white-space:normal;max-width:220px">${esc((r&&r.customer)||j.customer||'')}${r&&r.description?`<div style="font-size:10px;color:var(--muted)">${esc(r.description)}</div>`:''}</td>
+      <td style="${td}">${!srv?'<span style="color:var(--muted)">…</span>': r&&r.existe===false?'<span style="color:var(--muted)" title="El Job no existe en la lista de Jobs">—</span>'
+        : `<span style="display:inline-block;padding:2px 9px;border-radius:10px;font-size:10px;font-weight:700;color:#fff;background:${PC_DASH_ST[st]||'#9ca3af'}" title="${esc(r?.status||'')}">${esc(st==='Otro'?r.status:st||'—')}</span>`}</td>
+      <td style="${td};text-align:right;font-family:'DM Mono',monospace">${_pcH(j.horas_plan)}</td>
+      <td style="${td};text-align:right;font-family:'DM Mono',monospace">${_pcH(j.horas_cons)}${p!=null?` <span style="font-size:10px;font-weight:700;color:${p>100?'var(--red)':p>=85?'var(--amber)':'var(--green)'}">${p}%</span>`:''}</td>
+      <td style="${td};text-align:right;font-family:'DM Mono',monospace;font-weight:700;color:${ro==null?'var(--muted)':ro<0?'var(--red)':'var(--green)'}" title="${r&&r.error?esc(r.error):''}">${!srv?'…':r&&r.error?'⚠ error':ro==null?'—':_pcM(ro)}</td></tr>`;
+  }).join('');
+  const tp = local.reduce((a,j)=>a+j.horas_plan,0), tc = local.reduce((a,j)=>a+j.horas_cons,0);
+  const tro = (srv||[]).filter(r=>r.resultado_operativo!=null).reduce((a,r)=>a+r.resultado_operativo,0);
+  el.innerHTML = local.length ? `<table style="width:100%;font-size:12px;border-collapse:collapse">
+    <thead><tr><th style="${th}">Job</th><th style="${th}">Cliente / descripción</th><th style="${th}">Estatus</th><th style="${th};text-align:right">Horas plan.</th><th style="${th};text-align:right">Horas cons.</th><th style="${th};text-align:right">Resultado op.</th></tr></thead>
+    <tbody>${tr}<tr style="font-weight:700;cursor:default"><td style="${td}" colspan="3">Total proyecto</td><td style="${td};text-align:right;font-family:'DM Mono',monospace">${_pcH(tp)}</td><td style="${td};text-align:right;font-family:'DM Mono',monospace">${_pcH(tc)}</td>
+      <td style="${td};text-align:right;font-family:'DM Mono',monospace;color:${!srv?'var(--muted)':tro<0?'var(--red)':'var(--green)'}">${srv?_pcM(tro):'…'}</td></tr></tbody></table>`
+    : `<div style="font-size:12px;color:var(--muted)">El PT/SV no tiene Jobs asociados.</div>`;
+}
+
+// ── Reporte PDF del proyecto (ventana de impresión → "Guardar como PDF", como el Gantt y la LOP)
+function pcDashReportePDF(){
+  if(!pcCurrentPTSV) return;
+  if(!_pcDash.srv || _pcDash.ptsv!==pcCurrentPTSV){ toast('Espera a que termine el cálculo del dashboard','er'); return; }
+  pcUpdateTimingCalcs();
+  const srv = Object.fromEntries(_pcDash.srv.map(r=>[r.job_number, r]));
+  const local = pcDashJobsLocal();
+  const hp = local.reduce((a,j)=>a+j.horas_plan,0), hc = local.reduce((a,j)=>a+j.horas_cons,0);
+  const pctH = hp ? Math.round(hc/hp*100) : null;
+  const ok = _pcDash.srv.filter(x=>x.resultado_operativo!=null);
+  const S = k => ok.reduce((a,x)=>a+(Number(x[k])||0),0);
+  const ro = {base:S('base'), mo:S('amount_wh'), comp:S('purchasing_total'), svc:S('svc_total'), ra:S('reassign_total'), rc:S('recovery_total'), tot:S('resultado_operativo')};
+  const roPct = ro.base ? ro.tot/ro.base*100 : null;
+  const header = document.getElementById('pc-header-info')?.textContent || '';
+  const cliente = header.includes('—') ? header.split('—').slice(1).join('—').trim() : '';
+  const fd = v => v ? String(v).slice(0,10).split('-').reverse().join('/') : '';
+  const col = v => v<0 ? '#c8102e' : '#1f7a45';
+  const pcol = p => p==null ? '#777' : p>100 ? '#c8102e' : p>=85 ? '#b45309' : '#1f7a45';
+  const stCnt = {}; local.forEach(j=>{ const r=srv[j.job_number]; const st = r?.existe===false ? 'Sin registro' : (pcDashStatus(r?.status)||'Sin estatus'); stCnt[st]=(stCnt[st]||0)+1; });
+
+  // Horas por línea
+  const lineas = PC_MO.map(([k,n])=>({n, p:local.reduce((a,j)=>a+(j.plan[k]||0),0), c:local.reduce((a,j)=>a+(j.cons[k]||0),0)})).filter(x=>x.p||x.c);
+  const otras = Math.max(0, hc - lineas.reduce((a,x)=>a+x.c,0));
+
+  // Puntos abiertos
+  const puntos = pcGetPuntosData();
+  const nP = k => puntos.filter(r=>r.estatus===k).length;
+  const hoy = new Date().toISOString().slice(0,10);
+  const abiertos = puntos.filter(r=>r.estatus==='OPEN');
+  const pie = pcDashPie([{label:'Abiertos', value:nP('OPEN'), color:'#f59e0b'}, {label:'Cerrados', value:nP('CLOSE'), color:'#16a34a'}, {label:'Informativos', value:nP('INFO'), color:'#2569a0'}], 'Sin puntos registrados');
+
+  // Timing
+  const tim = pcGetTimingData().filter(r=>r.tipo!=='grupo');
+  const statTxt = [...document.querySelectorAll('#pc-timing-body tr:not([data-tipo="grupo"]) .pc-t-status')].map(el=>el.textContent||'');
+  const nCumpl = tim.filter(r=>r.cumplido || r.fecha_real_finalizacion).length, nRet = statTxt.filter(t=>t.includes('RETRASO')).length;
+  // El SVG del Gantt tiene ancho fijo en px: se le agrega viewBox para que se ajuste al ancho de la hoja
+  const gantt = pcLastGanttSVG ? pcLastGanttSVG.replace(/<svg width="([\d.]+)" height="([\d.]+)"/, (m,w,h)=>`<svg viewBox="0 0 ${w} ${h}" width="100%" preserveAspectRatio="xMinYMin meet" style="max-height:170mm"`) : '';
+
+  // Control de cambios
+  const cambios = pcGetCambiosData().sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha)));
+  const nC = k => cambios.filter(c=>c.estatus===k).length;
+  const cCol = {'AUTORIZADO':'#1f7a45','EN ESPERA':'#b45309','CANCELADO':'#777'};
+
+  const kpi = (l,v,sub,c) => `<div class="kpi"><div class="kl">${l}</div><div class="kv" style="color:${c||'#1a1a1a'}">${v}</div><div class="ks">${sub||''}</div></div>`;
+  const vacio = t => `<div class="vacio">${t}</div>`;
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Reporte de Proyecto ${esc(pcCurrentPTSV)}</title>
+  <style>
+    @page{size:letter landscape;margin:11mm 12mm}
+    *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    body{font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;margin:0;font-size:10px}
+    .top{display:flex;align-items:center;gap:16px;border-bottom:3px solid #C8102E;padding-bottom:8px;margin-bottom:12px}
+    .top img{height:30px} .top .t{flex:1} .top h1{margin:0;font-size:17px;letter-spacing:.5px}
+    .top .pt{font-family:'Courier New',monospace;font-size:22px;font-weight:700}
+    .top .meta{text-align:right;font-size:9px;color:#555;line-height:1.5}
+    h2{font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:#C8102E;margin:14px 0 6px;border-bottom:1px solid #e3e3e3;padding-bottom:3px}
+    .kpis{display:flex;gap:10px} .kpi{flex:1;border:1px solid #ddd;border-radius:8px;padding:8px 10px}
+    .kl{font-size:8.5px;letter-spacing:1px;text-transform:uppercase;color:#777} .kv{font-size:20px;font-weight:700;font-family:'Courier New',monospace;margin:2px 0} .ks{font-size:9px;color:#666}
+    .row{display:flex;gap:14px;align-items:flex-start} .row>div{min-width:0}
+    table{width:100%;border-collapse:collapse}
+    th{background:#1F3864;color:#fff;font-size:8.5px;text-transform:uppercase;letter-spacing:.4px;padding:5px 6px;text-align:left}
+    td{border-bottom:1px solid #e1e1e1;padding:4px 6px;vertical-align:top}
+    .r{text-align:right} .c{text-align:center} .m{font-family:'Courier New',monospace} .b{font-weight:700}
+    tr{page-break-inside:avoid} thead{display:table-header-group}
+    .tot td{border-top:2px solid #999;font-weight:700}
+    .badge{display:inline-block;padding:1px 7px;border-radius:9px;color:#fff;font-size:8.5px;font-weight:700}
+    .ro div{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #e6e6e6}
+    .ro .fin{border-top:2px solid #999;border-bottom:none;font-weight:700;font-size:12px;margin-top:2px}
+    .vacio{color:#888;padding:10px 0}
+    .salto{page-break-before:always}
+    .pie svg{width:130px!important;height:130px!important}
+    .foot{margin-top:12px;font-size:8px;color:#888;border-top:1px solid #e3e3e3;padding-top:5px}
+  </style></head><body>
+  <div class="top"><img src="${location.origin}/static/persico_logo.webp" onerror="this.style.display='none'">
+    <div class="t"><h1>Reporte de Proyecto</h1><div class="pt">${esc(pcCurrentPTSV)}</div>${cliente?`<div style="font-size:11px;color:#444">${esc(cliente)}</div>`:''}</div>
+    <div class="meta">Generado ${new Date().toLocaleString('es-MX')}<br>Resultado operativo calculado ${esc(String(_pcDash.calculado).replace('T',' '))}${pcHorasFecha?`<br>Work Hours al ${esc(String(pcHorasFecha).replace('T',' ').slice(0,16))}`:''}</div></div>
+
+  <div class="kpis">
+    ${kpi('Jobs del proyecto', local.length, Object.entries(stCnt).map(([k,v])=>`${esc(k)} ${v}`).join(' · '))}
+    ${kpi('Horas planeadas', _pcH(hp)+' h', 'Suma de las líneas de mano de obra')}
+    ${kpi('Horas consumidas', _pcH(hc)+' h', pctH!=null?`${pctH}% de lo planeado`:'Sin horas planeadas', pcol(pctH))}
+    ${kpi('Resultado operativo', _pcM(ro.tot), roPct!=null?`${roPct.toFixed(1)}% vs Internal Target`:'Sin Internal Target', col(ro.tot))}
+  </div>
+
+  <div class="row">
+    <div style="flex:2">
+      <h2>Jobs asociados</h2>
+      <table><thead><tr><th>Job</th><th>Cliente / descripción</th><th>Estatus</th><th class="r">Horas plan.</th><th class="r">Horas cons.</th><th class="r">Internal Target</th><th class="r">Resultado op.</th></tr></thead><tbody>
+      ${local.map(j=>{ const r=srv[j.job_number]||{}; const st=pcDashStatus(r.status); const p=j.horas_plan?Math.round(j.horas_cons/j.horas_plan*100):null;
+        return `<tr><td class="m b">${esc(j.job_number)}</td><td>${esc(r.customer||j.customer||'')}${r.description?`<div style="font-size:8.5px;color:#777">${esc(r.description)}</div>`:''}</td>
+        <td>${r.existe===false?'—':`<span class="badge" style="background:${PC_DASH_ST[st]||'#9ca3af'}">${esc(st==='Otro'?r.status:st||'—')}</span>`}</td>
+        <td class="r m">${_pcH(j.horas_plan)}</td><td class="r m">${_pcH(j.horas_cons)}${p!=null?` <span style="color:${pcol(p)};font-size:8.5px">${p}%</span>`:''}</td>
+        <td class="r m">${r.base!=null?_pcM(r.base):'—'}${r.base_origen==='revenue'?'<sup>*</sup>':''}</td>
+        <td class="r m b" style="color:${r.resultado_operativo==null?'#777':col(r.resultado_operativo)}">${r.error?'error':r.resultado_operativo==null?'—':_pcM(r.resultado_operativo)}</td></tr>`;}).join('')}
+      <tr class="tot"><td colspan="3">Total proyecto</td><td class="r m">${_pcH(hp)}</td><td class="r m">${_pcH(hc)}</td><td class="r m">${_pcM(ro.base)}</td><td class="r m" style="color:${col(ro.tot)}">${_pcM(ro.tot)}</td></tr>
+      </tbody></table>
+      ${_pcDash.srv.some(r=>r.base_origen==='revenue')?'<div style="font-size:8.5px;color:#777;margin-top:3px">* Sin Internal Target configurado: se usa el revenue.</div>':''}
+    </div>
+    <div style="flex:1">
+      <h2>Resultado operativo · desglose</h2>
+      <div class="ro">
+        <div><span>Internal Target (base)</span><span class="m">${_pcM(ro.base)}</span></div>
+        <div><span>Mano de obra</span><span class="m">− ${_pcM(ro.mo)}</span></div>
+        <div><span>Compras</span><span class="m">− ${_pcM(ro.comp)}</span></div>
+        <div><span>Servicios</span><span class="m">− ${_pcM(ro.svc)}</span></div>
+        ${ro.ra?`<div><span>Reasignaciones</span><span class="m">− ${_pcM(ro.ra)}</span></div>`:''}
+        ${ro.rc?`<div><span>Recuperaciones</span><span class="m">+ ${_pcM(ro.rc)}</span></div>`:''}
+        <div class="fin"><span>Resultado operativo</span><span class="m" style="color:${col(ro.tot)}">${_pcM(ro.tot)}${roPct!=null?` · ${roPct.toFixed(1)}%`:''}</span></div>
+      </div>
+      <div style="font-size:8.5px;color:#777;margin-top:4px">Misma fórmula que el Job Report.</div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div style="flex:1.2">
+      <h2>Horas por línea de mano de obra</h2>
+      ${lineas.length?`<table><thead><tr><th>Línea</th><th class="r">Planeadas</th><th class="r">Consumidas</th><th class="r">%</th></tr></thead><tbody>
+        ${lineas.map(x=>{ const p=x.p?Math.round(x.c/x.p*100):null; return `<tr><td>${esc(x.n)}</td><td class="r m">${_pcH(x.p)}</td><td class="r m">${_pcH(x.c)}</td><td class="r m b" style="color:${pcol(p)}">${p!=null?p+'%':'sin plan'}</td></tr>`;}).join('')}
+        ${otras>0.05?`<tr><td style="color:#777">Otras (sin tarifa o sin perfil)</td><td class="r m">—</td><td class="r m">${_pcH(otras)}</td><td></td></tr>`:''}
+        <tr class="tot"><td>Total</td><td class="r m">${_pcH(hp)}</td><td class="r m">${_pcH(hc)}</td><td class="r m" style="color:${pcol(pctH)}">${pctH!=null?pctH+'%':''}</td></tr></tbody></table>`
+        : vacio('Sin horas planeadas ni consumidas.')}
+    </div>
+    <div style="flex:1">
+      <h2>Lista de puntos abiertos</h2>
+      <div class="pie">${pie}</div>
+      ${abiertos.filter(r=>r.fecha_compromiso && r.fecha_compromiso<hoy).length?`<div style="color:#c8102e;font-size:9px;text-align:center;margin-top:4px">⚠ ${abiertos.filter(r=>r.fecha_compromiso && r.fecha_compromiso<hoy).length} punto(s) abierto(s) con fecha compromiso vencida</div>`:''}
+    </div>
+  </div>
+
+  ${abiertos.length?`<h2>Puntos abiertos (${abiertos.length})</h2>
+    <table><thead><tr><th class="c" style="width:4%">Item</th><th style="width:8%">Apertura</th><th style="width:8%">Proyecto</th><th style="width:10%">Tool / Frame</th><th>Descripción</th><th style="width:14%">Responsable</th><th style="width:9%">Compromiso</th></tr></thead><tbody>
+    ${abiertos.map(r=>`<tr><td class="c">${r.item}</td><td class="m">${fd(r.fecha_apertura)}</td><td class="m">${esc(r.proyecto||'')}</td><td>${esc(r.tool_frame)}</td><td>${esc(r.descripcion)}${r.notas?`<div style="font-size:8.5px;color:#777">${esc(r.notas)}</div>`:''}</td><td>${esc(r.responsable)}</td>
+      <td class="m" style="${r.fecha_compromiso && r.fecha_compromiso<hoy?'color:#c8102e;font-weight:700':''}">${fd(r.fecha_compromiso)}</td></tr>`).join('')}</tbody></table>`:''}
+
+  <div class="salto"></div>
+  <h2>Timing del proyecto</h2>
+  ${gantt?`<div style="display:flex;gap:24px;margin-bottom:8px;font-size:10px">
+      <div>Actividades <b>${tim.length}</b></div><div>Cumplidas <b style="color:#1f7a45">${nCumpl}</b></div><div>Con retraso <b style="color:${nRet?'#c8102e':'#1a1a1a'}">${nRet}</b></div>
+      <div>Periodo <b class="m">${esc(pcLastGanttMeta?.minD||'')} → ${esc(pcLastGanttMeta?.maxD||'')}</b></div></div>
+    ${gantt}
+    <div style="font-size:8.5px;color:#777;margin-top:4px">Verde = cumplida · ámbar = en curso · rojo = vencida · ★ milestone de facturación · ◆ fecha real de finalización.</div>`
+    : vacio('Sin Timing configurado.')}
+
+  <h2>Control de cambios</h2>
+  ${cambios.length?`<div style="display:flex;gap:18px;margin-bottom:6px;font-size:10px">
+      <div>Total <b>${cambios.length}</b></div><div>Autorizados <b style="color:#1f7a45">${nC('AUTORIZADO')}</b></div><div>En espera <b style="color:#b45309">${nC('EN ESPERA')}</b></div><div>Cancelados <b style="color:#777">${nC('CANCELADO')}</b></div></div>
+    <table><thead><tr><th style="width:9%">Fecha</th><th>Descripción</th><th style="width:22%">Impacto</th><th style="width:12%">Solicita</th><th style="width:12%">Autoriza</th><th style="width:10%">Estatus</th></tr></thead><tbody>
+    ${cambios.map(c=>`<tr><td class="m">${fd(c.fecha)}</td><td>${esc(c.descripcion)}</td><td>${esc(c.impacto)}</td><td>${esc(c.quien_solicita)}</td><td>${esc(c.quien_autoriza)}</td><td class="b" style="color:${cCol[c.estatus]||'#1a1a1a'}">${esc(c.estatus)}</td></tr>`).join('')}</tbody></table>`
+    : vacio('Sin cambios registrados.')}
+
+  <div class="foot">Persico Suite · Configurar Proyecto · El reporte refleja la configuración en pantalla al momento de generarlo.</div>
+  <script>window.onload=()=>setTimeout(()=>window.print(),300);<\/script></body></html>`;
+  const win = window.open('','_blank');
+  if(!win){ toast('El navegador bloqueó la ventana. Permite las ventanas emergentes para generar el PDF.','er'); return; }
+  win.document.write(html); win.document.close();
+}
+
+async function pcDashCargarServidor(local, tok){
+  const calc = () => document.getElementById('pc-dash-calc');
+  try{
+    const r = await fetch('/api/projconfig/dashboard',{method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ptsv: pcCurrentPTSV, jobs: local.map(j=>({job_number:j.job_number, presupuesto_disponible:j.presupuesto_disponible}))})});
+    const d = await r.json().catch(()=>({error:`Respuesta inválida del servidor (HTTP ${r.status})`}));
+    if(tok !== _pcDashTok) return;           // el usuario cambió de PT o actualizó mientras tanto
+    if(!r.ok || d.error) throw new Error(d.error || `HTTP ${r.status}`);
+    const js = d.jobs||[];
+    _pcDash.srv = js; _pcDash.calculado = d.calculado||'';
+    const pdfBtn = document.getElementById('pc-dash-pdf');
+    if(pdfBtn){ pdfBtn.disabled = false; pdfBtn.title = 'Genera el reporte del proyecto en PDF'; }
+    pcDashRenderJobs(local, js);
+    // Estatus de los Jobs
+    const cnt = {}; js.forEach(x=>{ const s = x.existe===false ? 'Sin registro' : (pcDashStatus(x.status)||'Sin estatus'); cnt[s]=(cnt[s]||0)+1; });
+    const chips = document.getElementById('pc-dash-stchips');
+    if(chips) chips.innerHTML = Object.entries(cnt).map(([k,v])=>`<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;background:rgba(0,0,0,.05);color:var(--text)"><span style="width:8px;height:8px;border-radius:50%;background:${PC_DASH_ST[k]||'#9ca3af'}"></span>${esc(k)} <b>${v}</b></span>`).join('');
+    // Resultado operativo del proyecto = suma de los Jobs
+    const ok = js.filter(x=>x.resultado_operativo!=null);
+    const S = k => ok.reduce((a,x)=>a+(Number(x[k])||0),0);
+    const base=S('base'), mo=S('amount_wh'), comp=S('purchasing_total'), svc=S('svc_total'), ra=S('reassign_total'), rc=S('recovery_total'), ro=S('resultado_operativo');
+    const pct = base ? ro/base*100 : null;
+    const roEl = document.getElementById('pc-dash-ro');
+    if(roEl){ roEl.textContent = _pcM(ro); roEl.style.color = ro<0 ? 'var(--red)' : 'var(--green)'; }
+    const sub = document.getElementById('pc-dash-ro-sub');
+    const errs = js.filter(x=>x.error).length;
+    if(sub) sub.innerHTML = `${pct!=null?`${pct.toFixed(1)}% vs Internal Target`:'Sin Internal Target'}${errs?` · <span style="color:var(--red)">${errs} Job(s) sin calcular</span>`:''}`;
+    const conRev = js.filter(x=>x.base_origen==='revenue').map(x=>x.job_number);
+    const linea = (l,v,neg,b) => `<div style="display:flex;justify-content:space-between;padding:5px 0;${b?'border-top:2px solid var(--border);margin-top:4px;font-weight:700;font-size:13px':'border-top:1px solid var(--border)'}"><span style="color:var(--text)">${l}</span><span style="font-family:'DM Mono',monospace;color:${b?(v<0?'var(--red)':'var(--green)'):'var(--text)'}">${neg&&v?'− ':''}${_pcM(Math.abs(v)*(b&&v<0?-1:1))}</span></div>`;
+    const det = document.getElementById('pc-dash-ro-det');
+    if(det) det.innerHTML = linea('Internal Target (base)', base) + linea('Mano de obra', mo, true) + linea('Compras', comp, true)
+      + linea('Servicios (viáticos, gastos de viaje, envíos)', svc, true) + (ra?linea('Reasignaciones', ra, true):'') + (rc?`<div style="display:flex;justify-content:space-between;padding:5px 0;border-top:1px solid var(--border)"><span style="color:var(--text)">Recuperaciones</span><span style="font-family:'DM Mono',monospace">+ ${_pcM(rc)}</span></div>`:'')
+      + linea('Resultado operativo', ro, false, true)
+      + `<div style="font-size:10px;color:var(--muted);margin-top:8px">Misma fórmula que el Job Report.${conRev.length?` Sin Internal Target, se usa el revenue: ${conRev.map(esc).join(', ')}.`:''}</div>`;
+    if(calc()) calc().textContent = `Calculado ${String(d.calculado||'').replace('T',' ')}`;
+  }catch(e){
+    if(tok !== _pcDashTok) return;
+    pcDashRenderJobs(local, []);
+    ['pc-dash-ro','pc-dash-ro-sub','pc-dash-ro-det'].forEach(id=>{ const el=document.getElementById(id); if(el){ el.textContent = id==='pc-dash-ro'?'—':'No se pudo calcular: '+e.message; el.style.color='var(--red)'; } });
+    const chips = document.getElementById('pc-dash-stchips'); if(chips) chips.textContent = '—';
+    if(calc()) calc().textContent = '';
+  }
 }
 
 // ════════════════════════════════════════════════════════

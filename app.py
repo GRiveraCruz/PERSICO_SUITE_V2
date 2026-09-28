@@ -7194,6 +7194,34 @@ def _norm_pm(v):
     v = unicodedata.normalize("NFKD", str(v or "")).encode("ascii", "ignore").decode()
     return " ".join(v.lower().split())
 
+def _ro_pools_factory():
+    """Cargas por año que necesita _build_report_data, compartidas por todos los Jobs de ese año."""
+    cache = {}
+    def pools(y):
+        if y not in cache:
+            cache[y] = dict(
+                wh_pool=wh_load(y), po_pool=po_load(y), fx_all=fx_load_all(),
+                ra_pool=reassign_load(), rc_pool=recovery_load(),
+                via_pool=_svc_load(VIATICOS_FILE), gv_pool=_svc_load(GASTOS_FILE), env_pool=_svc_load(ENVIOS_FILE),
+                cra_pool=_consig.load("orders") if (_consig and CONSIG_EN_COSTO_JOB) else None,
+                crc_pool=_consig.load("recovery") if (_consig and CONSIG_EN_COSTO_JOB) else None)
+        return cache[y]
+    return pools
+
+def _ro_job(jn, y, pres, pools):
+    """Resultado operativo de un Job — misma fórmula que la pestaña Operativo del Job Report:
+    base (presupuesto disponible de Configurar Proyecto, o revenue)
+    − mano de obra − compras − servicios − reasignaciones + recuperaciones."""
+    d = _build_report_data(jn, y, y, y, **pools(y))
+    base = float(pres) if pres not in (None, "") else float(d.get("revenue") or 0)
+    ro = (base - d["amount_wh"] - d["purchasing_total"] - (d.get("svc_total") or 0)
+          - (d.get("reassign_total") or 0) + (d.get("recovery_total") or 0))
+    return dict(base=round(base, 2), revenue=round(float(d.get("revenue") or 0), 2),
+                amount_wh=d["amount_wh"], purchasing_total=d["purchasing_total"],
+                svc_total=d.get("svc_total") or 0,
+                reassign_total=d.get("reassign_total") or 0, recovery_total=d.get("recovery_total") or 0,
+                resultado_operativo=round(ro, 2), resultado_pct=round(ro / base * 100, 1) if base else None)
+
 PM_DASH_STATUS = ("OPEN", "WIP")
 
 @app.route("/api/dashboard/project-manager", methods=["GET"])
@@ -7238,16 +7266,7 @@ def api_dashboard_project_manager():
             for jc in cfg.get("jobs") or []:
                 cfg_by_job.setdefault((jc.get("job_number") or "").strip().upper(), jc)
         today = datetime.date.today().isoformat()
-        pools_by_year = {}
-        def pools(y):
-            if y not in pools_by_year:     # una carga por año, compartida por todos los jobs de ese año
-                pools_by_year[y] = dict(
-                    wh_pool=wh_load(y), po_pool=po_load(y), fx_all=fx_load_all(),
-                    ra_pool=reassign_load(), rc_pool=recovery_load(),
-                    via_pool=_svc_load(VIATICOS_FILE), gv_pool=_svc_load(GASTOS_FILE), env_pool=_svc_load(ENVIOS_FILE),
-                    cra_pool=_consig.load("orders") if (_consig and CONSIG_EN_COSTO_JOB) else None,
-                    crc_pool=_consig.load("recovery") if (_consig and CONSIG_EN_COSTO_JOB) else None)
-            return pools_by_year[y]
+        pools = _ro_pools_factory()
         for j in sorted({x["job_number"]: x for x in jobs + year_jobs}.values(), key=lambda x: x.get("job_number", "")):
             jn = j["job_number"]
             y = int(_year_of(j) or CURRENT_YEAR)
@@ -7264,15 +7283,9 @@ def api_dashboard_project_manager():
             row["target_compras"]  = _num(jc.get("target_compras"))
             row["target_mo"]       = _num(jc.get("target_mo"))
             try:
-                d = _build_report_data(jn, y, y, y, **pools(y))
-                pres = jc.get("presupuesto_disponible")
-                base = float(pres) if pres not in (None, "") else float(d.get("revenue") or 0)
-                ro = (base - d["amount_wh"] - d["purchasing_total"] - (d.get("svc_total") or 0)
-                      - (d.get("reassign_total") or 0) + (d.get("recovery_total") or 0))
-                row.update(base=round(base, 2), amount_wh=d["amount_wh"], purchasing_total=d["purchasing_total"],
-                           svc_total=d.get("svc_total") or 0,
-                           reassign_total=d.get("reassign_total") or 0, recovery_total=d.get("recovery_total") or 0,
-                           resultado_operativo=round(ro, 2), resultado_pct=round(ro / base * 100, 1) if base else None)
+                r_ = _ro_job(jn, y, jc.get("presupuesto_disponible"), pools)
+                r_.pop("revenue", None)
+                row.update(r_)
             except Exception as e:
                 row["error"] = str(e)
             if j in jobs:
@@ -13040,6 +13053,46 @@ def api_projconfig_lop_export():
     resp.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     resp.headers["Content-Disposition"] = f"attachment; filename={fname}"
     return resp
+
+@app.route("/api/projconfig/dashboard", methods=["POST"])
+def api_projconfig_dashboard():
+    """Datos del servidor para el Dashboard del proyecto (Configurar Proyecto → Dashboard):
+    estatus de cada Job del PT/SV y su resultado operativo. Recibe el Internal Target de cada
+    Job tal como está en pantalla (aunque no se haya guardado); si no viene, usa el guardado en
+    Configurar Proyecto y, si tampoco hay, el revenue — igual que el Job Report."""
+    if not can("view", "projconfig"): return jsonify({"error": "Sin permiso"}), 403
+    try:
+        data = request.get_json() or {}
+        pedidos = [j for j in (data.get("jobs") or []) if str(j.get("job_number") or "").strip()]
+        if not pedidos: return jsonify({"error": "El PT/SV no tiene Jobs"}), 400
+        if len(pedidos) > 60: return jsonify({"error": "Máximo 60 Jobs por proyecto"}), 400
+        todos = {str(j.get("job_number") or "").strip().upper(): j for j in scan_jobs()}
+        cfg_by_job = {}
+        for cfg in projcfg_load():
+            for jc in cfg.get("jobs") or []:
+                cfg_by_job.setdefault((jc.get("job_number") or "").strip().upper(), jc)
+        pools = _ro_pools_factory()
+        out = []
+        for p in pedidos:
+            jn = str(p["job_number"]).strip()
+            j = todos.get(jn.upper(), {})
+            row = {"job_number": jn, "existe": bool(j), "status": j.get("status", ""), "customer": j.get("customer", ""),
+                   "description": j.get("description", ""), "pm": j.get("pm", "")}
+            pres = p.get("presupuesto_disponible")
+            origen = "pantalla"
+            if pres in (None, ""):
+                pres = cfg_by_job.get(jn.upper(), {}).get("presupuesto_disponible"); origen = "guardado"
+            if pres in (None, ""): origen = "revenue"
+            try:
+                y = int(_year_of(j) or CURRENT_YEAR)
+                row.update(_ro_job(jn, y, pres, pools), base_origen=origen)
+            except Exception as e:
+                row["error"] = str(e)
+            out.append(row)
+        return jsonify({"ptsv": data.get("ptsv", ""), "jobs": out,
+                        "calculado": datetime.datetime.now().isoformat(timespec="minutes")})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/api/projconfig/plan-personal/import", methods=["POST"])
 def api_import_plan_personal():
