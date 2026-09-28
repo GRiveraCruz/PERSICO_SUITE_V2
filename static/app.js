@@ -4009,6 +4009,25 @@ let rptCurrentJob = null, rptData = null;
 function rptFmtMoney(n){ return n==null?'—':'$'+Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function rptFmtHrs(n){   return n==null?'—':Number(n).toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1})+'h'; }
 
+// rev55: Periodo del reporte — "vida" (todos los años del Job) o "anio" (años elegidos)
+function rptModoUI(pre){
+  const vida = (document.getElementById(pre+'-modo')?.value||'vida')==='vida';
+  const a = document.getElementById(pre+'-anios'), n = document.getElementById(pre+'-modo-nota');
+  if(a) a.style.display = vida ? 'none' : '';
+  if(n) n.style.display = vida ? '' : 'none';
+}
+function rptQS(){
+  const modo = document.getElementById('rpt-modo')?.value || 'vida';
+  if(modo==='vida') return 'modo=vida';
+  const v = id => document.getElementById(id)?.value || new Date().getFullYear();
+  return `modo=anio&rate_year=${v('rpt-rate-year')}&wh_year=${v('rpt-wh-year')}&po_year=${v('rpt-po-year')}`;
+}
+// Texto del periodo de un resultado de /api/report/data
+function rptPeriodoTxt(d){
+  if(d.modo==='vida' && (d.anios||[]).length) return d.anios.length===1 ? `${d.anios[0]}` : `${d.anios[0]}–${d.anios[d.anios.length-1]}`;
+  return `${d.wh_year}`;
+}
+
 function rptInit(){
   // Populate year dropdowns from already-loaded data
   const curY = new Date().getFullYear();
@@ -4088,7 +4107,7 @@ async function rptGenerate(){
   const poY   = document.getElementById('rpt-po-year').value;
 
   try{
-    const resp = await fetch(`/api/report/data?job=${encodeURIComponent(jn)}&rate_year=${rateY}&wh_year=${whY}&po_year=${poY}`);
+    const resp = await fetch(`/api/report/data?job=${encodeURIComponent(jn)}&${rptQS()}`);
     const d    = await resp.json();
     if(d.error){ toast(d.error,'er'); return; }
 
@@ -4575,7 +4594,7 @@ function rptRender(d){
         <td class="rpt-td" style="text-align:right;font-family:'DM Mono',monospace;color:var(--green)">${rptFmtMoney(w.amount)}</td>
       </tr>`).join('');
   } else {
-    wtb.innerHTML = `<tr><td colspan="4" style="padding:20px;text-align:center;color:var(--muted);font-size:12px">Sin horas registradas para este Job en el año ${d.wh_year}</td></tr>`;
+    wtb.innerHTML = `<tr><td colspan="4" style="padding:20px;text-align:center;color:var(--muted);font-size:12px">Sin horas registradas para este Job en ${d.modo==='vida'?'los años':'el año'} ${rptPeriodoTxt(d)}</td></tr>`;
   }
   document.getElementById('rpt-workers-foot').innerHTML = d.workers.length ? `
     <tr class="rpt-foot">
@@ -4762,12 +4781,19 @@ function rptRender(d){
 
   // ── Warnings ──────────────────────────────────────────────────
   const warns = [];
+  const vida = d.modo==='vida';
+  if(vida){
+    const pa = (d.por_anio||[]).filter(x=>x.horas||x.compras);
+    warns.push(`ℹ Vida del Job: ${rptPeriodoTxt(d)}${pa.length>1?' — '+pa.map(x=>`${x.anio}: ${rptFmtHrs(x.horas)}, M.O. ${rptFmtMoney(x.mano_obra)}, compras ${rptFmtMoney(x.compras)}`).join(' · '):''}.`);
+    const fb = Object.entries(d.rate_years||{}).filter(([a,r])=>String(a)!==String(r));
+    if(fb.length) warns.push(`ℹ ${fb.map(([a,r])=>`Horas de ${a} valuadas con Hourly Rates ${r}`).join(' · ')} (ese año aún no tiene Hourly Rates cargado).`);
+  }
   if(d.workers.length > 0 && d.workers.some(w=>w.rate===0))
-    warns.push(`⚠ Algunos empleados no tienen tarifa en Hourly Rates ${d.rate_year}. Su monto aparece como $0.`);
+    warns.push(`⚠ Algunos empleados no tienen tarifa en Hourly Rates ${vida?'(en alguno de los años del Job)':d.rate_year}. Su monto aparece como $0.`);
   if(d.wh_matches === 0)
-    warns.push(`ℹ No se encontraron registros de Work Hours para "${rptCurrentJob}" en el año ${d.wh_year}.`);
+    warns.push(`ℹ No se encontraron registros de Work Hours para "${rptCurrentJob}" en ${vida?'los años':'el año'} ${rptPeriodoTxt(d)}.`);
   if(d.po_matches === 0)
-    warns.push(`ℹ No se encontraron Purchase Orders con destino "${rptCurrentJob}" en el año ${d.po_year}.`);
+    warns.push(`ℹ No se encontraron Purchase Orders con destino "${rptCurrentJob}" en ${vida?'los años':'el año'} ${vida?rptPeriodoTxt(d):d.po_year}.`);
   if(d.revenue === 0)
     warns.push(`ℹ El Job no tiene Revenue registrado. El Gross Margin no se puede calcular correctamente.`);
 
@@ -4782,10 +4808,7 @@ function rptRender(d){
 
 function rptExportXLSX(){
   if(!rptCurrentJob){ toast('Genera el reporte primero','er'); return; }
-  const rateY = document.getElementById('rpt-rate-year').value;
-  const whY   = document.getElementById('rpt-wh-year').value;
-  const poY   = document.getElementById('rpt-po-year').value;
-  window.open(`/api/report/export-excel?job=${encodeURIComponent(rptCurrentJob)}&rate_year=${rateY}&wh_year=${whY}&po_year=${poY}`, '_blank');
+  window.open(`/api/report/export-excel?job=${encodeURIComponent(rptCurrentJob)}&${rptQS()}`, '_blank');
 }
 
 // ════════════════════════════════════════════════════════
@@ -5204,6 +5227,7 @@ async function mrptGenerate(){
     wh_year:   parseInt(document.getElementById('mrpt-wh-year').value),
     po_year:   parseInt(document.getElementById('mrpt-po-year').value),
     cpo_year:  parseInt(document.getElementById('mrpt-cpo-year').value),
+    modo:      document.getElementById('mrpt-modo')?.value || 'vida',
   };
   document.getElementById('mrpt-status').textContent='Generando…';
   document.getElementById('mrpt-dot').style.background='var(--amber)';
@@ -12456,7 +12480,7 @@ function pcGetCambiosData() {
 //  el servidor con la misma fórmula del Job Report.
 // ════════════════════════════════════════════════════════
 let _pcDashTok = 0;
-let _pcDash = {ptsv:'', tok:0, srv:null, calculado:''};   // último cálculo del servidor (para el PDF)
+let _pcDash = {ptsv:'', tok:0, srv:null, calculado:'', data:null};   // último cálculo del servidor (para el PDF)
 const PC_DASH_CARD = 'background:#fff;border-radius:14px;box-shadow:0 4px 18px rgba(0,0,0,.08);padding:18px 20px;min-width:0';
 const PC_DASH_ST = {Open:'#2563eb', WIP:'#f59e0b', Closed:'#16a34a', Cancelled:'#9ca3af', Otro:'#a855f7'};
 function pcDashStatus(s){
@@ -12514,7 +12538,7 @@ function pcRenderDashboard(){
   const tok = ++_pcDashTok;
   pcUpdateTimingCalcs();                      // refresca el Gantt con lo que hay en Timing
   const local = pcDashJobsLocal();
-  _pcDash = {ptsv: pcCurrentPTSV, tok, srv: null, calculado: ''};
+  _pcDash = {ptsv: pcCurrentPTSV, tok, srv: null, calculado: '', data: null};
   const hp = local.reduce((a,j)=>a+j.horas_plan,0), hcT = local.reduce((a,j)=>a+j.horas_cons,0);
   const pctH = hp ? Math.round(hcT/hp*100) : null;
   const colPct = p => p==null ? 'var(--muted)' : p>100 ? 'var(--red)' : p>=85 ? 'var(--amber)' : 'var(--green)';
@@ -12610,12 +12634,14 @@ function pcRenderDashboard(){
       ${vencidos?`<div style="margin-top:8px;font-size:11px;color:var(--red);text-align:center">⚠ ${vencidos} punto(s) abierto(s) con fecha compromiso vencida</div>`:''}</div>
   </div>
 
+  <div style="${PC_DASH_CARD};margin-bottom:16px">${lbl('Timing del proyecto')}${timingCard}</div>
+
   <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px">
     <div style="${PC_DASH_CARD};flex:1 1 460px">${lbl('Horas por línea de mano de obra · consumidas / planeadas')}${barrasLineas}</div>
     <div style="${PC_DASH_CARD};flex:1 1 360px">${lbl('Resultado operativo · desglose')}<div id="pc-dash-ro-det" style="font-size:12px;color:var(--muted)">Calculando…</div></div>
   </div>
 
-  <div style="${PC_DASH_CARD};margin-bottom:16px">${lbl('Timing del proyecto')}${timingCard}</div>
+  <div id="pc-dash-hist">${pcDashHistoricoHTML(local, null)}</div>
   <div style="${PC_DASH_CARD};margin-bottom:16px">${lbl('Resumen del control de cambios')}${cambiosCard}</div>`;
 
   pcDashRenderJobs(local, null);
@@ -12648,6 +12674,269 @@ function pcDashRenderJobs(local, srv){
     <tbody>${tr}<tr style="font-weight:700;cursor:default"><td style="${td}" colspan="3">Total proyecto</td><td style="${td};text-align:right;font-family:'DM Mono',monospace">${_pcH(tp)}</td><td style="${td};text-align:right;font-family:'DM Mono',monospace">${_pcH(tc)}</td>
       <td style="${td};text-align:right;font-family:'DM Mono',monospace;color:${!srv?'var(--muted)':tro<0?'var(--red)':'var(--green)'}">${srv?_pcM(tro):'…'}</td></tr></tbody></table>`
     : `<div style="font-size:12px;color:var(--muted)">El PT/SV no tiene Jobs asociados.</div>`;
+}
+
+// ════════════════════════════════════════════════════════
+//  DASHBOARD — Desempeño e histórico (rev54)
+//  · Tiempo desde el Kickoff y fecha estimada de finalización
+//  · LOP: puntos registrados vs abiertos vs cerrados en el tiempo
+//  · Horas por área por semana (picos de trabajo)
+//  · Internal Target vs gasto ejercido acumulado
+// ════════════════════════════════════════════════════════
+const _pcD0 = d => { const x = new Date(d); x.setHours(0,0,0,0); return x; };
+const _pcISO = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const _pcLunes = d => { const x=_pcD0(d); x.setDate(x.getDate()-((x.getDay()+6)%7)); return x; };
+const _pcParseISO = v => (v && /^\d{4}-\d{2}-\d{2}/.test(v)) ? _pcD0(v.slice(0,10)+'T00:00:00') : null;
+const _pcParseMX = v => { const m = String(v||'').match(/^(\d{2})\/(\d{2})\/(\d{4})$/); return m ? new Date(+m[3], +m[2]-1, +m[1]) : null; };
+const _pcFD = d => d ? d.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}) : '—';
+const PC_LINEA_COLOR = {diseno_mecanico:'#1f3864', simulacion:'#6b7fb5', diseno_electrico:'#2569a0', plc:'#38a3d8', robots:'#7cc6e8',
+  soldadura:'#c8102e', manufactura:'#e8702a', pintura:'#f2b134', ensamble:'#1f8a4c', otras:'#9ca3af'};
+
+// Kickoff y fecha estimada de finalización, con su origen
+function pcDashFechasProyecto(){
+  const tim = pcGetTimingData().filter(r=>r.tipo!=='grupo');
+  const norm = v => String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z]/g,'');
+  const jobs = (pcJobRows||[]).map((j,idx)=>{ const row=document.querySelector(`#pc-row-${idx}`); const f=k=>row?.querySelector(`[data-field="${k}"]`)?.value||''; return {ini:f('fecha_inicio'), roc:f('runoff_cliente'), env:f('fecha_envio')}; });
+  const minD = arr => arr.filter(Boolean).sort((a,b)=>a-b)[0] || null;
+  const maxD = arr => arr.filter(Boolean).sort((a,b)=>b-a)[0] || null;
+  let kickoff=null, kOrigen='';
+  const kAct = tim.find(r=>norm(r.actividad)==='KICKOFF');
+  if(kAct && _pcParseMX(kAct.fecha_condicionada)){ kickoff=_pcParseMX(kAct.fecha_condicionada); kOrigen='actividad "Kickoff" del Timing'; }
+  if(!kickoff){ kickoff = minD(jobs.map(j=>_pcParseISO(j.ini))); if(kickoff) kOrigen='F. Inicio más temprana (Presupuesto)'; }
+  if(!kickoff){ kickoff = minD(tim.map(r=>_pcParseMX(r.fecha_condicionada))); if(kickoff) kOrigen='primera actividad del Timing'; }
+  let fin = maxD(tim.map(r=>_pcParseMX(r.fecha_objetivo))), fOrigen = fin ? 'última actividad del Timing' : '';
+  const compromiso = maxD(jobs.flatMap(j=>[_pcParseISO(j.roc), _pcParseISO(j.env)]));
+  if(!fin && compromiso){ fin = compromiso; fOrigen = 'Run Off Cliente / F. Envío más tardía (Presupuesto)'; }
+  return {kickoff, kOrigen, fin, fOrigen, compromiso: compromiso && fin && +compromiso!==+fin ? compromiso : null};
+}
+
+// Gráfica SVG genérica sobre buckets de tiempo (índices equiespaciados)
+function pcDashChart({xs, series, stack=false, yFmt=v=>v, marcas=[], H=250, xLabel=d=>d.toLocaleDateString('es-MX',{day:'2-digit',month:'short'}), tip}){
+  const W=920, L=62, R=14, T=16, B=34, n=xs.length;
+  if(!n) return '';
+  const pw=W-L-R, ph=H-T-B, step = pw/Math.max(1,n);
+  const tot = i => series.reduce((a,s)=>a+(s.values[i]||0),0);
+  const maxV = Math.max(1, ...(stack ? xs.map((_,i)=>tot(i)) : series.flatMap(s=>s.values.filter(v=>v!=null))));
+  // escala "bonita": paso de 1, 2, 2.5 o 5 × 10^k con máximo 5 divisiones
+  const mag = Math.pow(10, Math.floor(Math.log10(maxV/4)));
+  const paso = [1,2,2.5,5,10].map(c=>c*mag).find(c=>maxV/c<=5) || mag*10;
+  const nDiv = Math.max(1, Math.ceil(maxV/paso)), top = paso*nDiv;
+  const y = v => T + ph - (v/top)*ph, cx = i => L + step*i + step/2;
+  let g='';
+  for(let k=0;k<=nDiv;k++){ const v=paso*k; g+=`<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="rgba(0,0,0,.07)"/><text x="${L-6}" y="${y(v)+3.5}" text-anchor="end" font-size="10" fill="#888">${yFmt(v)}</text>`; }
+  const every = Math.max(1, Math.ceil(n/12));
+  xs.forEach((d,i)=>{ if(i%every===0) g+=`<text x="${cx(i)}" y="${H-B+14}" text-anchor="middle" font-size="9.5" fill="#777">${xLabel(d)}</text>`; });
+  let body='';
+  if(stack){
+    const bw = Math.max(2, Math.min(26, step*0.72));
+    xs.forEach((_,i)=>{ let acc=0; series.forEach(s=>{ const v=s.values[i]||0; if(v<=0) return; body+=`<rect x="${cx(i)-bw/2}" y="${y(acc+v)}" width="${bw}" height="${Math.max(0.5,y(acc)-y(acc+v))}" fill="${s.color}"/>`; acc+=v; }); });
+  } else {
+    series.forEach(s=>{
+      const pts = s.values.map((v,i)=>v==null?null:`${cx(i).toFixed(1)},${y(v).toFixed(1)}`);
+      const segs = []; let cur=[]; pts.forEach(p=>{ if(p) cur.push(p); else if(cur.length){ segs.push(cur); cur=[]; } }); if(cur.length) segs.push(cur);
+      segs.forEach(sg=>{
+        if(s.area && sg.length>1){ const x0=sg[0].split(',')[0], x1=sg[sg.length-1].split(',')[0]; body+=`<polygon points="${x0},${y(0)} ${sg.join(' ')} ${x1},${y(0)}" fill="${s.color}" opacity=".10"/>`; }
+        body+= sg.length>1 ? `<polyline points="${sg.join(' ')}" fill="none" stroke="${s.color}" stroke-width="${s.width||2}" ${s.dash?`stroke-dasharray="${s.dash}"`:''} stroke-linejoin="round"/>`
+                           : `<circle cx="${sg[0].split(',')[0]}" cy="${sg[0].split(',')[1]}" r="2.5" fill="${s.color}"/>`;
+      });
+    });
+  }
+  // marcas verticales (Kickoff, Hoy, Fin estimado)
+  marcas.forEach(m=>{ if(m.i==null || m.i<0 || m.i>=n) return; const x=cx(m.i);
+    body+=`<line x1="${x}" x2="${x}" y1="${T}" y2="${T+ph}" stroke="${m.color}" stroke-width="1.2" stroke-dasharray="4,3"/><text x="${x+3}" y="${T+9}" font-size="9" fill="${m.color}" font-weight="700">${m.label}</text>`; });
+  // zonas de hover con resumen por bucket
+  let hv=''; xs.forEach((d,i)=>{ hv+=`<rect x="${L+step*i}" y="${T}" width="${step}" height="${ph}" fill="transparent"><title>${esc(tip?tip(i,d):xLabel(d))}</title></rect>`; });
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block" role="img">${g}<line x1="${L}" x2="${W-R}" y1="${y(0)}" y2="${y(0)}" stroke="rgba(0,0,0,.25)"/>${body}${hv}</svg>`;
+}
+const _pcLeyenda = items => `<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:11px;margin-top:6px">${items.map(x=>`<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:14px;height:${x.linea?3:10}px;${x.dash?`background:repeating-linear-gradient(90deg,${x.color} 0 4px,transparent 4px 7px)`:`background:${x.color}`};border-radius:2px"></span>${x.label}</span>`).join('')}</div>`;
+
+// Buckets semanales (lunes) entre dos fechas
+function _pcSemanas(d0, d1){ const out=[]; for(let t=_pcLunes(d0); t<=d1; t=new Date(t.getFullYear(),t.getMonth(),t.getDate()+7)) out.push(t); return out; }
+const _pcIdx = (xs, d) => { if(!d || !xs.length) return null; for(let i=xs.length-1;i>=0;i--) if(d>=xs[i]) return i; return -1; };
+
+function pcDashHistoricoHTML(local, d){
+  const card = PC_DASH_CARD, lbl = t => `<div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);margin-bottom:8px">${t}</div>`;
+  const hoy = _pcD0(new Date());
+  const F = pcDashFechasProyecto();
+  const esperando = `<div style="padding:30px 0;text-align:center;color:var(--muted);font-size:12px">Calculando…</div>`;
+  const vacio = t => `<div style="padding:30px 0;text-align:center;color:var(--muted);font-size:12px">${t}</div>`;
+  const marcasDe = xs => [{i:_pcIdx(xs,F.kickoff), label:'Kickoff', color:'#1f3864'}, {i:_pcIdx(xs,hoy), label:'Hoy', color:'#c8102e'}, {i:_pcIdx(xs,F.fin), label:'Fin est.', color:'#1f8a4c'}];
+
+  // ── Gasto ejercido (servidor) — se necesita también para el indicador de presupuesto
+  let gastoTot = null, target = null;
+  if(d){
+    const ok = (d.jobs||[]).filter(x=>x.resultado_operativo!=null);
+    target = ok.reduce((a,x)=>a+(+x.base||0),0);
+    gastoTot = ok.reduce((a,x)=>a+((+x.base||0)-(+x.resultado_operativo||0)),0);
+  }
+
+  // ── 1) Tiempo del proyecto + indicadores de desempeño
+  const hp = local.reduce((a,j)=>a+j.horas_plan,0), hc = local.reduce((a,j)=>a+j.horas_cons,0);
+  const puntos = pcGetPuntosData(), accion = puntos.filter(r=>r.estatus!=='INFO');
+  const pctPuntos = accion.length ? Math.round(accion.filter(r=>r.estatus==='CLOSE').length/accion.length*100) : null;
+  let tiempo = vacio('Sin Kickoff: captura la actividad "Kickoff" en Timing o la F. Inicio en Presupuesto.'), pctT = null;
+  if(F.kickoff){
+    const dias = Math.round((hoy-F.kickoff)/864e5);
+    const total = F.fin ? Math.round((F.fin-F.kickoff)/864e5) : null;
+    const rest = F.fin ? Math.round((F.fin-hoy)/864e5) : null;
+    pctT = total>0 ? Math.max(0, Math.round(dias/total*100)) : null;
+    const semanas = v => `${Math.floor(Math.abs(v)/7)} sem ${Math.abs(v)%7} d`;
+    tiempo = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:12px">
+        <div><div style="font-size:10px;color:var(--muted)">Kickoff</div><b style="font-size:15px">${_pcFD(F.kickoff)}</b><div style="font-size:10px;color:var(--muted)">${esc(F.kOrigen)}</div></div>
+        <div><div style="font-size:10px;color:var(--muted)">Transcurrido</div><b style="font-size:22px">${dias<0?'Inicia en '+(-dias):dias} <span style="font-size:12px">días</span></b><div style="font-size:10px;color:var(--muted)">${dias>=0?semanas(dias):''}</div></div>
+        <div><div style="font-size:10px;color:var(--muted)">Fecha estimada de finalización</div><b style="font-size:15px">${_pcFD(F.fin)}</b><div style="font-size:10px;color:var(--muted)">${esc(F.fOrigen||'Sin Timing ni fechas de Run Off / Envío')}</div>
+          ${F.compromiso?`<div style="font-size:10px;color:${F.compromiso<F.fin?'var(--red)':'var(--muted)'}">Compromiso Run Off / Envío: ${_pcFD(F.compromiso)}${F.compromiso<F.fin?' · el Timing termina después':''}</div>`:''}</div>
+        <div><div style="font-size:10px;color:var(--muted)">${rest==null?'Restante':rest>=0?'Restante':'Atraso vs fecha estimada'}</div><b style="font-size:22px;color:${rest!=null&&rest<0?'var(--red)':'var(--text)'}">${rest==null?'—':Math.abs(rest)} <span style="font-size:12px">${rest==null?'':'días'}</span></b><div style="font-size:10px;color:var(--muted)">${total!=null?`Duración estimada ${total} días`:''}</div></div>
+      </div>
+      ${pctT!=null?`<div style="position:relative;height:10px;background:rgba(0,0,0,.07);border-radius:5px;overflow:hidden"><div style="height:100%;width:${Math.min(100,pctT)}%;background:${pctT>100?'var(--red)':'#1f3864'}"></div></div>
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:3px"><span>${_pcFD(F.kickoff)}</span><b style="color:var(--text)">${pctT}% del tiempo</b><span>${_pcFD(F.fin)}</span></div>`:''}`;
+  }
+  const pctH = hp ? Math.round(hc/hp*100) : null, pctG = (gastoTot!=null && target) ? Math.round(gastoTot/target*100) : null;
+  const barra = (l, p, ref, nota) => `<div style="display:grid;grid-template-columns:130px 1fr 52px;gap:10px;align-items:center;font-size:11px;margin:7px 0" title="${esc(nota||'')}">
+      <span>${l}</span>
+      <div style="position:relative;height:12px;background:rgba(0,0,0,.06);border-radius:4px">
+        ${p!=null?`<div style="position:absolute;inset:0 auto 0 0;width:${Math.min(100,p)}%;background:${ref==null?(p>100?'#c8102e':'#1f3864'):p>ref+10?'#c8102e':p>ref?'#f59e0b':'#1f8a4c'};border-radius:4px"></div>`:''}
+        ${ref!=null?`<div style="position:absolute;top:-3px;bottom:-3px;left:${Math.min(100,ref)}%;width:2px;background:#1f3864" title="Tiempo transcurrido ${ref}%"></div>`:''}
+      </div>
+      <b style="text-align:right;font-family:'DM Mono',monospace">${p==null?'—':p+'%'}</b></div>`;
+  const desempeno = `
+    ${barra('Tiempo transcurrido', pctT, null)}
+    ${barra('Horas consumidas', pctH, pctT, 'Horas consumidas / planeadas')}
+    ${barra('Presupuesto ejercido', d?pctG:null, pctT, 'Gasto ejercido / Internal Target')}
+    <div style="display:grid;grid-template-columns:130px 1fr 52px;gap:10px;align-items:center;font-size:11px;margin:7px 0">
+      <span>Puntos cerrados</span><div style="position:relative;height:12px;background:rgba(0,0,0,.06);border-radius:4px">${pctPuntos!=null?`<div style="position:absolute;inset:0 auto 0 0;width:${pctPuntos}%;background:#2569a0;border-radius:4px"></div>`:''}</div>
+      <b style="text-align:right;font-family:'DM Mono',monospace">${pctPuntos==null?'—':pctPuntos+'%'}</b></div>
+    <div style="font-size:10px;color:var(--muted);margin-top:6px">La raya azul marca el % de tiempo transcurrido. Horas o presupuesto por encima de ella (ámbar; rojo si es por más de 10 puntos) = se consume más rápido de lo que avanza el calendario.${d?'':' Calculando presupuesto…'}</div>`;
+
+  // ── 2) LOP en el tiempo
+  let lop = vacio('Sin puntos OPEN/CLOSE en la Lista de Puntos Abiertos.'), lopNota='';
+  if(accion.length){
+    const aper = accion.map(r=>_pcParseISO(r.fecha_apertura)), fechasConocidas = aper.filter(Boolean);
+    const base0 = F.kickoff || (fechasConocidas.length ? new Date(Math.min(...fechasConocidas)) : hoy);
+    let impA=0, impC=0;
+    const ev = accion.map((r,i)=>{
+      const a = aper[i] || (impA++, base0);
+      let c = null;
+      if(r.estatus==='CLOSE'){ c = _pcParseISO(r.fecha_finalizacion); if(!c){ impC++; c = _pcParseISO(r.fecha_compromiso) || a; } if(c<a) c=a; }
+      return {a, c};
+    });
+    const d0 = new Date(Math.min(...ev.map(e=>+e.a), F.kickoff?+F.kickoff:Infinity));
+    const d1 = new Date(Math.max(+hoy, ...ev.map(e=>+(e.c||e.a))));
+    const xs = _pcSemanas(d0, d1);
+    const finSem = t => new Date(t.getFullYear(), t.getMonth(), t.getDate()+6);
+    const reg = xs.map(t=>ev.filter(e=>e.a<=finSem(t)).length);
+    const cer = xs.map(t=>ev.filter(e=>e.c && e.c<=finSem(t)).length);
+    const abi = reg.map((v,i)=>v-cer[i]);
+    const iCruce = cer.findIndex((v,i)=>v>abi[i] && v>0);
+    lop = pcDashChart({xs, series:[
+        {name:'Registrados', values:reg, color:'#1f3864', width:2.4, area:true},
+        {name:'Abiertos', values:abi, color:'#f59e0b', width:2.4},
+        {name:'Cerrados', values:cer, color:'#16a34a', width:2.4}],
+      yFmt:v=>Math.round(v), marcas: marcasDe(xs),
+      tip:(i,t)=>`Semana del ${_pcFD(t)}\nRegistrados: ${reg[i]}\nAbiertos: ${abi[i]}\nCerrados: ${cer[i]}`})
+      + _pcLeyenda([{label:'Registrados (acumulado)',color:'#1f3864',linea:1},{label:'Abiertos',color:'#f59e0b',linea:1},{label:'Cerrados (acumulado)',color:'#16a34a',linea:1}]);
+    const nInfo = puntos.length - accion.length;
+    lopNota = [iCruce>=0?`Los cerrados rebasaron a los abiertos la semana del <b>${_pcFD(xs[iCruce])}</b>.`:(cer[cer.length-1]?'Los cerrados todavía no rebasan a los abiertos.':''),
+      nInfo?`${nInfo} punto(s) INFO no se grafican.`:'',
+      impA?`${impA} sin fecha de apertura: se toman desde ${F.kickoff?'el Kickoff':'la primera fecha registrada'}.`:'',
+      impC?`${impC} cerrado(s) sin fecha de finalización: se usa la fecha compromiso o la de apertura.`:''].filter(Boolean).join(' ');
+  }
+
+  // ── 3) Horas por área por semana (servidor)
+  let horas = esperando, horasNota = '';
+  if(d){
+    const hs = d.horas_semana || {}, sems = Object.keys(hs).sort();
+    if(!sems.length) horas = vacio('Sin horas registradas en Work Hours para estos Jobs.');
+    else {
+      const modo = window._pcDashHorasModo || 'semana';
+      const vista = window._pcDashHorasVista || 'tendencia';
+      const nombres = Object.fromEntries((d.lineas||[]).map(l=>[l.k,l.nombre])); nombres.otras = 'Otras (sin tarifa o sin perfil)';
+      let xs, bucket;
+      if(modo==='mes'){
+        const m0 = _pcParseISO(sems[0]), m1 = hoy > _pcParseISO(sems[sems.length-1]) ? hoy : _pcParseISO(sems[sems.length-1]);
+        xs=[]; for(let t=new Date(m0.getFullYear(), m0.getMonth(), 1); t<=m1; t=new Date(t.getFullYear(), t.getMonth()+1, 1)) xs.push(t);
+        bucket = iso => { const t=_pcParseISO(iso); return xs.findIndex(x=>x.getFullYear()===t.getFullYear() && x.getMonth()===t.getMonth()); };
+      } else {
+        const s1 = _pcParseISO(sems[sems.length-1]);
+        xs = _pcSemanas(_pcParseISO(sems[0]), s1 > hoy ? s1 : hoy);
+        const pos = Object.fromEntries(xs.map((x,i)=>[_pcISO(x), i]));
+        bucket = iso => pos[iso] ?? -1;
+      }
+      const keys = [...(d.lineas||[]).map(l=>l.k), 'otras'].filter(k=>sems.some(sm=>hs[sm][k]));
+      const series = keys.map(k=>({k, name:nombres[k]||k, color:PC_LINEA_COLOR[k]||'#999', values:xs.map(()=>0)}));
+      sems.forEach(sm=>{ const b=bucket(sm); if(b<0) return; series.forEach(s=>{ s.values[b]+= hs[sm][s.k]||0; }); });
+      const tot = xs.map((_,i)=>series.reduce((a,s)=>a+s.values[i],0));
+      const iPico = tot.indexOf(Math.max(...tot));
+      const lblX = modo==='mes' ? (t=>t.toLocaleDateString('es-MX',{month:'short',year:'2-digit'})) : undefined;
+      const toggle = (opts, cur, varName) => `<div style="display:flex;border:1px solid var(--border2);border-radius:6px;overflow:hidden">${opts.map(([k,t])=>`<button type="button" onclick="window.${varName}='${k}';pcDashRepintarHist()" style="border:none;padding:3px 10px;font-size:10px;cursor:pointer;background:${cur===k?'var(--red)':'transparent'};color:${cur===k?'#fff':'var(--muted2)'}">${t}</button>`).join('')}</div>`;
+      // Tendencia: una línea por área más la línea del total (para ver los picos)
+      const serieTotal = {k:'total', name:'Total', color:'#111827', width:2.8, values: tot, area:true};
+      const seriesVista = vista==='tendencia' ? [...series.map(s=>({...s, width:1.8})), serieTotal] : series;
+      horas = `<div style="display:flex;justify-content:flex-end;gap:8px;margin:-26px 0 6px">
+          ${toggle([['tendencia','Tendencia'],['barras','Barras']], vista, '_pcDashHorasVista')}
+          ${toggle([['semana','Semanas'],['mes','Meses']], modo, '_pcDashHorasModo')}</div>`
+        + pcDashChart({xs, series: seriesVista, stack: vista==='barras', yFmt:v=>_pcH(v), marcas: marcasDe(xs), xLabel: lblX,
+            tip:(i,t)=>`${modo==='mes'?t.toLocaleDateString('es-MX',{month:'long',year:'numeric'}):'Semana del '+_pcFD(t)} · ${_pcH(tot[i])} h\n`+series.filter(s=>s.values[i]).map(s=>`${s.name}: ${_pcH(s.values[i])} h`).join('\n')})
+        + _pcLeyenda([...(vista==='tendencia'?[{label:`Total · ${_pcH(tot.reduce((a,b)=>a+b,0))} h`, color:'#111827', linea:1}]:[]),
+            ...series.map(s=>({label:`${esc(s.name)} · ${_pcH(s.values.reduce((a,b)=>a+b,0))} h`, color:s.color, linea: vista==='tendencia'?1:0}))]);
+      horasNota = tot[iPico] ? `Pico: <b>${modo==='mes'?xs[iPico].toLocaleDateString('es-MX',{month:'long',year:'numeric'}):'semana del '+_pcFD(xs[iPico])}</b> con ${_pcH(tot[iPico])} h (promedio ${_pcH(tot.reduce((a,b)=>a+b,0)/Math.max(1,tot.filter(v=>v>0).length))} h por ${modo==='mes'?'mes':'semana'} con registros).${d.horas_sin_fecha?` ${_pcH(d.horas_sin_fecha)} h sin fecha no se grafican.`:''}` : '';
+    }
+  }
+
+  // ── 4) Internal Target vs gasto ejercido (servidor)
+  let pres = esperando, presNota = '';
+  if(d){
+    const gs = d.gasto || {}, fechas = Object.keys(gs).filter(f=>f).sort();
+    const sinF = gs[''] || null;
+    if(!fechas.length && !sinF) pres = vacio('Sin gasto registrado para estos Jobs.');
+    else {
+      const f0 = fechas.length ? _pcParseISO(fechas[0]) : hoy, fl = fechas.length ? _pcParseISO(fechas[fechas.length-1]) : hoy;
+      const d0 = new Date(Math.min(+f0, F.kickoff?+F.kickoff:Infinity));
+      const d1 = new Date(Math.max(+hoy, +fl, F.fin?+F.fin:0));
+      const xs = _pcSemanas(d0, d1), finSem = t => new Date(t.getFullYear(), t.getMonth(), t.getDate()+6);
+      const neto = r => (r.mo||0)+(r.compras||0)+(r.servicios||0)+(r.reasignaciones||0)-(r.recuperaciones||0);   // igual que el resultado operativo
+      const acumula = fn => { let i=0, acc=0; return xs.map(t=>{ const e=finSem(t); while(i<fechas.length && _pcParseISO(fechas[i])<=e){ acc+=fn(gs[fechas[i]]); i++; } return t<=hoy ? Math.round(acc*100)/100 : null; }); };
+      const tot = acumula(neto), mo = acumula(r=>r.mo||0), comp = acumula(r=>r.compras||0);
+      // lo que no tiene fecha se suma en la semana actual
+      const iHoy = _pcIdx(xs, hoy);
+      if(sinF && iHoy>=0){ tot[iHoy] += neto(sinF); mo[iHoy] += sinF.mo||0; comp[iHoy] += sinF.compras||0; }
+      const series = [{name:'Internal Target', values:xs.map(()=>target), color:'#1f3864', dash:'6,4', width:1.8}];
+      let lineal = null;
+      if(F.kickoff && F.fin && F.fin>F.kickoff){
+        lineal = xs.map(t=>{ const e=finSem(t); const p = Math.max(0, Math.min(1, (e-F.kickoff)/(F.fin-F.kickoff))); return Math.round(target*p*100)/100; });
+        series.push({name:'Referencia lineal', values:lineal, color:'#94a3b8', dash:'2,3', width:1.5});
+      }
+      series.push({name:'Mano de obra', values:mo, color:'#6b7fb5', width:1.4}, {name:'Compras', values:comp, color:'#e8702a', width:1.4},
+                  {name:'Gasto total', values:tot, color:(tot[iHoy]||0)>target?'#c8102e':'#1f8a4c', width:2.8, area:true});
+      pres = pcDashChart({xs, series, yFmt:v=>'$'+(v>=1e6?(v/1e6).toFixed(1)+'M':v>=1e3?Math.round(v/1e3)+'k':Math.round(v)), marcas: marcasDe(xs),
+          tip:(i,t)=>`Semana del ${_pcFD(t)}\nInternal Target: ${_pcM(target)}${lineal?`\nReferencia lineal: ${_pcM(lineal[i])}`:''}${tot[i]!=null?`\nGasto total: ${_pcM(tot[i])}\nMano de obra: ${_pcM(mo[i])}\nCompras: ${_pcM(comp[i])}`:''}`})
+        + _pcLeyenda([{label:'Internal Target',color:'#1f3864',linea:1,dash:1}, ...(lineal?[{label:'Referencia lineal (Kickoff → fin estimado)',color:'#94a3b8',linea:1,dash:1}]:[]),
+            {label:'Gasto total acumulado',color:'#1f8a4c',linea:1},{label:'Mano de obra',color:'#6b7fb5',linea:1},{label:'Compras',color:'#e8702a',linea:1}]);
+      const gHoy = tot[iHoy] ?? gastoTot, dif = target - gHoy;
+      const vsLineal = lineal && iHoy>=0 ? gHoy - lineal[iHoy] : null;
+      presNota = `Ejercido <b>${_pcM(gHoy)}</b> de ${_pcM(target)} (${target?Math.round(gHoy/target*100):'—'}%) · ${dif>=0?`disponible ${_pcM(dif)}`:`<span style="color:var(--red)">sobre el target por ${_pcM(-dif)}</span>`}`
+        + (vsLineal!=null?` · ${vsLineal>0?`<span style="color:#b45309">${_pcM(vsLineal)} arriba</span>`:`${_pcM(-vsLineal)} abajo`} de la referencia lineal a hoy`:'')
+        + `. Mismos registros del resultado operativo (Work Hours y compras de todos los años de cada Job, servicios, reasignaciones y recuperaciones); compras con fecha de recepción.`
+        + (sinF?` ${_pcM(neto(sinF))} sin fecha se suman en la semana actual.`:'');
+    }
+  }
+
+  const nota = t => t ? `<div style="font-size:11px;color:var(--muted2);margin-top:8px">${t}</div>` : '';
+  return `
+  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--red);margin:6px 0 10px">Desempeño e histórico</div>
+  <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px">
+    <div style="${card};flex:3 1 560px">${lbl('Tiempo del proyecto')}${tiempo}</div>
+    <div style="${card};flex:2 1 340px">${lbl('Indicadores de desempeño')}${desempeno}</div>
+  </div>
+  <div style="${card};margin-bottom:16px">${lbl('Lista de puntos abiertos · registrados vs abiertos vs cerrados')}${lop}${nota(lopNota)}</div>
+  <div style="${card};margin-bottom:16px">${lbl('Horas por área · tendencia y picos de trabajo')}${horas}${nota(horasNota)}</div>
+  <div style="${card};margin-bottom:16px">${lbl('Presupuesto · Internal Target vs gasto ejercido (acumulado)')}${pres}${nota(presNota)}</div>`;
+}
+
+function pcDashRepintarHist(){
+  const el = document.getElementById('pc-dash-hist');
+  if(el && _pcDash.data && _pcDash.ptsv===pcCurrentPTSV) el.innerHTML = pcDashHistoricoHTML(pcDashJobsLocal(), _pcDash.data);
 }
 
 // ── Reporte PDF del proyecto (ventana de impresión → "Guardar como PDF", como el Gantt y la LOP)
@@ -12721,6 +13010,9 @@ function pcDashReportePDF(){
     .salto{page-break-before:always}
     .pie svg{width:130px!important;height:130px!important}
     .foot{margin-top:12px;font-size:8px;color:#888;border-top:1px solid #e3e3e3;padding-top:5px}
+    :root{--muted:#777;--muted2:#555;--red:#C8102E;--text:#1a1a1a;--green:#1f7a45;--border:#e1e1e1;--border2:#ccc}
+    .hist button{display:none} .hist>div{page-break-inside:avoid}
+    .hist [style*="box-shadow"]{box-shadow:none!important;border:1px solid #ddd;padding:10px 12px!important;margin-bottom:10px!important}
   </style></head><body>
   <div class="top"><img src="${location.origin}/static/persico_logo.webp" onerror="this.style.display='none'">
     <div class="t"><h1>Reporte de Proyecto</h1><div class="pt">${esc(pcCurrentPTSV)}</div>${cliente?`<div style="font-size:11px;color:#444">${esc(cliente)}</div>`:''}</div>
@@ -12792,6 +13084,9 @@ function pcDashReportePDF(){
     <div style="font-size:8.5px;color:#777;margin-top:4px">Verde = cumplida · ámbar = en curso · rojo = vencida · ★ milestone de facturación · ◆ fecha real de finalización.</div>`
     : vacio('Sin Timing configurado.')}
 
+  <div class="salto"></div>
+  <div class="hist">${pcDashHistoricoHTML(local, _pcDash.data)}</div>
+
   <h2>Control de cambios</h2>
   ${cambios.length?`<div style="display:flex;gap:18px;margin-bottom:6px;font-size:10px">
       <div>Total <b>${cambios.length}</b></div><div>Autorizados <b style="color:#1f7a45">${nC('AUTORIZADO')}</b></div><div>En espera <b style="color:#b45309">${nC('EN ESPERA')}</b></div><div>Cancelados <b style="color:#777">${nC('CANCELADO')}</b></div></div>
@@ -12815,7 +13110,9 @@ async function pcDashCargarServidor(local, tok){
     if(tok !== _pcDashTok) return;           // el usuario cambió de PT o actualizó mientras tanto
     if(!r.ok || d.error) throw new Error(d.error || `HTTP ${r.status}`);
     const js = d.jobs||[];
-    _pcDash.srv = js; _pcDash.calculado = d.calculado||'';
+    _pcDash.srv = js; _pcDash.calculado = d.calculado||''; _pcDash.data = d;
+    const hist = document.getElementById('pc-dash-hist');
+    if(hist) hist.innerHTML = pcDashHistoricoHTML(local, d);
     const pdfBtn = document.getElementById('pc-dash-pdf');
     if(pdfBtn){ pdfBtn.disabled = false; pdfBtn.title = 'Genera el reporte del proyecto en PDF'; }
     pcDashRenderJobs(local, js);
@@ -13869,10 +14166,7 @@ function round2(v){ return Math.round(v*100)/100; }
 // ════════════════════════════════════════════════════════
 function rptExecPDF() {
   if(!rptCurrentJob) { toast('Genera el reporte primero','er'); return; }
-  const rateY = document.getElementById('rpt-rate-year')?.value || new Date().getFullYear();
-  const whY   = document.getElementById('rpt-wh-year')?.value  || new Date().getFullYear();
-  const poY   = document.getElementById('rpt-po-year')?.value  || new Date().getFullYear();
-  const url = `/api/report/executive-pdf?job=${encodeURIComponent(rptCurrentJob)}&rate_year=${rateY}&wh_year=${whY}&po_year=${poY}`;
+  const url = `/api/report/executive-pdf?job=${encodeURIComponent(rptCurrentJob)}&${rptQS()}`;
   window.open(url, '_blank');
 }
 

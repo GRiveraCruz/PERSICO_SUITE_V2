@@ -3662,12 +3662,20 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
     </div>
     <div style="padding:14px 20px;border-bottom:1px solid var(--border)">
       <div class="ft">Fuentes de datos</div>
+      <div class="fg"><label>Periodo</label>
+        <select id="rpt-modo" onchange="rptModoUI('rpt')" style="width:100%;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:7px 10px;font-size:12px;outline:none">
+          <option value="vida" selected>Vida del Job (todos los años)</option>
+          <option value="anio">Por año (elegir años)</option>
+        </select>
+        <div id="rpt-modo-nota" style="font-size:10px;color:var(--muted);margin-top:4px">Suma Work Hours, compras y CPO desde el año de creación de cada Job.</div></div>
+      <div id="rpt-anios" style="display:none">
       <div class="fg"><label>Año Hourly Rates</label>
         <select id="rpt-rate-year" style="width:100%;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:7px 10px;font-size:12px;outline:none"></select></div>
       <div class="fg"><label>Año Work Hours</label>
         <select id="rpt-wh-year" style="width:100%;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:7px 10px;font-size:12px;outline:none"></select></div>
       <div class="fg"><label>Año Purchase Orders</label>
         <select id="rpt-po-year" style="width:100%;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:7px 10px;font-size:12px;outline:none"></select></div>
+      </div>
     </div>
     <div style="padding:14px 20px;flex:1"></div>
     <div class="sb-btns">
@@ -3973,6 +3981,13 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
     </div>
     <div style="padding:14px 20px;border-bottom:1px solid var(--border)">
       <div class="ft">Fuentes de datos</div>
+      <div class="fg"><label>Periodo</label>
+        <select id="mrpt-modo" onchange="rptModoUI('mrpt')" style="width:100%;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:7px 10px;font-size:12px;outline:none">
+          <option value="vida" selected>Vida del Job (todos los años)</option>
+          <option value="anio">Por año (elegir años)</option>
+        </select>
+        <div id="mrpt-modo-nota" style="font-size:10px;color:var(--muted);margin-top:4px">Suma Work Hours, compras y CPO desde el año de creación de cada Job.</div></div>
+      <div id="mrpt-anios" style="display:none">
       <div class="fg"><label>Año Hourly Rates</label>
         <select id="mrpt-rate-year" style="width:100%;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:7px 10px;font-size:12px;outline:none"></select></div>
       <div class="fg"><label>Año Work Hours</label>
@@ -3981,6 +3996,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
         <select id="mrpt-po-year" style="width:100%;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:7px 10px;font-size:12px;outline:none"></select></div>
       <div class="fg"><label>Año Customer POs</label>
         <select id="mrpt-cpo-year" style="width:100%;background:var(--inp);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:7px 10px;font-size:12px;outline:none"></select></div>
+      </div>
     </div>
     <div class="sb-btns">
       <button class="btn-new" onclick="mrptGenerate()">Generar Reporte</button>
