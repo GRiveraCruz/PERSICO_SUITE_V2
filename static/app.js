@@ -6723,21 +6723,133 @@ const PM_EST_COLOR = {Open:'#2563eb', WIP:'#f59e0b', Cerrado:'#16a34a', Cancelad
 const PM_CERRADO = ['DONE','CLOSED','CERRADO'];
 function pmChartsHTML(d, previewUser, card){
   const g = d.grafica||[];
-  const gc = g.filter(x=>PM_CERRADO.includes(String(x.status||'').trim().toUpperCase()));   // tendencia: solo Jobs cerrados
+  // tendencia: solo Jobs cerrados creados en el año (los Open/WIP de otros años solo alimentan las barras)
+  const gc = g.filter(x=>x.en_anio!==false && PM_CERRADO.includes(String(x.status||'').trim().toUpperCase()));
   const yearSel = `<select onchange="loadPMDashboard(${previewUser?`'${esc(previewUser)}'`:'null'}, this.value)" style="font-size:11px;padding:2px 6px;margin-left:8px">${
     (d.years||[]).map(y=>`<option ${y==d.year?'selected':''}>${y}</option>`).join('')}</select>`;
   const box = (title, body, extra='', flex='1 1 0') => `<div style="${card};flex:${flex};min-width:280px">
-      <div style="display:flex;align-items:center;font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);margin-bottom:8px">${title}${extra}</div>${body}</div>`;
+      <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px;font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);margin-bottom:8px">${title}${extra}</div>${body}</div>`;
   const vacio = t => `<div style="padding:40px 0;text-align:center;color:var(--muted);font-size:12px">${t}</div>`;
+  pmBarsInit(g, d.year, previewUser);
   return `<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px">
       ${box(`Estatus de mis Jobs (${d.total_jobs||0})`, pmPieSVG(d.estatus||{}), '', '0 1 300px')}
-      ${box(`Target vs Cost · Jobs ${d.year}`, g.length?pmBarsSVG(g):vacio('Sin Jobs creados en '+d.year), yearSel, '1 1 600px')}
+      ${box(`Target vs Cost`, `<div id="pm-bars-body">${pmBarsBodyHTML()}</div>`, yearSel + pmBarsFilterHTML(), '1 1 600px')}
     </div>
     <div style="${card};margin-bottom:16px">
       <div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Tendencia del margen de ganancia · Jobs cerrados ${d.year} · (Target − Cost) / Cost</div>
       ${gc.some(x=>x.margen!=null)?pmTrendSVG(gc,{excl:'cerrados sin target o sin costo'}):vacio('Sin Jobs cerrados con target y costo en '+d.year)}
     </div>`;
 }
+
+// ── rev50: Filtro de Jobs de la gráfica Target vs Cost.
+//    Default = todos los Jobs Open/WIP del PM (de cualquier año). El usuario puede elegir
+//    Jobs uno por uno, buscar, o usar los atajos. La selección se recuerda por usuario+año
+//    mientras la página esté abierta (sobrevive a "Actualizar" y a cambiar de año y regresar).
+const PM_ABIERTO = ['OPEN','WIP'];
+const _pmBarsSelMemo = {};              // { 'usuario|año': [job_number,...] }
+let _pmBars = {g:[], year:null, key:'', sel:new Set(), q:''};
+const _pmIsAbierto = x => PM_ABIERTO.includes(String(x.status||'').trim().toUpperCase());
+
+function pmBarsInit(g, year, previewUser){
+  const key = (previewUser||'') + '|' + year;
+  const nums = new Set(g.map(x=>x.job_number));
+  const memo = _pmBarsSelMemo[key];
+  const sel = memo ? memo.filter(n=>nums.has(n)) : g.filter(_pmIsAbierto).map(x=>x.job_number);
+  _pmBars = {g, year, key, sel:new Set(sel), q:''};
+}
+
+function pmBarsFilterHTML(){
+  const {g, year} = _pmBars;
+  if(!g.length) return '';
+  const nAb = g.filter(_pmIsAbierto).length, nAnio = g.filter(x=>x.en_anio!==false).length;
+  const opts = [...g].sort((a,b)=>(_pmIsAbierto(b)-_pmIsAbierto(a)) || String(a.job_number).localeCompare(String(b.job_number)))
+    .map(x=>{
+      const st = String(x.status||'').trim();
+      const col = _pmIsAbierto(x) ? (st.toUpperCase()==='WIP'?PM_EST_COLOR.WIP:PM_EST_COLOR.Open) : '#9ca3af';
+      const txt = `${x.job_number} ${x.customer||''} ${st} ${x.anio||''}`.toLowerCase();
+      return `<label class="pm-bf-opt" data-txt="${esc(txt)}" style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;cursor:pointer;font-size:12px;letter-spacing:0;text-transform:none;color:var(--text)">
+        <input type="checkbox" value="${esc(x.job_number)}" ${_pmBars.sel.has(x.job_number)?'checked':''} onchange="pmBarsToggle(this)" style="accent-color:#1f3864">
+        <b style="font-family:'DM Mono',monospace;min-width:62px">${esc(x.job_number)}</b>
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted2)">${esc(x.customer||'')}</span>
+        ${x.en_anio===false?`<span style="font-size:10px;color:var(--muted)" title="Creado en ${esc(x.anio)}; aparece porque sigue ${esc(st)}">${esc(x.anio)}</span>`:''}
+        <span style="font-size:10px;font-weight:700;color:${col};min-width:44px;text-align:right">${esc(st)}</span></label>`;
+    }).join('');
+  const qb = (lbl, fn, n) => `<button type="button" onclick="pmBarsQuick('${fn}')" class="btn-reload" style="font-size:10px;padding:3px 8px">${lbl}${n!=null?` (${n})`:''}</button>`;
+  return `<div id="pm-bf" style="position:relative;margin-left:8px">
+      <button type="button" id="pm-bf-btn" onclick="pmBarsOpen(event)" aria-haspopup="true" aria-expanded="false"
+        style="font-size:11px;padding:3px 10px;border:1px solid var(--border2);border-radius:6px;background:#fff;cursor:pointer;letter-spacing:0;text-transform:none;color:var(--text)">
+        <span id="pm-bf-lbl">${pmBarsLabel()}</span> ▾</button>
+      <div id="pm-bf-pop" role="dialog" aria-label="Elegir Jobs de la gráfica" style="display:none;position:absolute;top:calc(100% + 6px);left:0;z-index:50;width:340px;max-width:80vw;background:#fff;border:1px solid var(--border2);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.16);padding:10px;letter-spacing:0;text-transform:none">
+        <input id="pm-bf-q" type="search" placeholder="Buscar Job, cliente o estatus" oninput="pmBarsSearch(this.value)"
+          style="width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;margin-bottom:8px">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+          ${qb('Open / WIP','abiertos',nAb)}${qb('Jobs '+esc(year),'anio',nAnio)}${qb('Todos','todos',g.length)}${qb('Ninguno','ninguno')}
+        </div>
+        <div id="pm-bf-list" style="max-height:280px;overflow-y:auto;border-top:1px solid var(--border);padding-top:6px">${opts}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:8px">Aparecen los Jobs creados en ${esc(year)} y los Open/WIP de cualquier año.</div>
+      </div></div>`;
+}
+
+function pmBarsLabel(){
+  const {g, sel} = _pmBars, n = sel.size, ab = g.filter(_pmIsAbierto);
+  if(n && n===ab.length && ab.every(x=>sel.has(x.job_number))) return `Open / WIP · ${n} Job${n===1?'':'s'}`;
+  if(n===g.length) return `Todos · ${n} Jobs`;
+  return `${n} de ${g.length} Jobs`;
+}
+
+function pmBarsBodyHTML(){
+  const {g, sel, year} = _pmBars;
+  const vacio = t => `<div style="padding:40px 0;text-align:center;color:var(--muted);font-size:12px">${t}</div>`;
+  if(!g.length) return vacio(`Sin Jobs creados en ${esc(year)} ni Jobs Open/WIP`);
+  const rows = g.filter(x=>sel.has(x.job_number));
+  if(!rows.length) return vacio(g.some(_pmIsAbierto) ? 'Ningún Job seleccionado. Elige Jobs en el filtro.' : `No hay Jobs Open/WIP. Elige Jobs de ${esc(year)} en el filtro.`);
+  return pmBarsSVG(rows);
+}
+
+function pmBarsRedraw(){
+  _pmBarsSelMemo[_pmBars.key] = [..._pmBars.sel];
+  const body = document.getElementById('pm-bars-body'), lbl = document.getElementById('pm-bf-lbl');
+  if(body) body.innerHTML = pmBarsBodyHTML();
+  if(lbl) lbl.textContent = pmBarsLabel();
+}
+
+function pmBarsToggle(cb){
+  if(cb.checked) _pmBars.sel.add(cb.value); else _pmBars.sel.delete(cb.value);
+  pmBarsRedraw();
+}
+
+function pmBarsQuick(fn){
+  const {g} = _pmBars;
+  const pick = {abiertos:g.filter(_pmIsAbierto), anio:g.filter(x=>x.en_anio!==false), todos:g, ninguno:[]}[fn] || [];
+  _pmBars.sel = new Set(pick.map(x=>x.job_number));
+  document.querySelectorAll('#pm-bf-list input[type=checkbox]').forEach(cb=>{ cb.checked = _pmBars.sel.has(cb.value); });
+  pmBarsRedraw();
+}
+
+function pmBarsSearch(q){
+  q = String(q||'').trim().toLowerCase();
+  document.querySelectorAll('#pm-bf-list .pm-bf-opt').forEach(el=>{ el.style.display = !q || el.dataset.txt.includes(q) ? 'flex' : 'none'; });
+}
+
+function pmBarsOpen(ev){
+  ev.stopPropagation();
+  const pop = document.getElementById('pm-bf-pop'), btn = document.getElementById('pm-bf-btn');
+  if(!pop) return;
+  const abrir = pop.style.display==='none';
+  pop.style.display = abrir ? 'block' : 'none';
+  btn?.setAttribute('aria-expanded', abrir?'true':'false');
+  if(abrir) setTimeout(()=>document.getElementById('pm-bf-q')?.focus(), 0);
+}
+// Cerrar el filtro al hacer clic fuera o con Esc
+document.addEventListener('click', e=>{
+  const pop = document.getElementById('pm-bf-pop');
+  if(pop && pop.style.display!=='none' && !e.target.closest('#pm-bf')){ pop.style.display='none'; document.getElementById('pm-bf-btn')?.setAttribute('aria-expanded','false'); }
+});
+document.addEventListener('keydown', e=>{
+  if(e.key!=='Escape') return;
+  const pop = document.getElementById('pm-bf-pop');
+  if(pop && pop.style.display!=='none'){ pop.style.display='none'; document.getElementById('pm-bf-btn')?.focus(); }
+});
 
 function pmPieSVG(est){
   const items = Object.entries(est).filter(([,v])=>v>0);
@@ -11518,9 +11630,9 @@ function pcAddTimingRow(data={}) {
   const tr = document.createElement('tr');
   const inpS = 'background:var(--inp);border:1px solid rgba(255,193,7,.3);border-radius:4px;color:var(--amber);padding:5px 7px;font-size:11px';
   tr.innerHTML = `
-    <td style="padding-left:${data.grupo?'18px':'6px'}"><input data-field="actividad" list="pc-act-list" value="${esc(data.actividad||data.name||'')}"
-      oninput="pcUpdateTimingCalcs()" style="${inpS};width:100%"></td>
-    <td><input data-field="grupo" list="pc-timing-groups-list" value="${esc(data.grupo||'')}" placeholder="— sin grupo —"
+    <td class="pc-stk pc-stk1" style="padding-left:${data.grupo?'18px':'6px'}"><input data-field="actividad" list="pc-act-list" value="${esc(data.actividad||data.name||'')}"
+      oninput="pcUpdateTimingCalcs();this.title=this.value" title="${esc(data.actividad||data.name||'')}" style="${inpS};width:100%"></td>
+    <td class="pc-stk pc-stk2"><input data-field="grupo" list="pc-timing-groups-list" value="${esc(data.grupo||'')}" placeholder="— sin grupo —"
       oninput="pcOnGroupFieldChange(this);pcUpdateTimingCalcs()" style="${inpS};width:100%;color:var(--muted2)"></td>
     <td><input data-field="actividad_previa" list="pc-timing-activities-list" value="${esc(data.actividad_previa||data.prev||'')}"
       oninput="pcUpdateTimingCalcs()" style="${inpS};width:100%;color:var(--muted2)"></td>
@@ -11567,12 +11679,13 @@ function pcAddGroupRow(data={}) {
   tr.className = 'pc-t-group-row';
   tr.style.background = 'rgba(0,0,0,.045)';
   tr.innerHTML = `
-    <td colspan="3" style="font-weight:800;letter-spacing:.3px">
+    <td colspan="2" class="pc-stk pc-stk-grp" style="font-weight:800;letter-spacing:.3px">
       <span class="pc-grp-toggle" onclick="pcToggleGroup(this)" style="cursor:pointer;display:inline-block;width:14px;user-select:none">▾</span>
       <input data-field="actividad" value="${esc(data.actividad||'')}" placeholder="Nombre del grupo"
         oninput="pcUpdateGroupsList();pcUpdateTimingCalcs()"
-        style="background:transparent;border:none;border-bottom:1px dashed var(--border2);color:var(--text);font-weight:800;font-size:11.5px;padding:3px 4px;width:75%">
+        style="background:transparent;border:none;border-bottom:1px dashed var(--border2);color:var(--text);font-weight:800;font-size:11.5px;padding:3px 4px;width:calc(100% - 22px)">
     </td>
+    <td></td>
     <td></td>
     <td></td>
     <td></td>

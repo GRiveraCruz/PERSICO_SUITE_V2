@@ -7277,11 +7277,14 @@ def api_dashboard_project_manager():
                 row["error"] = str(e)
             if j in jobs:
                 out["jobs"].append(row)
-            if j in year_jobs and "error" not in row:
+            # rev50: la gráfica de barras también recibe los Jobs Open/WIP de otros años (son la vista
+            # por default del filtro); "en_anio" distingue los creados en el año seleccionado.
+            if (j in year_jobs or j in jobs) and "error" not in row:
                 # Gráficas 2 y 3: Target = base (Internal Target o revenue), Cost = base − resultado operativo,
                 # margen = (Target − Cost) / Cost, como en PROJECT_MANAGER_GRAPHICS.xlsx.
                 cost = round(row["base"] - row["resultado_operativo"], 2)
                 out["grafica"].append({"job_number": jn, "status": row["status"], "target": row["base"], "cost": cost,
+                                       "customer": row["customer"], "anio": y, "en_anio": j in year_jobs,
                                        "target_configurado": row["internal_target"] is not None,
                                        # sin target (revenue 0 y sin Configurar Proyecto) el margen no tiene contra qué medirse
                                        "margen": round((row["base"] - cost) / cost, 4) if cost > 0 and row["base"] > 0 else None})
