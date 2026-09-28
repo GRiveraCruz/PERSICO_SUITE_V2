@@ -12824,6 +12824,223 @@ def api_delete_projconfig(cfg_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# ══════════════════════════════════════════════════════════════════
+#  CONFIGURAR PROYECTO — LOP (Lista de Puntos Abiertos, formato F.PM.007)
+#  Importar desde Excel (para registrar proyectos pasados) y exportar a Excel.
+# ══════════════════════════════════════════════════════════════════
+_LOP_ERR = {"#VALUE!", "#REF!", "#N/A", "#NAME?", "#DIV/0!", "#NULL!", "#NUM!", "#SPILL!", "#CALC!"}
+# encabezado normalizado (mayúsculas, sin acentos ni signos) → campo
+_LOP_HDR = {
+    "ITEM": "item", "NO": "item", "#": "item",
+    "OPENDATE": "fecha_apertura", "FECHAAPERTURA": "fecha_apertura", "DATE": "fecha_apertura", "FECHA": "fecha_apertura",
+    "PROJECT": "proyecto", "PROYECTO": "proyecto", "JOB": "proyecto",
+    "TOOLFRAME": "tool_frame", "TOOL": "tool_frame", "FRAME": "tool_frame", "HERRAMENTAL": "tool_frame",
+    "DESCRIPTION": "descripcion", "DESCRIPCION": "descripcion", "DESCRIPCIONDELPUNTO": "descripcion", "ISSUE": "descripcion",
+    "COMMENTS": "notas", "COMMENT": "notas", "COMENTARIOS": "notas", "NOTAS": "notas", "NOTES": "notas",
+    "RESPONSIBLE": "responsable", "RESPONSABLE": "responsable", "OWNER": "responsable",
+    "COMITMENTDATE": "fecha_compromiso", "COMMITMENTDATE": "fecha_compromiso", "COMMITDATE": "fecha_compromiso",
+    "FECHACOMPROMISO": "fecha_compromiso", "DUEDATE": "fecha_compromiso",
+    "FINISHDATE": "fecha_finalizacion", "CLOSEDATE": "fecha_finalizacion", "FECHAFINALIZACION": "fecha_finalizacion",
+    "FECHACIERRE": "fecha_finalizacion",
+    "STATUS": "estatus", "ESTATUS": "estatus", "ESTADO": "estatus",
+}
+_LOP_STATUS = {"OPEN": "OPEN", "ABIERTO": "OPEN", "OPENED": "OPEN", "PENDING": "OPEN", "PENDIENTE": "OPEN", "WIP": "OPEN",
+               "CLOSE": "CLOSE", "CLOSED": "CLOSE", "CERRADO": "CLOSE", "DONE": "CLOSE", "OK": "CLOSE",
+               "INFO": "INFO", "INFORMATIVO": "INFO", "INFORMATION": "INFO"}
+
+def _lop_key(v):
+    import unicodedata
+    t = unicodedata.normalize("NFKD", str(v or "")).encode("ascii", "ignore").decode().upper()
+    return re.sub(r"[^A-Z0-9#]", "", t)
+
+def _lop_is_err(v):
+    return isinstance(v, str) and v.strip().upper() in _LOP_ERR
+
+def _lop_date(v):
+    """Regresa (fecha ISO o '', texto original si no era fecha)."""
+    if v in (None, "") or _lop_is_err(v): return "", ""
+    if isinstance(v, datetime.datetime): return v.date().isoformat(), ""
+    if isinstance(v, datetime.date): return v.isoformat(), ""
+    if isinstance(v, (int, float)) and 20000 < v < 80000:      # serial de Excel sin formato de fecha
+        return (datetime.date(1899, 12, 30) + datetime.timedelta(days=int(v))).isoformat(), ""
+    t = str(v).strip()
+    if t in ("-", "—", "–", "N/A", "NA"): return "", ""
+    for f in ("%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y", "%d-%m-%Y", "%d.%m.%Y"):
+        try: return datetime.datetime.strptime(t, f).date().isoformat(), ""
+        except ValueError: pass
+    return "", t
+
+def _lop_parse_sheet(ws):
+    """Lee una hoja F.PM.007: busca la fila de encabezados (la que tiene DESCRIPTION) y los
+    datos de cabecera (PROJECT:, PT:, CTRL. ENG.:) que están arriba de ella."""
+    grid = [list(r) for r in ws.iter_rows(min_row=1, max_row=ws.max_row, values_only=True)]
+    hdr_idx, cols = None, {}
+    for i, row in enumerate(grid[:30]):
+        keys = {_lop_key(v): j for j, v in enumerate(row) if v not in (None, "")}
+        if any(_LOP_HDR.get(k) == "descripcion" for k in keys):
+            hdr_idx = i
+            for k, j in keys.items():
+                f = _LOP_HDR.get(k)
+                if f and f not in cols: cols[f] = j
+            break
+    info = {"name": ws.title, "project": "", "pt": "", "ctrl_eng": "", "rows": [], "warnings": [],
+            "error_cells": 0, "formato_ok": hdr_idx is not None}
+    if hdr_idx is None:
+        info["warnings"].append("No se encontró la fila de encabezados (columna DESCRIPTION).")
+        return info
+    # Cabecera: etiqueta en una celda y el valor en la siguiente no vacía
+    for row in grid[:hdr_idx]:
+        for j, v in enumerate(row):
+            k = _lop_key(v)
+            campo = {"PROJECT": "project", "PROYECTO": "project", "PT": "pt", "PM": "pt_pm",
+                     "CTRLENG": "ctrl_eng", "CONTROLENG": "ctrl_eng", "CLIENTE": "ctrl_eng", "CUSTOMER": "ctrl_eng"}.get(k)
+            if not campo: continue
+            val = next((x for x in row[j+1:] if x not in (None, "") and not _lop_is_err(x)), "")
+            val = str(val).strip()
+            if campo == "pt_pm":
+                # algunas hojas dicen "PM:" pero traen el PT (ej. PT0067)
+                if re.match(r"^(PT|SV)[\s\-]?\d+", val, re.I) and not info["pt"]: info["pt"] = val
+            elif not info[campo]:
+                info[campo] = val
+    # Las columnas sin encabezado a la derecha de COMMENTS (celdas combinadas F:G) se suman a notas
+    hdr_row = grid[hdr_idx]
+    extra_notas = []
+    if "notas" in cols:
+        j = cols["notas"] + 1
+        while j < len(hdr_row) and hdr_row[j] in (None, ""):
+            extra_notas.append(j); j += 1
+    get = lambda row, f: row[cols[f]] if f in cols and cols[f] < len(row) else None
+    for n, row in enumerate(grid[hdr_idx+1:], start=hdr_idx+2):
+        errs = sum(1 for v in row if _lop_is_err(v))
+        txt = lambda f: "" if get(row, f) in (None, "") or _lop_is_err(get(row, f)) else str(get(row, f)).strip()
+        r = {f: txt(f) for f in ("proyecto", "tool_frame", "descripcion", "notas", "responsable")}
+        if not (r["descripcion"] or r["tool_frame"] or r["responsable"] or r["notas"]):
+            continue           # renglón vacío (solo trae el número de ITEM)
+        for j in extra_notas:
+            v = row[j] if j < len(row) else None
+            if v not in (None, "") and not _lop_is_err(v):
+                r["notas"] = (r["notas"] + " " + str(v).strip()).strip()
+        notas_extra = []
+        for f, lbl in (("fecha_apertura", "Apertura"), ("fecha_compromiso", "Compromiso"), ("fecha_finalizacion", "Finalización")):
+            iso, raw = _lop_date(get(row, f))
+            r[f] = iso
+            if raw: notas_extra.append(f"{lbl}: {raw}")        # ej. "TBD" no cabe en un campo de fecha
+        if notas_extra:
+            r["notas"] = (r["notas"] + (" · " if r["notas"] else "") + " · ".join(notas_extra)).strip()
+        st_raw = txt("estatus")
+        st = _LOP_STATUS.get(_lop_key(st_raw))
+        if not st:
+            st = "CLOSE" if r["fecha_finalizacion"] and not st_raw else "OPEN"
+            if st_raw:
+                info["warnings"].append(f"Fila {n}: estatus \"{st_raw}\" no reconocido, se importa como OPEN.")
+        r["estatus"] = st
+        it = get(row, "item")
+        r["item_excel"] = it if isinstance(it, (int, float)) else (str(it).strip() if it not in (None, "") and not _lop_is_err(it) else "")
+        if errs:
+            info["error_cells"] += errs
+            r["celdas_error"] = errs
+        info["rows"].append(r)
+    if info["error_cells"]:
+        con = [str(r["item_excel"] or "?") for r in info["rows"] if r.get("celdas_error")]
+        info["warnings"].append(f"{info['error_cells']} celda(s) con error de Excel (#VALUE!, etc.) quedaron vacías "
+                                f"— items {', '.join(con[:12])}{'…' if len(con) > 12 else ''}. Revisa sus comentarios en el archivo original.")
+    # "Hoja (2)" es el nombre que Excel pone a una copia de otra hoja
+    info["copia"] = bool(re.search(r"\(\d+\)\s*$", ws.title))
+    return info
+
+@app.route("/api/projconfig/lop/parse", methods=["POST"])
+def api_projconfig_lop_parse():
+    """Lee un Excel de LOP (formato F.PM.007, una hoja por proyecto) y regresa los puntos de
+    cada hoja para que el usuario elija cuáles importar. No guarda nada: el usuario revisa la
+    lista en pantalla y la guarda con 'Guardar Configuración'."""
+    if not can("create", "projconfig"): return jsonify({"error": "Sin permiso"}), 403
+    try:
+        f = request.files.get("file")
+        if not f: return jsonify({"error": "No se recibió ningún archivo"}), 400
+        if not f.filename.lower().endswith((".xlsx", ".xlsm")):
+            return jsonify({"error": "El archivo debe ser .xlsx o .xlsm"}), 400
+        wb = openpyxl.load_workbook(io.BytesIO(f.read()), data_only=True)
+        sheets = [_lop_parse_sheet(ws) for ws in wb.worksheets if ws.sheet_state == "visible"]
+        if not any(s["formato_ok"] for s in sheets):
+            return jsonify({"error": "Ninguna hoja tiene el formato de LOP (fila de encabezados con DESCRIPTION, RESPONSIBLE, STATUS…)"}), 400
+        return jsonify({"file": f.filename, "sheets": sheets})
+    except Exception as e:
+        return jsonify({"error": f"No se pudo leer el Excel: {e}"}), 500
+
+@app.route("/api/projconfig/lop/export", methods=["POST"])
+def api_projconfig_lop_export():
+    """Genera el Excel de la LOP con el formato F.PM.007 (el mismo que se puede volver a importar).
+    Recibe la lista tal como está en pantalla (aunque no se haya guardado)."""
+    if not can("view", "projconfig"): return jsonify({"error": "Sin permiso"}), 403
+    from flask import make_response
+    from openpyxl.utils import get_column_letter
+    data = request.get_json() or {}
+    ptsv = str(data.get("ptsv") or "").strip()
+    jobs = [j for j in (data.get("jobs") or []) if j.get("job_number")]
+    rows = data.get("rows") or []
+    wb = openpyxl.Workbook(); ws = wb.active
+    ws.title = (re.sub(r"[\[\]\*\?/\\:]", "", ptsv) or "LOP")[:31]
+    red = "C8102E"; thin = Side(style="thin", color="BFBFBF")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    F = lambda **k: Font(name="Arial", **k)
+    ws.merge_cells("A1:D2"); ws["A1"] = "PERSICO"; ws["A1"].font = F(size=18, bold=True, color=red)
+    ws["A1"].alignment = Alignment(vertical="center")
+    ws["I1"] = "Code Intern"; ws["J1"] = "F.PM.007"
+    for c in ("I1", "J1"): ws[c].font = F(size=9, color="555555")
+    ws.merge_cells("A3:J3"); ws["A3"] = "OPEN ISSUES LIST"
+    ws["A3"].font = F(size=14, bold=True, color="FFFFFF"); ws["A3"].fill = PatternFill("solid", fgColor=red)
+    ws["A3"].alignment = Alignment(horizontal="center", vertical="center"); ws.row_dimensions[3].height = 22
+    last = 8 + max(len(rows), 1)
+    head = [("PROJECT:", " / ".join(j["job_number"] for j in jobs)), ("PT:", ptsv),
+            ("CTRL. ENG.:", " / ".join(sorted({str(j.get("customer") or "").strip() for j in jobs} - {"", "—"})))]
+    for i, (lbl, val) in enumerate(head, start=4):
+        ws.cell(row=i, column=2, value=lbl).font = F(size=10, bold=True)
+        ws.cell(row=i, column=3, value=val).font = F(size=10)
+    counts = [("Issues", f"=COUNTA(E9:E{last})"), ("Open", f'=COUNTIF(J9:J{last},"OPEN")'),
+              ("Close", f'=COUNTIF(J9:J{last},"CLOSE")'), ("Info", f'=COUNTIF(J9:J{last},"INFO")')]
+    for i, (lbl, fml) in enumerate(counts, start=4):
+        ws.cell(row=i, column=8, value=lbl).font = F(size=10, bold=True)
+        c = ws.cell(row=i, column=9, value=fml); c.font = F(size=10, bold=True); c.alignment = Alignment(horizontal="center")
+    hdrs = ["ITEM", "OPEN DATE", "PROJECT", "TOOL / FRAME", "DESCRIPTION", "COMMENTS", "RESPONSIBLE",
+            "COMMITMENT DATE", "FINISH DATE", "STATUS"]
+    for j, h in enumerate(hdrs, start=1):
+        c = ws.cell(row=8, column=j, value=h)
+        c.font = F(size=9, bold=True, color="FFFFFF"); c.fill = PatternFill("solid", fgColor="1F3864")
+        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True); c.border = border
+    ws.row_dimensions[8].height = 28
+    st_fill = {"OPEN": "FFF4CC", "CLOSE": "D9F2E3", "INFO": "DCE9F7"}
+    st_font = {"OPEN": "9C6500", "CLOSE": "1F7A45", "INFO": "1F4E79"}
+    def d(v):
+        try: return datetime.date.fromisoformat(str(v)[:10]) if v else None
+        except ValueError: return str(v)
+    for i, r in enumerate(rows, start=1):
+        rr = 8 + i
+        st = str(r.get("estatus") or "OPEN").upper()
+        vals = [i, d(r.get("fecha_apertura")), r.get("proyecto") or "", r.get("tool_frame") or "",
+                r.get("descripcion") or "", r.get("notas") or "", r.get("responsable") or "",
+                d(r.get("fecha_compromiso")), d(r.get("fecha_finalizacion")), st]
+        for j, v in enumerate(vals, start=1):
+            c = ws.cell(row=rr, column=j, value=v)
+            c.font = F(size=9); c.border = border
+            c.alignment = Alignment(vertical="top", wrap_text=j in (4, 5, 6, 7),
+                                    horizontal="center" if j in (1, 2, 3, 8, 9, 10) else "left")
+            if isinstance(v, datetime.date): c.number_format = "DD/MM/YYYY"
+        sc = ws.cell(row=rr, column=10)
+        sc.fill = PatternFill("solid", fgColor=st_fill.get(st, "FFFFFF"))
+        sc.font = F(size=9, bold=True, color=st_font.get(st, "000000"))
+    for j, w in enumerate([6, 12, 11, 16, 44, 50, 18, 14, 13, 10], start=1):
+        ws.column_dimensions[get_column_letter(j)].width = w
+    ws.freeze_panes = "A9"
+    ws.page_setup.orientation = "landscape"; ws.page_setup.fitToWidth = 1; ws.page_setup.fitToHeight = 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.print_title_rows = "8:8"
+    buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+    fname = f"LOP_{re.sub(r'[^A-Za-z0-9_-]', '', ptsv) or 'proyecto'}_{datetime.date.today()}.xlsx"
+    resp = make_response(buf.read())
+    resp.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    resp.headers["Content-Disposition"] = f"attachment; filename={fname}"
+    return resp
+
 @app.route("/api/projconfig/plan-personal/import", methods=["POST"])
 def api_import_plan_personal():
     """

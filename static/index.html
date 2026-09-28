@@ -1149,13 +1149,20 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
               <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--red)">📋 Lista de Puntos Abiertos</div>
               <div id="pc-abiertos-summary" style="font-size:10px;color:var(--muted);margin-top:2px">0 puntos · 0 abiertos · 0 cerrados</div>
             </div>
-            <button onclick="pcAddPuntoRow()" class="btn-sec" style="font-size:11px;padding:5px 12px">+ Punto</button>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;align-items:center">
+              <button onclick="pcLopAbrirImport()" class="btn-sec" style="font-size:11px;padding:5px 12px;width:auto" title="Cargar la LOP de un proyecto desde un Excel con formato F.PM.007">Importar LOP (Excel)</button>
+              <button onclick="pcLopExportExcel()" class="btn-reload" style="font-size:11px;padding:5px 12px;width:auto">Descargar Excel</button>
+              <button onclick="pcLopExportPDF()" class="btn-reload" style="font-size:11px;padding:5px 12px;width:auto">Descargar PDF</button>
+              <button onclick="pcAddPuntoRow()" class="btn-sec" style="font-size:11px;padding:5px 12px;width:auto">+ Punto</button>
+            </div>
           </div>
+          <datalist id="pc-lop-jobs"></datalist>
           <div style="overflow-x:auto">
-            <table class="tbl" style="font-size:11px;min-width:1200px">
+            <table class="tbl" style="font-size:11px;min-width:1300px">
               <thead><tr>
                 <th style="width:45px;text-align:center">Item</th>
                 <th style="background:rgba(255,193,7,.12);color:var(--amber);width:120px">Fecha Apertura</th>
+                <th style="background:rgba(255,193,7,.12);color:var(--amber);min-width:100px">Proyecto</th>
                 <th style="background:rgba(255,193,7,.12);color:var(--amber);width:110px">Tool / Frame</th>
                 <th style="background:rgba(255,193,7,.12);color:var(--amber);min-width:220px">Descripción del Punto</th>
                 <th style="background:rgba(255,193,7,.12);color:var(--amber);min-width:180px">Notas</th>
@@ -1829,6 +1836,34 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
         <input type="file" id="via-imp-file" accept=".xlsx,.xls" style="display:none" onchange="viaImport(this)">
       </div>
       <div id="via-imp-result" style="margin-top:10px;font-size:12px;color:var(--green)"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Importar LOP (Configurar Proyecto → Puntos Abiertos) -->
+<div class="mo" id="mo-lop-imp" style="z-index:150">
+  <div class="md" style="max-width:860px;width:calc(100% - 32px)">
+    <div class="mh"><h2>Importar LOP desde Excel</h2><button class="px" onclick="closeMo('mo-lop-imp')">Cerrar</button></div>
+    <div class="mb2">
+      <div id="lop-imp-step1">
+        <div style="margin-bottom:12px;padding:10px 14px;background:rgba(255,193,7,.08);border:1px solid rgba(255,193,7,.3);border-radius:var(--r);font-size:11px;color:var(--muted2)">
+          Formato F.PM.007 (Open Issues List): una hoja por proyecto, con los encabezados ITEM, OPEN DATE, PROJECT, TOOL / FRAME, DESCRIPTION, COMMENTS, RESPONSIBLE, COMMITMENT DATE, FINISH DATE y STATUS.
+          Los puntos se cargan en la tabla; quedan registrados al presionar <b>Guardar Configuración</b>.
+        </div>
+        <div class="imp-drop" onclick="document.getElementById('lop-imp-file').click()" style="border:2px dashed var(--border2);border-radius:10px;padding:28px 16px;text-align:center;cursor:pointer;font-size:12px;color:var(--muted2)"
+          ondrop="event.preventDefault();pcLopLeer(event.dataTransfer.files[0])" ondragover="event.preventDefault()">
+          <div style="font-size:28px;margin-bottom:8px">📊</div>
+          <div>Arrastra el Excel o haz clic para seleccionarlo</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:4px">.xlsx o .xlsm</div>
+          <input type="file" id="lop-imp-file" accept=".xlsx,.xlsm" style="display:none" onchange="pcLopLeer(this.files[0]);this.value=''">
+        </div>
+        <div id="lop-imp-msg" style="margin-top:10px;font-size:12px;color:var(--muted)"></div>
+      </div>
+      <div id="lop-imp-step2" style="display:none"></div>
+    </div>
+    <div class="mf" id="lop-imp-foot" style="display:none">
+      <button class="btn-reload" onclick="pcLopAbrirImport()">Elegir otro archivo</button>
+      <button class="btn-new" id="lop-imp-go" onclick="pcLopAplicar()" style="width:auto;padding:9px 20px">Importar</button>
     </div>
   </div>
 </div>

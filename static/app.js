@@ -12117,37 +12117,50 @@ function pcRenderPuntos(savedRows) {
   const tb = document.getElementById('pc-abiertos-body');
   if(!tb) return;
   tb.innerHTML = '';
+  pcLopRefreshJobsList();
   (savedRows||[]).forEach(r => pcAddPuntoRow(r));
   if(!(savedRows||[]).length) pcUpdatePuntosSummary();
 }
 
+// Jobs del PT como sugerencias para la columna Proyecto (también se puede escribir otro, ej. "689-0X")
+function pcLopRefreshJobsList(){
+  const dl = document.getElementById('pc-lop-jobs');
+  if(dl) dl.innerHTML = (typeof pcJobRows!=='undefined' ? pcJobRows||[] : []).map(j=>`<option value="${esc(j.job_number)}">`).join('');
+}
+
+const PC_PUNTO_COLOR = {OPEN:'var(--amber)', CLOSE:'var(--green)', INFO:'var(--blue)'};
 function pcAddPuntoRow(data={}) {
   const tb = document.getElementById('pc-abiertos-body');
   if(!tb) return;
   const inpS = 'background:var(--inp);border:1px solid rgba(255,193,7,.3);border-radius:4px;color:var(--text);padding:5px 7px;font-size:11px';
-  const estatus = (data.estatus || 'OPEN').toUpperCase();
+  let estatus = (data.estatus || 'OPEN').toUpperCase();
+  if(!PC_PUNTO_COLOR[estatus]) estatus = 'OPEN';
+  // Proyecto: si el PT tiene un solo Job, un punto nuevo lo toma por default
+  const jobsPT = (typeof pcJobRows!=='undefined' ? pcJobRows||[] : []);
+  const proyecto = data.proyecto ?? (jobsPT.length===1 && !Object.keys(data).length ? jobsPT[0].job_number : '');
   const tr = document.createElement('tr');
   tr.innerHTML = `
     <td class="pc-punto-item" style="text-align:center;font-weight:700;color:var(--muted)">—</td>
-    <td><input data-field="fecha_apertura" type="date" value="${data.fecha_apertura||''}"
+    <td><input data-field="fecha_apertura" type="date" value="${esc(data.fecha_apertura||'')}"
       onchange="pcUpdatePuntosSummary()" style="${inpS};width:100%"></td>
+    <td><input data-field="proyecto" list="pc-lop-jobs" value="${esc(proyecto||'')}"
+      style="${inpS};width:100%;font-family:'DM Mono',monospace"></td>
     <td><input data-field="tool_frame" value="${esc(data.tool_frame||'')}"
       style="${inpS};width:100%"></td>
-    <td><input data-field="descripcion" value="${esc(data.descripcion||'')}"
+    <td><input data-field="descripcion" value="${esc(data.descripcion||'')}" title="${esc(data.descripcion||'')}"
       style="${inpS};width:100%"></td>
-    <td><input data-field="notas" value="${esc(data.notas||'')}"
+    <td><input data-field="notas" value="${esc(data.notas||'')}" title="${esc(data.notas||'')}"
       style="${inpS};width:100%;color:var(--muted2)"></td>
     <td><input data-field="responsable" value="${esc(data.responsable||'')}"
       style="${inpS};width:100%"></td>
-    <td><input data-field="fecha_compromiso" type="date" value="${data.fecha_compromiso||''}"
+    <td><input data-field="fecha_compromiso" type="date" value="${esc(data.fecha_compromiso||'')}"
       style="${inpS};width:100%"></td>
-    <td><input data-field="fecha_finalizacion" type="date" value="${data.fecha_finalizacion||''}"
+    <td><input data-field="fecha_finalizacion" type="date" value="${esc(data.fecha_finalizacion||'')}"
       onchange="pcUpdatePuntosSummary()" style="${inpS};width:100%"></td>
     <td>
       <select data-field="estatus" onchange="pcUpdatePuntosSummary()"
-        style="${inpS};width:100%;font-weight:700;color:${estatus==='CLOSE'?'var(--green)':'var(--amber)'}">
-        <option value="OPEN" ${estatus==='OPEN'?'selected':''}>OPEN</option>
-        <option value="CLOSE" ${estatus==='CLOSE'?'selected':''}>CLOSE</option>
+        style="${inpS};width:100%;font-weight:700;color:${PC_PUNTO_COLOR[estatus]}">
+        ${['OPEN','CLOSE','INFO'].map(v=>`<option value="${v}" ${estatus===v?'selected':''}>${v}</option>`).join('')}
       </select>
     </td>
     <td><button onclick="this.closest('tr').remove();pcUpdatePuntosSummary()"
@@ -12159,33 +12172,224 @@ function pcAddPuntoRow(data={}) {
 function pcUpdatePuntosSummary() {
   const tb = document.getElementById('pc-abiertos-body');
   if(!tb) return;
-  let open=0, close=0;
+  let open=0, close=0, info=0;
   [...tb.rows].forEach((tr,i) => {
     const itemEl = tr.querySelector('.pc-punto-item');
     if(itemEl) itemEl.textContent = i+1;
     const est = tr.querySelector('[data-field="estatus"]')?.value || 'OPEN';
-    if(est==='CLOSE') close++; else open++;
+    if(est==='CLOSE') close++; else if(est==='INFO') info++; else open++;
     const sel = tr.querySelector('[data-field="estatus"]');
-    if(sel) sel.style.color = est==='CLOSE' ? 'var(--green)' : 'var(--amber)';
+    if(sel) sel.style.color = PC_PUNTO_COLOR[est] || 'var(--amber)';
   });
   const summ = document.getElementById('pc-abiertos-summary');
-  if(summ) summ.textContent = `${tb.rows.length} puntos · ${open} abiertos · ${close} cerrados`;
+  if(summ) summ.textContent = `${tb.rows.length} puntos · ${open} abiertos · ${close} cerrados${info?` · ${info} info`:''}`;
 }
 
 function pcGetPuntosData() {
   const tb = document.getElementById('pc-abiertos-body');
   if(!tb) return [];
-  return [...tb.rows].map((tr,i) => ({
-    item:                i+1,
-    fecha_apertura:      tr.querySelector('[data-field="fecha_apertura"]')?.value||'',
-    tool_frame:          tr.querySelector('[data-field="tool_frame"]')?.value||'',
-    descripcion:         tr.querySelector('[data-field="descripcion"]')?.value||'',
-    notas:               tr.querySelector('[data-field="notas"]')?.value||'',
-    responsable:         tr.querySelector('[data-field="responsable"]')?.value||'',
-    fecha_compromiso:    tr.querySelector('[data-field="fecha_compromiso"]')?.value||'',
-    fecha_finalizacion:  tr.querySelector('[data-field="fecha_finalizacion"]')?.value||'',
-    estatus:             tr.querySelector('[data-field="estatus"]')?.value||'OPEN',
-  })).filter(r=>r.descripcion || r.tool_frame || r.responsable);
+  const v = (tr,f) => tr.querySelector(`[data-field="${f}"]`)?.value||'';
+  return [...tb.rows].map(tr => ({
+    fecha_apertura:      v(tr,'fecha_apertura'),
+    proyecto:            v(tr,'proyecto'),
+    tool_frame:          v(tr,'tool_frame'),
+    descripcion:         v(tr,'descripcion'),
+    notas:               v(tr,'notas'),
+    responsable:         v(tr,'responsable'),
+    fecha_compromiso:    v(tr,'fecha_compromiso'),
+    fecha_finalizacion:  v(tr,'fecha_finalizacion'),
+    estatus:             v(tr,'estatus')||'OPEN',
+  })).filter(r=>r.descripcion || r.tool_frame || r.responsable)
+     .map((r,i)=>({item:i+1, ...r}));
+}
+
+// ════════════════════════════════════════════════════════
+//  LOP — Importar desde Excel (F.PM.007) y descargar en Excel / PDF
+// ════════════════════════════════════════════════════════
+let _pcLop = null;   // resultado del parse: {file, sheets:[...]}
+const _pcNormPT = v => String(v||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+
+function pcLopAbrirImport(){
+  if(!pcCurrentPTSV){ toast('Primero selecciona un PT o SV','er'); return; }
+  _pcLop = null;
+  document.getElementById('lop-imp-step1').style.display='';
+  document.getElementById('lop-imp-step2').style.display='none';
+  document.getElementById('lop-imp-foot').style.display='none';
+  document.getElementById('lop-imp-msg').textContent='';
+  document.getElementById('mo-lop-imp').classList.add('on');
+}
+
+async function pcLopLeer(file){
+  if(!file) return;
+  const msg = document.getElementById('lop-imp-msg');
+  msg.style.color='var(--muted)'; msg.textContent = `Leyendo ${file.name}…`;
+  try{
+    const fd = new FormData(); fd.append('file', file);
+    const r = await fetch('/api/projconfig/lop/parse',{method:'POST', body:fd});
+    const d = await r.json().catch(()=>({error:`Respuesta inválida del servidor (HTTP ${r.status})`}));
+    if(!r.ok || d.error){ msg.style.color='var(--red)'; msg.textContent = '⚠ '+(d.error||`HTTP ${r.status}`); return; }
+    _pcLop = d;
+    pcLopRenderPaso2();
+  }catch(e){ msg.style.color='var(--red)'; msg.textContent = '⚠ No se pudo leer el archivo: '+e.message; }
+}
+
+function pcLopRenderPaso2(){
+  const d = _pcLop, box = document.getElementById('lop-imp-step2');
+  const actuales = pcGetPuntosData().length;
+  const cnt = rows => ['OPEN','CLOSE','INFO'].map(k=>rows.filter(r=>r.estatus===k).length);
+  // Por default: hojas con puntos que no parecen copia ("Hoja (2)")
+  const conDatos = d.sheets.filter(s=>s.rows.length);
+  const hojas = d.sheets.map((s,i)=>{
+    const [o,c,inf] = cnt(s.rows);
+    const ptDif = s.pt && _pcNormPT(s.pt)!==_pcNormPT(pcCurrentPTSV);
+    const def = s.rows.length && (!s.copia || conDatos.every(x=>x.copia));
+    const avisos = [
+      ...(ptDif?[`La hoja es del ${esc(s.pt)} y estás en ${esc(pcCurrentPTSV)}.`]:[]),
+      ...(s.copia?['Parece copia de otra hoja (nombre terminado en "(2)"); revisa que no dupliques puntos.']:[]),
+      ...s.warnings.map(esc)];
+    return `<label style="display:block;border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;cursor:${s.rows.length?'pointer':'default'};opacity:${s.rows.length?1:.55}">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <input type="checkbox" class="lop-sheet" data-i="${i}" ${def?'checked':''} ${s.rows.length?'':'disabled'} onchange="pcLopRenderPreview()" style="width:16px;height:16px">
+        <b style="font-family:'DM Mono',monospace">${esc(s.name)}</b>
+        <span style="font-size:11px;color:var(--muted2)">Proyecto ${esc(s.project||'—')} · PT ${esc(s.pt||'—')}${s.ctrl_eng?' · '+esc(s.ctrl_eng):''}</span>
+        <span style="margin-left:auto;font-size:11px">${s.rows.length?`<b>${s.rows.length}</b> puntos · <span style="color:var(--amber)">${o} open</span> · <span style="color:var(--green)">${c} close</span>${inf?` · <span style="color:var(--blue)">${inf} info</span>`:''}`:'<span style="color:var(--muted)">sin puntos</span>'}</span>
+      </div>
+      ${avisos.length?`<div style="margin:6px 0 0 26px;font-size:11px;color:#b45309">${avisos.map(a=>'⚠ '+a).join('<br>')}</div>`:''}
+    </label>`;}).join('');
+  box.innerHTML = `
+    <div style="font-size:12px;margin-bottom:10px">Archivo <b>${esc(d.file)}</b> · elige las hojas a importar en <b>${esc(pcCurrentPTSV)}</b>:</div>
+    ${hojas}
+    <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin:12px 0 10px;font-size:12px">
+      <label style="cursor:pointer"><input type="radio" name="lop-modo" value="agregar" ${actuales?'checked':''} onchange="pcLopRenderPreview()"> Agregar a la lista actual (${actuales} puntos; se omiten repetidos)</label>
+      <label style="cursor:pointer"><input type="radio" name="lop-modo" value="reemplazar" ${actuales?'':'checked'} onchange="pcLopRenderPreview()"> Reemplazar la lista actual</label>
+    </div>
+    <div id="lop-imp-preview"></div>`;
+  document.getElementById('lop-imp-step1').style.display='none';
+  box.style.display='';
+  document.getElementById('lop-imp-foot').style.display='';
+  pcLopRenderPreview();
+}
+
+// Llave para no importar dos veces el mismo punto (al re-subir un archivo o elegir una hoja copia)
+const _pcLopKey = r => [r.proyecto, r.descripcion, r.fecha_apertura].map(x=>String(x||'').trim().toUpperCase().replace(/\s+/g,' ')).join('|');
+
+function pcLopSeleccion(){
+  const modo = document.querySelector('input[name="lop-modo"]:checked')?.value || 'agregar';
+  const hojas = [...document.querySelectorAll('.lop-sheet:checked')].map(cb=>_pcLop.sheets[+cb.dataset.i]);
+  const vistos = new Set(modo==='agregar' ? pcGetPuntosData().map(_pcLopKey) : []);
+  const nuevos = []; let repetidos = 0;
+  hojas.forEach(s=>s.rows.forEach(r=>{
+    // Si la hoja no trae PROJECT por renglón, se usa el proyecto de la cabecera de la hoja
+    const row = {...r, proyecto: r.proyecto || s.project || ''};
+    const k = _pcLopKey(row);
+    if(vistos.has(k)){ repetidos++; return; }
+    vistos.add(k); nuevos.push(row);
+  }));
+  return {modo, hojas, nuevos, repetidos};
+}
+
+function pcLopRenderPreview(){
+  const {modo, nuevos, repetidos} = pcLopSeleccion();
+  const btn = document.getElementById('lop-imp-go');
+  btn.disabled = !nuevos.length && modo!=='reemplazar';
+  btn.textContent = modo==='reemplazar' ? `Reemplazar con ${nuevos.length} puntos` : `Importar ${nuevos.length} puntos`;
+  const fd = v => v ? v.split('-').reverse().join('/') : '';
+  const col = {OPEN:'var(--amber)',CLOSE:'var(--green)',INFO:'var(--blue)'};
+  const td = 'padding:5px 8px;border-bottom:1px solid var(--border);vertical-align:top;white-space:normal';
+  document.getElementById('lop-imp-preview').innerHTML = `
+    ${repetidos?`<div style="font-size:11px;color:var(--muted2);margin-bottom:6px">${repetidos} punto(s) ya existen (mismo proyecto, descripción y fecha de apertura) y no se importan.</div>`:''}
+    ${modo==='reemplazar'&&pcGetPuntosData().length?`<div style="font-size:11px;color:var(--red);margin-bottom:6px">⚠ Se quitarán los ${pcGetPuntosData().length} puntos que tiene la lista ahora.</div>`:''}
+    ${nuevos.length?`<div style="max-height:260px;overflow:auto;border:1px solid var(--border);border-radius:8px">
+      <table style="font-size:11px;width:100%"><thead><tr>${['Apertura','Proyecto','Tool / Frame','Descripción','Responsable','Compromiso','Finalización','Estatus'].map(h=>`<th style="padding:6px 8px;cursor:default">${h}</th>`).join('')}</tr></thead>
+      <tbody>${nuevos.map(r=>`<tr style="cursor:default"><td style="${td}">${fd(r.fecha_apertura)}</td><td style="${td};font-family:'DM Mono',monospace">${esc(r.proyecto)}</td><td style="${td}">${esc(r.tool_frame)}</td>
+        <td style="${td};min-width:220px">${esc(r.descripcion)}${r.notas?`<div style="font-size:10px;color:var(--muted)">${esc(r.notas.length>140?r.notas.slice(0,140)+'…':r.notas)}</div>`:''}${r.celdas_error?`<div style="font-size:10px;color:#b45309">⚠ ${r.celdas_error} celda(s) con error en el Excel</div>`:''}</td>
+        <td style="${td}">${esc(r.responsable)}</td><td style="${td}">${fd(r.fecha_compromiso)}</td><td style="${td}">${fd(r.fecha_finalizacion)}</td>
+        <td style="${td};font-weight:700;color:${col[r.estatus]}">${r.estatus}</td></tr>`).join('')}</tbody></table></div>`
+      :`<div style="font-size:12px;color:var(--muted);padding:14px 0">No hay puntos nuevos para importar con esta selección.</div>`}`;
+}
+
+function pcLopAplicar(){
+  const {modo, nuevos, repetidos} = pcLopSeleccion();
+  const actuales = pcGetPuntosData().length;
+  if(modo==='reemplazar' && actuales && !confirm(`Se quitarán los ${actuales} puntos actuales y se cargarán ${nuevos.length}. ¿Continuar?`)) return;
+  if(modo==='reemplazar'){
+    document.getElementById('pc-abiertos-body').innerHTML = '';
+  } else {
+    // quitar renglones vacíos antes de agregar, para no dejar huecos en la numeración
+    [...document.getElementById('pc-abiertos-body').rows].forEach(tr=>{
+      const v=f=>tr.querySelector(`[data-field="${f}"]`)?.value||'';
+      if(!v('descripcion') && !v('tool_frame') && !v('responsable')) tr.remove();
+    });
+  }
+  nuevos.forEach(r=>{ const {item_excel, celdas_error, ...row} = r; pcAddPuntoRow(row); });
+  pcUpdatePuntosSummary();
+  closeMo('mo-lop-imp');
+  toast(`${nuevos.length} punto(s) importados${repetidos?`, ${repetidos} repetido(s) omitidos`:''}. Presiona "Guardar Configuración" para registrarlos.`, 'ok', 6000);
+}
+
+function _pcLopPayload(){
+  const jobs = (typeof pcJobRows!=='undefined' ? pcJobRows||[] : []).map(j=>({job_number:j.job_number, customer:j.customer}));
+  return {ptsv: pcCurrentPTSV, jobs, rows: pcGetPuntosData()};
+}
+
+async function pcLopExportExcel(){
+  if(!pcCurrentPTSV){ toast('Primero selecciona un PT o SV','er'); return; }
+  const p = _pcLopPayload();
+  if(!p.rows.length){ toast('La lista no tiene puntos para descargar','er'); return; }
+  try{
+    const r = await fetch('/api/projconfig/lop/export',{method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(p)});
+    if(!r.ok){ const e = await r.json().catch(()=>({})); toast(e.error||`No se pudo generar el Excel (HTTP ${r.status})`,'er'); return; }
+    const blob = await r.blob(), a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `LOP_${pcCurrentPTSV.replace(/[^A-Za-z0-9_-]/g,'')}_${new Date().toISOString().slice(0,10)}.xlsx`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
+  }catch(e){ toast('Error descargando el Excel: '+e.message,'er'); }
+}
+
+// PDF: misma técnica que el Gantt (ventana de impresión → "Guardar como PDF"), formato F.PM.007
+function pcLopExportPDF(){
+  if(!pcCurrentPTSV){ toast('Primero selecciona un PT o SV','er'); return; }
+  const {jobs, rows} = _pcLopPayload();
+  if(!rows.length){ toast('La lista no tiene puntos para descargar','er'); return; }
+  const fd = v => v ? v.split('-').reverse().join('/') : '';
+  const n = k => rows.filter(r=>r.estatus===k).length;
+  const clientes = [...new Set(jobs.map(j=>j.customer).filter(c=>c && c!=='—'))].join(' / ');
+  const stc = {OPEN:['#fff4cc','#9c6500'], CLOSE:['#d9f2e3','#1f7a45'], INFO:['#dce9f7','#1f4e79']};
+  const body = rows.map(r=>`<tr>
+      <td class="c">${r.item}</td><td class="c">${fd(r.fecha_apertura)}</td><td class="c mono">${esc(r.proyecto)}</td>
+      <td>${esc(r.tool_frame)}</td><td>${esc(r.descripcion)}</td><td class="nt">${esc(r.notas)}</td><td>${esc(r.responsable)}</td>
+      <td class="c">${fd(r.fecha_compromiso)}</td><td class="c">${fd(r.fecha_finalizacion)}</td>
+      <td class="c st" style="background:${(stc[r.estatus]||stc.OPEN)[0]};color:${(stc[r.estatus]||stc.OPEN)[1]}">${r.estatus}</td></tr>`).join('');
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>LOP ${esc(pcCurrentPTSV)}</title>
+  <style>
+    @page{size:letter landscape;margin:10mm}
+    *{box-sizing:border-box} body{font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;margin:0;font-size:9px}
+    .top{display:flex;align-items:center;gap:16px;border-bottom:3px solid #C8102E;padding-bottom:6px}
+    .top img{height:30px} .top h1{flex:1;margin:0;font-size:16px;letter-spacing:1px;text-align:center}
+    .code{font-size:9px;color:#555;text-align:right}
+    .meta{display:flex;gap:28px;margin:8px 0 10px;font-size:10px} .meta b{display:inline-block;min-width:78px}
+    .cnt{margin-left:auto;display:flex;gap:14px} .cnt div{text-align:center} .cnt span{display:block;font-size:14px;font-weight:700}
+    table{width:100%;border-collapse:collapse;table-layout:fixed}
+    th{background:#1F3864;color:#fff;font-size:8px;padding:5px 4px;text-transform:uppercase;letter-spacing:.4px}
+    td{border:1px solid #c8c8c8;padding:4px;vertical-align:top;word-wrap:break-word}
+    tr{page-break-inside:avoid} thead{display:table-header-group}
+    .c{text-align:center} .mono{font-family:'Courier New',monospace} .nt{color:#444} .st{font-weight:700}
+    .foot{margin-top:6px;font-size:8px;color:#777}
+  </style></head><body>
+  <div class="top"><img src="${location.origin}/static/persico_logo.webp" onerror="this.style.display='none'"><h1>OPEN ISSUES LIST</h1><div class="code">Code Intern<br><b>F.PM.007</b></div></div>
+  <div class="meta">
+    <div><b>PROJECT:</b> ${esc(jobs.map(j=>j.job_number).join(' / ')||'—')}<br><b>PT:</b> ${esc(pcCurrentPTSV)}<br><b>CTRL. ENG.:</b> ${esc(clientes||'—')}</div>
+    <div class="cnt"><div><span>${rows.length}</span>Issues</div><div><span style="color:#9c6500">${n('OPEN')}</span>Open</div><div><span style="color:#1f7a45">${n('CLOSE')}</span>Close</div>${n('INFO')?`<div><span style="color:#1f4e79">${n('INFO')}</span>Info</div>`:''}</div>
+  </div>
+  <table><colgroup><col style="width:4%"><col style="width:7.5%"><col style="width:6.5%"><col style="width:8%"><col style="width:21%"><col style="width:22%"><col style="width:10%"><col style="width:7.5%"><col style="width:7.5%"><col style="width:6%"></colgroup>
+    <thead><tr><th>Item</th><th>Open date</th><th>Project</th><th>Tool / Frame</th><th>Description</th><th>Comments</th><th>Responsible</th><th>Commitment date</th><th>Finish date</th><th>Status</th></tr></thead>
+    <tbody>${body}</tbody></table>
+  <div class="foot">Generado desde Persico Suite · ${new Date().toLocaleString('es-MX')}</div>
+  <script>window.onload=()=>setTimeout(()=>window.print(),300);<\/script></body></html>`;
+  const win = window.open('','_blank');
+  if(!win){ toast('El navegador bloqueó la ventana. Permite las ventanas emergentes para descargar el PDF.','er'); return; }
+  win.document.write(html); win.document.close();
 }
 
 // ════════════════════════════════════════════════════════
