@@ -1400,18 +1400,23 @@ def _wh_clasificador(jobs):
         if len(jobs) <= 3: return wh_load_matching(y, job_main)
         if y not in wh_anio: wh_anio[y] = wh_load(y)
         return [r for r in wh_anio[y] if job_main.upper() in (r.get("work_code") or "").upper()]
+    def clasificar(r, y):
+        """Un registro de Work Hours → (fecha, línea o None, depto, horas, costo, tiene_tarifa) o None."""
+        try: h = float(r.get("hours") or 0)
+        except (TypeError, ValueError): return None
+        if h <= 0: return None
+        e = normalize_name(r.get("employee", ""))
+        dep = depto_emp.get(e, "")
+        t = tarifa(r, y, e)
+        k = perfil_linea.get(depto_perfil.get(dep, ""))
+        return (str(r.get("date_worked") or "")[:10], k, dep, h, round(h * t, 2), bool(t))
     def registros(jn):
         job_main = "-".join(jn.split("-")[:2]) if "-" in jn else jn
         for y in years:
             for r in wh_de(y, job_main):
-                try: h = float(r.get("hours") or 0)
-                except (TypeError, ValueError): continue
-                if h <= 0: continue
-                e = normalize_name(r.get("employee", ""))
-                dep = depto_emp.get(e, "")
-                t = tarifa(r, y, e)
-                k = perfil_linea.get(depto_perfil.get(dep, ""))
-                yield (str(r.get("date_worked") or "")[:10], k, dep, h, round(h * t, 2), bool(t))
+                c = clasificar(r, y)
+                if c: yield c
+    registros.clasificar = clasificar       # rev60: también por registro (índices de Capacidad)
     return registros
 
 @app.route("/api/projconfig/horas-consumidas", methods=["GET"])
@@ -4495,10 +4500,241 @@ def _save_capacidad(data):
     with open(_capacidad_path(), "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2, default=str)
 
+# ══════════════════════════════════════════════════════════════════
+#  CAPACIDAD — ÍNDICES (rev60)
+#  Por área: capacidad disponible (48 h/semana, sin festivos de ley), horas planeadas en
+#  las configuraciones de proyecto y horas registradas en Work Hours a la fecha.
+#  Las horas planeadas y registradas están por LÍNEA de mano de obra (Configurar
+#  Proyecto / perfil de Hourly Rate); cada línea se asigna a un área de Control de
+#  Personal con la tabla "capacidad_mapeo" (se sugiere sola por nombre).
+# ══════════════════════════════════════════════════════════════════
+CAP_MAPEO_KEY = "__mapeo_lineas__"
+# rev61: jornada de la planta — lunes a jueves 10 h, viernes 8 h, sábado y domingo 0 h (48 h/semana).
+# Índice = weekday() de Python (0 = lunes).
+CAP_JORNADA = (10, 10, 10, 10, 8, 0, 0)
+CAP_HORAS_SEMANA = sum(CAP_JORNADA)
+# rev62: un día de vacaciones se valúa con el promedio de la jornada: 48 h / 5 días = 9.6 h
+CAP_HORAS_DIA_VAC = CAP_HORAS_SEMANA / sum(1 for h in CAP_JORNADA if h)
+_CAP_JOB_RE = re.compile(r"\b\d{3}-\d{2}\b")
+
+def _festivos_lft(y):
+    """Días de descanso obligatorio, artículo 74 de la Ley Federal del Trabajo."""
+    import datetime as _d
+    def lunes(mes, n):                     # n-ésimo lunes del mes
+        d = _d.date(y, mes, 1)
+        d += _d.timedelta(days=(0 - d.weekday()) % 7)
+        return d + _d.timedelta(weeks=n - 1)
+    out = [
+        (_d.date(y, 1, 1),   "Año Nuevo"),
+        (lunes(2, 1),        "Día de la Constitución (primer lunes de febrero)"),
+        (lunes(3, 3),        "Natalicio de Benito Juárez (tercer lunes de marzo)"),
+        (_d.date(y, 5, 1),   "Día del Trabajo"),
+        (_d.date(y, 9, 16),  "Día de la Independencia"),
+        (lunes(11, 3),       "Día de la Revolución (tercer lunes de noviembre)"),
+        (_d.date(y, 12, 25), "Navidad"),
+    ]
+    # Transmisión del Poder Ejecutivo Federal: 1 de octubre cada seis años desde 2024
+    # (reforma al art. 83 constitucional, DOF 10/02/2014); antes, 1 de diciembre.
+    if y >= 2024 and (y - 2024) % 6 == 0: out.append((_d.date(y, 10, 1), "Transmisión del Poder Ejecutivo Federal"))
+    if y < 2024 and (2018 - y) % 6 == 0:  out.append((_d.date(y, 12, 1), "Transmisión del Poder Ejecutivo Federal"))
+    return sorted(out)
+
+def _cap_jornada(d0, d1, festivos):
+    """(días laborables, horas) entre d0 y d1 inclusive, según CAP_JORNADA y sin festivos."""
+    import datetime as _d
+    if d1 < d0: return 0, 0.0
+    fest = {f for f, _n in festivos}
+    dias, horas, d = 0, 0.0, d0
+    while d <= d1:
+        h = CAP_JORNADA[d.weekday()]
+        if h and d not in fest: dias += 1; horas += h
+        d += _d.timedelta(days=1)
+    return dias, horas
+
+_CAP_SUGERENCIAS = (                      # línea → palabras que la identifican en el nombre del área
+    ("diseno_mecanico", ("MECANIC", "MECHANIC")), ("simulacion", ("SIMULA",)),
+    ("diseno_electrico", ("ELECTRIC",)), ("plc", ("PLC", "CONTROL", "AUTOMATIZ")),
+    ("robots", ("ROBOT",)), ("soldadura", ("SOLDADU", "WELD")),
+    ("manufactura", ("MANUFACT", "CNC", "MAQUIN", "MACHIN", "FABRICA")), ("pintura", ("PINTUR", "PAINT")),
+    ("ensamble", ("ENSAMBL", "ASSEMB")),
+)
+# si no hay un área propia para la línea, se sugiere la de su línea "madre"
+_CAP_RESPALDO = {"simulacion": "diseno_mecanico", "plc": "diseno_electrico", "robots": "diseno_electrico",
+                 "soldadura": "manufactura", "pintura": "manufactura"}
+
+def _sin_acentos(v):
+    import unicodedata
+    return unicodedata.normalize("NFKD", str(v or "")).encode("ascii", "ignore").decode().upper()
+
+def _cap_mapeo(areas):
+    """{línea: área}. Lo guardado manda; lo que falte se sugiere por nombre del área."""
+    # Se guarda junto con la cuadrícula de Capacidad (tabla capacidad, en la base de datos),
+    # bajo una llave reservada que no es un ID de trabajador.
+    try: guardado = _load_capacidad().get(CAP_MAPEO_KEY) or {}
+    except Exception: guardado = {}
+    nombres = [a.get("nombre") for a in areas if a.get("nombre")]
+    sug = {}
+    for k, pals in _CAP_SUGERENCIAS:
+        cand = [a for a in nombres if any(p in _sin_acentos(a) for p in pals)]
+        if cand: sug[k] = cand[0]
+    for k, madre in _CAP_RESPALDO.items():
+        if k not in sug and madre in sug: sug[k] = sug[madre]
+    out, sugeridas = {}, set()
+    for k, _n, _p in LINEAS_MO:
+        if k in guardado:
+            out[k] = guardado[k] if guardado[k] in nombres else None
+        else:
+            out[k] = sug.get(k)
+            if out[k]: sugeridas.add(k)
+    return out, sugeridas
+
+@app.route("/api/capacidad/indices", methods=["GET"])
+def api_capacidad_indices():
+    if not can("view", "ops-capacidad"): return jsonify({"error": "Sin permiso"}), 403
+    import datetime as _d
+    try:
+        hoy = _d.date.today()
+        anio = int(request.args.get("anio") or hoy.year)
+        filtro = request.args.get("proyectos") or "activos"
+        festivos = _festivos_lft(anio)
+        ini, fin = _d.date(anio, 1, 1), _d.date(anio, 12, 31)
+        corte = min(max(hoy, ini - _d.timedelta(days=1)), fin)       # capacidad "a la fecha"
+        areas = _load_catalog("areas") or []
+        nombres_area = [a.get("nombre") for a in areas if a.get("nombre")]
+        mapeo, sugeridas = _cap_mapeo(areas)
+
+        # ── 1) Capacidad por área: trabajadores activos × 8 h por día laborable (L-S sin festivos)
+        def fecha(v):
+            try: return _d.date.fromisoformat(str(v)[:10])
+            except Exception: return None
+        # rev62: menos las vacaciones de ley según la antigüedad de cada persona (fecha de
+        # ingreso en Control de Personal). En el año se toman los días del aniversario que
+        # cumple ese año (año − año de ingreso); quien ingresó en el año aún no tiene. Las
+        # horas de vacaciones se reparten en los meses en proporción a sus horas de jornada.
+        meses = [(_d.date(anio, m, 1), (_d.date(anio, m + 1, 1) if m < 12 else _d.date(anio + 1, 1, 1)) - _d.timedelta(days=1)) for m in range(1, 13)]
+        cap, sin_ingreso = {}, 0
+        for p in _load_personal() or []:
+            if (p.get("estado") or "Activo") != "Activo": continue
+            area = p.get("area") if p.get("area") in nombres_area else "Sin área asignada"
+            f_ing = fecha(p.get("fecha_ingreso"))
+            if not f_ing: sin_ingreso += 1
+            if f_ing and f_ing > fin: continue                 # ingresa después del año consultado
+            a0 = max(ini, f_ing or ini)
+            c = cap.setdefault(area, {"trabajadores": 0, "cap_bruta": 0.0, "vac_dias": 0, "vac_horas": 0.0,
+                                      "cap_periodo": 0.0, "cap_fecha": 0.0, "mensual": [0.0] * 12})
+            c["trabajadores"] += 1
+            bruta = _cap_jornada(a0, fin, festivos)[1]
+            bruta_fecha = _cap_jornada(a0, corte, festivos)[1]
+            por_mes = [_cap_jornada(max(a0, m0), m1, festivos)[1] if m1 >= a0 else 0.0 for m0, m1 in meses]
+            aniv = anio - f_ing.year if f_ing else 0
+            vd = _dias_vacaciones_ley(aniv) if aniv >= 1 else 0
+            vh = min(vd * CAP_HORAS_DIA_VAC, bruta)
+            prop = (vh / bruta) if bruta else 0.0
+            c["cap_bruta"] += bruta; c["vac_dias"] += vd; c["vac_horas"] += vh
+            c["cap_periodo"] += bruta - vh
+            c["cap_fecha"] += bruta_fecha * (1 - prop)
+            for i, hm in enumerate(por_mes): c["mensual"][i] += hm * (1 - prop)
+
+        # ── 2) Horas planeadas en Configurar Proyecto, por línea (y consumidas en esos mismos Jobs)
+        jobs_estado = {str(j.get("job_number") or "").strip().upper(): str(j.get("status") or "").strip().upper() for j in scan_jobs()}
+        plan = {k: 0.0 for k, _n, _p in LINEAS_MO}
+        jobs_plan, n_proy = [], 0
+        for cfg in projcfg_load() or []:
+            jobs = [j for j in (cfg.get("jobs") or []) if j.get("job_number")]
+            if filtro == "activos" and not any(jobs_estado.get(str(j["job_number"]).strip().upper()) in ("OPEN", "WIP") for j in jobs):
+                continue
+            n_proy += 1
+            for j in jobs:
+                if filtro == "activos" and jobs_estado.get(str(j["job_number"]).strip().upper()) not in ("OPEN", "WIP"): continue
+                jobs_plan.append(str(j["job_number"]).strip().upper())
+                for k in plan:
+                    try: plan[k] += float(j.get("mo_horas_" + k) or 0)
+                    except (TypeError, ValueError): pass
+        consumido = {k: 0.0 for k in plan}
+        registros = _wh_clasificador(jobs_plan or ["__NINGUNO__"])
+        for jn in jobs_plan:
+            for _f, k, _dep, h, _c, _t in registros(jn):
+                if k: consumido[k] += h
+
+        # ── 3) Horas registradas en Work Hours del año hasta hoy, por línea (proyecto / otras)
+        reg_proy = {k: 0.0 for k in plan}; reg_otras = {k: 0.0 for k in plan}
+        sin_linea = {"proyecto": 0.0, "otras": 0.0}
+        for r in wh_load(anio):
+            f = fecha(r.get("date_worked"))
+            if not f or f > corte: continue
+            c = registros.clasificar(r, anio)
+            if not c: continue
+            _f, k, _dep, h, _cst, _t = c
+            es_proy = bool(_CAP_JOB_RE.search(str(r.get("work_code") or "")))
+            if k: (reg_proy if es_proy else reg_otras)[k] += h
+            else: sin_linea["proyecto" if es_proy else "otras"] += h
+
+        # ── Agregar por área
+        filas = {a: {"area": a, "lineas": [], "trabajadores": 0, "cap_bruta": 0.0, "vac_dias": 0, "vac_horas": 0.0,
+                     "mensual": [0.0] * 12, "cap_periodo": 0.0, "cap_fecha": 0.0,
+                     "planeadas": 0.0, "consumidas_plan": 0.0, "registradas": 0.0, "registradas_otras": 0.0}
+                 for a in nombres_area + ["Sin área asignada"]}
+        for a, c in cap.items():
+            filas[a].update(c)
+        lineas = []
+        for k, n, _p in LINEAS_MO:
+            a = mapeo.get(k) or "Sin área asignada"
+            f = filas[a]
+            f["lineas"].append(n)
+            f["planeadas"] += plan[k]; f["consumidas_plan"] += consumido[k]
+            f["registradas"] += reg_proy[k]; f["registradas_otras"] += reg_otras[k]
+            lineas.append({"k": k, "nombre": n, "area": mapeo.get(k), "sugerida": k in sugeridas,
+                           "planeadas": round(plan[k], 1), "consumidas_plan": round(consumido[k], 1),
+                           "registradas": round(reg_proy[k], 1), "registradas_otras": round(reg_otras[k], 1)})
+        sa = filas["Sin área asignada"]
+        sa["registradas"] += sin_linea["proyecto"]; sa["registradas_otras"] += sin_linea["otras"]
+        out = []
+        for a in nombres_area + ["Sin área asignada"]:
+            f = filas[a]
+            if a == "Sin área asignada" and not any(f[x] for x in ("trabajadores", "planeadas", "registradas", "registradas_otras")):
+                continue
+            f = {k: (round(v, 1) if isinstance(v, float) else v) for k, v in f.items()}
+            f["mensual"] = [round(v, 1) for v in f["mensual"]]
+            f["pendiente"] = round(max(f["planeadas"] - f["consumidas_plan"], 0), 1)
+            f["cap_restante"] = round(f["cap_periodo"] - f["cap_fecha"], 1)
+            f["utilizacion"] = round(f["registradas"] / f["cap_fecha"] * 100, 1) if f["cap_fecha"] else None
+            f["carga_restante"] = round(f["pendiente"] / f["cap_restante"] * 100, 1) if f["cap_restante"] else None
+            out.append(f)
+        dias_periodo, horas_persona = _cap_jornada(ini, fin, festivos)
+        dias_fecha, horas_persona_fecha = _cap_jornada(ini, corte, festivos)
+        return jsonify({
+            "anio": anio, "corte": corte.isoformat(), "hoy": hoy.isoformat(), "proyectos": filtro, "n_proyectos": n_proy,
+            "horas_semana": CAP_HORAS_SEMANA, "jornada": list(CAP_JORNADA),
+            "horas_dia_vac": CAP_HORAS_DIA_VAC, "sin_fecha_ingreso": sin_ingreso,
+            "vac_tabla": [{"anios": a, "dias": _dias_vacaciones_ley(a)} for a in (1, 2, 3, 4, 5, 6, 11, 16, 21, 26)],
+            "horas_persona": horas_persona, "horas_persona_fecha": horas_persona_fecha,
+            "dias_laborables": dias_periodo, "dias_laborables_fecha": dias_fecha,
+            "festivos": [{"fecha": f.isoformat(), "nombre": n, "dia": f.weekday(), "horas": CAP_JORNADA[f.weekday()],
+                          "descuenta": CAP_JORNADA[f.weekday()] > 0} for f, n in festivos],
+            "areas": out, "lineas": lineas, "areas_catalogo": nombres_area,
+            "sin_linea": {k: round(v, 1) for k, v in sin_linea.items()},
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/capacidad/mapeo", methods=["PUT"])
+def api_capacidad_mapeo():
+    """Guarda qué área de Control de Personal corresponde a cada línea de mano de obra."""
+    if not can("create", "ops-capacidad"): return jsonify({"error": "Sin permiso"}), 403
+    data = (request.json or {}).get("mapeo") or {}
+    validas = {k for k, _n, _p in LINEAS_MO}
+    areas = {a.get("nombre") for a in (_load_catalog("areas") or [])}
+    limpio = {k: (v if v in areas else None) for k, v in data.items() if k in validas}
+    with lock:
+        cap = _load_capacidad()
+        cap[CAP_MAPEO_KEY] = limpio
+        _save_capacidad(cap)
+    return jsonify({"ok": True, "mapeo": limpio})
+
 @app.route("/api/capacidad", methods=["GET"])
 def api_get_capacidad():
     if not can("view", "ops-capacidad"): return jsonify({"error":"Sin permiso"}), 403
-    return jsonify(_load_capacidad())
+    return jsonify({k: v for k, v in _load_capacidad().items() if not str(k).startswith("__")})
 
 @app.route("/api/capacidad/<tid>", methods=["PUT"])
 def api_set_capacidad(tid):
