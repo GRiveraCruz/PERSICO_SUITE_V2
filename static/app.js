@@ -3758,10 +3758,15 @@ async function whRunImport(){
       '<div class="r-chip" style="background:rgba(39,174,96,.1);border:1px solid rgba(39,174,96,.25)"><div class="n" style="color:var(--green)">'+d.imported+'</div><div class="l" style="color:var(--green)">Importados</div></div>'+
       '<div class="r-chip" style="background:rgba(0,0,0,.045);border:1px solid var(--border)"><div class="n" style="color:var(--muted)">'+d.skipped+'</div><div class="l">Omitidos</div></div>'+
       '<div class="r-chip" style="background:rgba(200,16,46,.08);border:1px solid rgba(200,16,46,.2)"><div class="n" style="color:var(--red)">'+d.total+'</div><div class="l" style="color:var(--red)">Total tabla</div></div>';
-    document.getElementById('wh-imp-errs').innerHTML=(d.errors||[]).map(e=>'<div style="font-size:11px;color:#eb5757;padding:3px 0">✕ Row '+esc(e.row)+': '+esc(e.error)+'</div>').join('');
+    const notas=[];
+    if(d.sin_horas) notas.push(d.sin_horas+' renglón(es) sin horas (celda vacía o 0) no se importaron.');
+    if(d.sin_id) notas.push(d.sin_id+' registro(s) venían sin ID en el Excel; se les asignó uno automáticamente.');
+    if(d.otro_anio) notas.push('⚠ '+d.otro_anio+' registro(s) tienen fecha de un año distinto a '+d.year+' y se guardaron en la tabla de '+d.year+'.');
+    document.getElementById('wh-imp-errs').innerHTML=notas.map(t=>'<div style="font-size:11px;color:var(--muted2);padding:3px 0">ℹ '+esc(t)+'</div>').join('')
+      +(d.errors||[]).map(e=>'<div style="font-size:11px;color:#eb5757;padding:3px 0">✕ Row '+esc(e.row)+': '+esc(e.error)+'</div>').join('');
     document.getElementById('wh-imp-results').style.display='block';
     if(parseInt(document.getElementById('wh-imp-year').value)===whActiveYear) await loadWH();
-    toast(d.imported+' registros importados ✓ ('+d.skipped+' omitidos por fecha)','ok',6000);
+    toast(d.imported+' registros importados y guardados ✓ ('+d.skipped+' omitidos por fecha'+(d.sin_horas?', '+d.sin_horas+' sin horas':'')+')','ok',6000);
   }catch(err){toast('Error: '+err.message,'er');}
   finally{btn.disabled=false;btn.textContent='Importar →';}
 }

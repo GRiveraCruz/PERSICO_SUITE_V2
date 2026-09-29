@@ -4326,7 +4326,7 @@ def api_control_horas_exportar_mano_obra():
         sueldos = _load_sueldos()
         year = int(from_date[:4])
         wh_records = wh_load(year)
-        max_id = max([r.get("id") or 0 for r in wh_records], default=0)
+        max_id = max([r.get("id") or 0 for r in wh_records if (r.get("id") or 0) < WH_ID_SINT_MIN], default=0)
 
         added = 0
         sin_salario = set()
@@ -5553,15 +5553,19 @@ def _homologar_empleado(raw_name, canonical_list, _cache={}):
     if not clean:
         return raw_name
 
-    # Cache para no recalcular
-    if clean in _cache:
-        return _cache[clean]
+    # rev59: el caché era global y por nombre: si un nombre se homologó mal una vez (por
+    # ejemplo con la lista canónica vacía) se quedaba mal hasta reiniciar el servidor.
+    # Ahora la clave incluye la lista usada.
+    ck = (clean, len(canonical_list), canonical_list[0] if canonical_list else "", canonical_list[-1] if canonical_list else "")
+    if ck in _cache:
+        return _cache[ck]
 
     # Buscar mejor coincidencia por palabras compartidas
     words = set(clean.split())
     best_match = clean  # fallback: devolver limpio sin ID
     best_score = 0
     for c in canonical_list:
+        if c.upper() == clean: continue      # rev59: buscar la forma canónica, no el mismo texto
         c_words = set(c.upper().split())
         score = len(words & c_words)
         if score > best_score:
@@ -5570,28 +5574,26 @@ def _homologar_empleado(raw_name, canonical_list, _cache={}):
 
     # Solo usar el canónico si hay al menos 2 palabras en común
     result = best_match if best_score >= 2 else clean
-    _cache[clean] = result
+    _cache[ck] = result
     return result
 
 def _get_canonical_employees(year=None):
-    """Carga la lista canónica de empleados desde HOURLY_RATE."""
+    """Lista canónica de empleados (nombres como están en Hourly Rate).
+    rev59: se lee con load_rates(), que usa la base de datos cuando está activa. Antes
+    se leía directo del archivo JSON; en Railway (base de datos) ese archivo no existe o
+    está desactualizado, la lista quedaba vacía y los nombres importados no se
+    homologaban (ej. "43LUZ AILED MUÑOZ RODRIGUEZ" quedaba "LUZ AILED MUÑOZ RODRIGUEZ" en
+    vez de "MUÑOZ RODRIGUEZ LUZ AILED"), así que sus horas no encontraban tarifa ($0)."""
     if year is None:
         year = CURRENT_YEAR
-    rates_path = rates_root() / f"rates_{year}.json"
-    if not rates_path.exists():
-        # Intentar con cualquier año disponible
-        root = rates_root()
-        if root.exists():
-            files = sorted(root.glob("rates_*.json"), reverse=True)
-            if files:
-                rates_path = files[0]
-    if rates_path.exists():
+    anios = [year] + sorted((a for a in available_years() if a != year), reverse=True)
+    for y in anios:
         try:
-            with open(rates_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            return [r["employee"] for r in data if r.get("employee")]
-        except:
-            pass
+            lista = [r["employee"] for r in load_rates(y) if r.get("employee")]
+        except Exception:
+            lista = []
+        if lista:
+            return lista
     return []
 
 def wh_root():  return Path(WH_FOLDER)
@@ -5679,6 +5681,39 @@ def wh_load_matching(year, job_main):
     wh_raw = wh_load(year)
     return [r for r in wh_raw if job_main.upper() in (r.get("work_code") or "").upper()]
 
+# rev59: IDs para registros de Work Hours que llegan SIN ID (ej. un Excel con la columna
+# "ID" vacía). En la base de datos la llave es "{año}_{id}" y wh_save() descartaba en
+# silencio todo registro sin id: la importación decía "N importados" pero no se guardaba
+# nada. Se asigna un ID sintético determinista (mismo empleado + fecha + work code +
+# descripción + n-ésima aparición ⇒ mismo ID), así que re-importar el mismo archivo en
+# modo "agregar" actualiza en lugar de duplicar. Rango reservado 1,000,000,000–1,999,999,999
+# para no chocar con los IDs del sistema de origen ni con los de Control de Horas.
+WH_ID_SINT_MIN, WH_ID_SINT_MAX = 1_000_000_000, 1_999_999_999
+
+def _wh_llave(r):
+    return "|".join(str(r.get(k) or "").strip().upper() for k in ("employee", "date_worked", "work_code", "description"))
+
+def _wh_asignar_ids(records, existentes=()):
+    """Asigna ID sintético a los registros sin id. `existentes`: registros ya guardados,
+    para no reutilizar un ID que pertenezca a otro registro. Regresa cuántos asignó."""
+    import zlib
+    ocupados = {}                       # id -> llave del registro que lo tiene
+    for r in list(existentes) + [r for r in records if r.get("id") is not None]:
+        if r.get("id") is not None: ocupados.setdefault(r["id"], r.get("import_key") or _wh_llave(r))
+    vistos, n = {}, 0
+    rango = WH_ID_SINT_MAX - WH_ID_SINT_MIN + 1
+    for r in records:
+        if r.get("id") is not None: continue
+        base = _wh_llave(r)
+        k = vistos.get(base, 0); vistos[base] = k + 1
+        llave = f"{base}#{k}"
+        sid = WH_ID_SINT_MIN + zlib.crc32(llave.encode("utf-8")) % rango
+        # si el ID ya lo tiene OTRO registro, se busca el siguiente libre
+        while sid in ocupados and ocupados[sid] != llave:
+            sid = WH_ID_SINT_MIN + (sid - WH_ID_SINT_MIN + 1) % rango
+        r["id"] = sid; r["import_key"] = llave; ocupados[sid] = llave; n += 1
+    return n
+
 def wh_save(year, records):
     """Reemplaza el conjunto completo de Work Hours de un año — mismo contrato
     que antes. Se confirmó que todas las escrituras a WH son ocasionales
@@ -5693,6 +5728,9 @@ def wh_save(year, records):
                 # no significa "nunca simultáneo" (ej. dos admins importando Excel del
                 # mismo año a la vez), y esta operación reemplaza la tabla entera.
                 _orm.acquire_year_lock(s, "work_hours", year)
+                # rev59: nunca descartar en silencio un registro sin id
+                if any(r.get("id") is None for r in records):
+                    _wh_asignar_ids(records)
                 s.query(_orm.WorkHour).filter(_orm.WorkHour.year == year).delete()
                 for r in records:
                     sid = r.get("id")
@@ -5803,6 +5841,8 @@ def api_import_wh():
 
         imported = []
         skipped  = 0
+        sin_horas = 0
+        otro_anio = 0
         errors   = []
 
         # _get_canonical_employees(year) lee y parsea un JSON de tarifas desde disco
@@ -5812,6 +5852,14 @@ def api_import_wh():
         # una fila y la siguiente (depende solo de 'year', que es fijo para todo el
         # import). Se saca del loop y se calcula una sola vez.
         canonical = _get_canonical_employees(year)
+        # rev59: además de Hourly Rate, los nombres que ya existen en Work Hours del año
+        # (así un empleado sin tarifa también queda con el mismo nombre que sus registros
+        # anteriores, ej. "43LUZ AILED MUÑOZ RODRIGUEZ" → "MUÑOZ RODRIGUEZ LUZ AILED").
+        try:
+            ya = {normalize_name(r.get("employee", "")) for r in wh_load(year) if r.get("employee")}
+            canonical = list(canonical) + sorted(ya - {normalize_name(c) for c in canonical})
+        except Exception:
+            pass
 
         for row in ws.iter_rows(min_row=header_row + 1, values_only=True):
             row = list(row)
@@ -5830,17 +5878,26 @@ def api_import_wh():
             if dt_from and date_val < dt_from: skipped += 1; continue
             if dt_to   and date_val > dt_to:   skipped += 1; continue
 
+            # rev59: renglones sin horas (celda vacía o 0) no se importan como registros de 0 h
+            if cv(ci_hours) in (None, ""):
+                sin_horas += 1; continue
             try:
-                hours = float(cv(ci_hours)) if cv(ci_hours) is not None else 0
+                hours = float(cv(ci_hours))
             except (ValueError, TypeError):
-                errors.append({"row": str(cv(ci_id)), "error": "Horas no numéricas"}); continue
+                errors.append({"row": str(cv(ci_id) or date_val), "error": "Horas no numéricas"}); continue
+            if hours <= 0:
+                sin_horas += 1; continue
+            if date_val.year != year:
+                otro_anio += 1
 
             # Homologar nombre al formato canónico (canonical ya se calculó una sola
             # vez antes del loop — ver comentario arriba)
             emp_homolog = _homologar_empleado(str(emp).strip(), canonical) if canonical else                           __import__("re").sub(r"^\d+\s*", "", str(emp).strip()).upper()
 
+            try: rid = int(cv(ci_id)) if cv(ci_id) not in (None, "") else None
+            except (ValueError, TypeError): rid = None
             imported.append({
-                "id":          int(cv(ci_id)) if cv(ci_id) is not None else None,
+                "id":          rid,
                 "employee":    emp_homolog,
                 "date_worked": date_val.strftime("%Y-%m-%d") if hasattr(date_val, "strftime") else str(date_val)[:10],
                 "work_code":   str(cv(ci_wcode) or "").strip(),
@@ -5849,13 +5906,14 @@ def api_import_wh():
             })
 
         if not imported:
-            return jsonify({"error": f"No se encontraron registros válidos (omitidos: {skipped})"}), 400
+            return jsonify({"error": f"No se encontraron registros válidos (omitidos por fecha: {skipped}, sin horas: {sin_horas})"}), 400
 
         with lock:
+            existing = [] if mode == "replace" else wh_load(year)
+            sin_id = _wh_asignar_ids(imported, existing)
             if mode == "replace":
                 final = imported
             else:
-                existing = wh_load(year)
                 existing_ids = {r["id"] for r in existing if r.get("id")}
                 for rec in imported:
                     if rec.get("id") and rec["id"] in existing_ids:
@@ -5866,14 +5924,24 @@ def api_import_wh():
                         existing.append(rec)
                 final = existing
             wh_save(year, final)
+            # rev59: confirmar contra lo que realmente quedó guardado
+            guardado = wh_load(year)
+            ids_guardados = {r.get("id") for r in guardado}
+            no_guardados = sum(1 for r in imported if r.get("id") not in ids_guardados)
 
+        if no_guardados:
+            return jsonify({"error": f"Se procesaron {len(imported)} registros pero {no_guardados} no quedaron guardados. "
+                                     f"No se importó correctamente — contacta a soporte."}), 500
         return jsonify({
             "ok":       True,
             "year":     year,
             "mode":     mode,
             "imported": len(imported),
             "skipped":  skipped,
-            "total":    len(final),
+            "sin_horas": sin_horas,
+            "sin_id":   sin_id,
+            "otro_anio": otro_anio,
+            "total":    len(guardado),
             "errors":   errors,
         })
 
