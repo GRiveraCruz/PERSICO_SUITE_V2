@@ -124,6 +124,8 @@ td{padding:8px 14px;font-size:12px;color:var(--text);vertical-align:middle;white
 .pc-timing-tbl tbody tr.pc-t-group-row td.pc-stk{background:linear-gradient(rgba(0,0,0,.045),rgba(0,0,0,.045)),var(--bg)}
 .pc-timing-tbl tbody tr.pc-t-group-row td.pc-stk-grp{left:0;width:390px;min-width:390px;max-width:390px;box-shadow:inset -1px 0 0 var(--border2),6px 0 6px -4px rgba(0,0,0,.12)}
 .pc-timing-tbl td.pc-stk input{max-width:100%;box-sizing:border-box;text-overflow:ellipsis}
+.pc-mov-btn{display:block;width:14px;height:11px;line-height:9px;padding:0;margin:0;border:none;background:transparent;color:var(--muted);font-size:8px;cursor:pointer;border-radius:2px}
+.pc-mov-btn:hover,.pc-mov-btn:focus-visible{background:rgba(200,16,46,.12);color:var(--red);outline:none}
 .tbl-cat{table-layout:fixed}
 .tbl-cat th:first-child,.tbl-cat td:first-child{width:9%}
 .tbl-cat th:nth-child(2),.tbl-cat td:nth-child(2){width:15%}
@@ -1043,9 +1045,9 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
             style="padding:8px 18px;background:rgba(0,0,0,.055);border:none;color:var(--muted);font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;cursor:pointer;border-radius:6px 6px 0 0">
             Control de Cambios
           </button>
-          <button id="pc-tab-personal" onclick="pcSwitchTab('personal')"
+          <button id="pc-tab-documentos" onclick="pcSwitchTab('documentos')"
             style="padding:8px 18px;background:rgba(0,0,0,.055);border:none;color:var(--muted);font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;cursor:pointer;border-radius:6px 6px 0 0">
-            Plan de Personal
+            Documentación
           </button>
         </div>
 
@@ -1208,58 +1210,15 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
           <div id="pc-dash-body"></div>
         </div>
 
-        <!-- ══════════ TAB: PLAN DE PERSONAL ══════════ -->
-        <div id="pc-content-personal" style="display:none">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <!-- ══════════ TAB: DOCUMENTACIÓN (rev57; antes Plan de Personal) ══════════ -->
+        <div id="pc-content-documentos" style="display:none">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px">
             <div>
-              <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--red)">👥 Plan de Personal</div>
-              <div id="pc-personal-rango" style="font-size:10px;color:var(--muted);margin-top:2px">—</div>
-            </div>
-            <div style="display:flex;gap:8px">
-              <button onclick="pcDownloadPersonalTemplate()" class="btn-sec" style="width:auto;font-size:11px;padding:5px 12px">Descargar Template</button>
-              <button onclick="document.getElementById('pc-personal-import-file').click()" class="btn-sec" style="width:auto;font-size:11px;padding:5px 12px">Importar Excel</button>
-              <input type="file" id="pc-personal-import-file" accept=".xlsx,.xls" style="display:none" onchange="pcImportPersonalExcel(this.files[0])">
-              <button onclick="pcAddPersonaRow()" class="btn-sec" style="width:auto;font-size:11px;padding:5px 12px">+ Persona</button>
+              <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--red)">📁 Documentación del proyecto</div>
+              <div style="font-size:10px;color:var(--muted);margin-top:2px">Arrastra el archivo a su recuadro o haz clic para elegirlo. Cada subida es una versión nueva; la versión anterior se borra y solo queda disponible la última.</div>
             </div>
           </div>
-          <div id="pc-personal-empty" style="display:none;padding:24px;text-align:center;color:var(--muted);font-size:12px;background:rgba(0,0,0,.03);border-radius:8px">
-            Configura al menos una actividad con fechas en la pestaña <b>Timing</b> para poder planear el personal día por día.
-          </div>
-          <div id="pc-personal-wrap" style="position:relative;border:1px solid var(--border);border-radius:8px;background:var(--card);font-size:11px">
-            <div id="pc-personal-frozen" style="position:absolute;top:0;left:0;width:712px;background:var(--card);box-shadow:2px 0 4px rgba(0,0,0,.07)">
-              <div style="display:flex;border-bottom:2px solid var(--red);padding:10px 0;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted)">
-                <div style="flex:0 0 220px;padding:0 14px">Person</div>
-                <div style="flex:0 0 190px;padding:0 14px">Área</div>
-                <div style="flex:0 0 80px;padding:0 14px;text-align:right">Rate</div>
-                <div style="flex:0 0 90px;padding:0 14px;text-align:right">Total Hours</div>
-                <div style="flex:0 0 100px;padding:0 14px;text-align:right;border-right:2px solid var(--border)">Total Amount</div>
-                <div style="flex:0 0 32px"></div>
-              </div>
-              <div id="pc-personal-frozen-body"></div>
-            </div>
-            <div style="overflow-x:auto;margin-left:712px">
-              <div id="pc-personal-scroll-thead" style="display:flex;border-bottom:2px solid var(--red);padding:10px 0"></div>
-              <div id="pc-personal-scroll-body"></div>
-            </div>
-          </div>
-          <div style="display:flex;justify-content:flex-end;gap:28px;margin-top:12px;padding:10px 16px;background:#1f3864;border-radius:8px">
-            <div style="text-align:right"><div style="font-size:9px;color:rgba(255,255,255,.6);text-transform:uppercase">Total Horas</div>
-              <div id="pc-personal-tot-horas" style="font-size:16px;font-weight:700;color:#fff;font-family:'DM Mono',monospace">0</div></div>
-            <div style="text-align:right"><div style="font-size:9px;color:rgba(255,255,255,.6);text-transform:uppercase">Total Monto (M.O.)</div>
-              <div id="pc-personal-tot-monto" style="font-size:16px;font-weight:700;color:var(--gold);font-family:'DM Mono',monospace">$0.00</div></div>
-          </div>
-
-          <div style="margin-top:16px">
-            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:8px">Total por Área</div>
-            <table class="tbl" style="font-size:12px;max-width:520px">
-              <thead><tr>
-                <th>Área</th>
-                <th style="text-align:right">Total Horas</th>
-                <th style="text-align:right">Total Monto</th>
-              </tr></thead>
-              <tbody id="pc-personal-area-tb"></tbody>
-            </table>
-          </div>
+          <div id="pc-docs-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px"></div>
         </div>
 
       </div>

@@ -424,6 +424,29 @@ class OrdenProduccion(Base, JSONBMixin):
     job   = Column(String, index=True)
 
 
+class ProyectoDocumento(Base):
+    """Documentación de Configurar Proyecto (pestaña Documentación): un archivo vigente por
+    PT/SV y tipo de documento (aprobación de diseño, diagrama eléctrico, diagrama neumático,
+    3D). Al subir una versión nueva se REEMPLAZA el contenido de este mismo renglón —la
+    versión previa se borra— y se incrementa `version`. `historial` guarda solo los datos de
+    cada versión (número, nombre, tamaño, fecha, usuario), no los archivos.
+    Se guarda en la base (no en el volumen) para que no se pierda en un redeploy."""
+    __tablename__ = "proyecto_documentos"
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    ptsv_key    = Column(String, index=True)      # PT/SV normalizado: sin guiones ni espacios, mayúsculas
+    ptsv        = Column(String)
+    tipo        = Column(String, index=True)
+    version     = Column(Integer, default=0)
+    filename    = Column(String)
+    mimetype    = Column(String)
+    size        = Column(Integer)
+    content     = Column(LargeBinary)
+    uploaded_by = Column(String)
+    updated_at  = Column(DateTime, default=datetime.datetime.utcnow)
+    historial   = Column(JSONB, default=list)
+    __table_args__ = (Index("ux_proyecto_documentos_ptsv_tipo", "ptsv_key", "tipo", unique=True),)
+
+
 class PlanoPDF(Base):
     """Planos PDF del BOM de Manufactura (Requisición de Compra). Se guardan en la base
     de datos —no en el volumen— para que no se pierdan en un redeploy. Cada subida del

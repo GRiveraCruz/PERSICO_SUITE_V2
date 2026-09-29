@@ -10014,17 +10014,17 @@ let _pcPersonalRowSeq = 0;
 
 function pcSwitchTab(tab, opts={}) {
   pcCurrentTab = tab;
-  const tabs = {presupuesto:'pc-tab-presupuesto', dashboard:'pc-tab-dashboard', timing:'pc-tab-timing', abiertos:'pc-tab-abiertos', cambios:'pc-tab-cambios', personal:'pc-tab-personal'};
+  const tabs = {presupuesto:'pc-tab-presupuesto', dashboard:'pc-tab-dashboard', timing:'pc-tab-timing', abiertos:'pc-tab-abiertos', cambios:'pc-tab-cambios', documentos:'pc-tab-documentos'};
   Object.entries(tabs).forEach(([k,id])=>{
     const el = document.getElementById(id); if(!el) return;
     el.style.background = k===tab ? 'var(--red)' : 'rgba(0,0,0,.055)';
     el.style.color      = k===tab ? '#fff' : 'var(--muted)';
   });
-  ['presupuesto','dashboard','timing','abiertos','cambios','personal'].forEach(k=>{
+  ['presupuesto','dashboard','timing','abiertos','cambios','documentos'].forEach(k=>{
     const el = document.getElementById(`pc-content-${k}`); if(el) el.style.display = (k===tab)?'':'none';
   });
   if(tab==='timing') pcUpdateTimingCalcs();
-  if(tab==='personal') pcRefreshPersonalTab();
+  if(tab==='documentos') pcDocsCargar();
   if(tab==='dashboard' && !opts.sinRender) pcRenderDashboard();
 }
 
@@ -10120,6 +10120,7 @@ async function pcSelectPTSV(item) {
 
   // Plan de Personal — se renderiza al entrar a su pestaña (depende del rango de Timing)
   pcPersonalSaved = existingConfig?.plan_personal || [];
+  _pcDocs = null; const _dg = document.getElementById('pc-docs-grid'); if(_dg) _dg.innerHTML = '';
 
   pcSwitchTab('dashboard', {sinRender:true});
 
@@ -10453,7 +10454,9 @@ async function pcSave() {
   const timingData = pcGetTimingData();
   const puntosData  = pcGetPuntosData();
   const cambiosData = pcGetCambiosData();
-  const planPersonalData = pcGetPlanPersonalData();
+  // rev57: la pestaña Plan de Personal se reemplazó por Documentación. El plan ya
+  // capturado se conserva tal cual (se reenvía lo que se cargó) para no borrarlo al guardar.
+  const planPersonalData = pcPersonalSaved || [];
 
   const btn = document.getElementById('btn-pc-save');
   btn.disabled=true; btn.textContent='Guardando…';
@@ -11661,8 +11664,8 @@ function pcAddTimingRow(data={}) {
   const tr = document.createElement('tr');
   const inpS = 'background:var(--inp);border:1px solid rgba(255,193,7,.3);border-radius:4px;color:var(--amber);padding:5px 7px;font-size:11px';
   tr.innerHTML = `
-    <td class="pc-stk pc-stk1" style="padding-left:${data.grupo?'18px':'6px'}"><input data-field="actividad" list="pc-act-list" value="${esc(data.actividad||data.name||'')}"
-      oninput="pcUpdateTimingCalcs();this.title=this.value" title="${esc(data.actividad||data.name||'')}" style="${inpS};width:100%"></td>
+    <td class="pc-stk pc-stk1" style="padding-left:${data.grupo?'18px':'6px'};white-space:nowrap"><span class="pc-mov" style="display:inline-flex;flex-direction:column;vertical-align:middle;margin-right:3px"><button type="button" class="pc-mov-btn" onclick="pcMoverTiming(this,-1)" title="Subir" aria-label="Subir">▲</button><button type="button" class="pc-mov-btn" onclick="pcMoverTiming(this,1)" title="Bajar" aria-label="Bajar">▼</button></span><input data-field="actividad" list="pc-act-list" value="${esc(data.actividad||data.name||'')}"
+      oninput="pcUpdateTimingCalcs();this.title=this.value" title="${esc(data.actividad||data.name||'')}" style="${inpS};width:calc(100% - 20px);vertical-align:middle"></td>
     <td class="pc-stk pc-stk2"><input data-field="grupo" list="pc-timing-groups-list" value="${esc(data.grupo||'')}" placeholder="— sin grupo —"
       oninput="pcOnGroupFieldChange(this);pcUpdateTimingCalcs()" style="${inpS};width:100%;color:var(--muted2)"></td>
     <td><input data-field="actividad_previa" list="pc-timing-activities-list" value="${esc(data.actividad_previa||data.prev||'')}"
@@ -11711,10 +11714,10 @@ function pcAddGroupRow(data={}) {
   tr.style.background = 'rgba(0,0,0,.045)';
   tr.innerHTML = `
     <td colspan="2" class="pc-stk pc-stk-grp" style="font-weight:800;letter-spacing:.3px">
-      <span class="pc-grp-toggle" onclick="pcToggleGroup(this)" style="cursor:pointer;display:inline-block;width:14px;user-select:none">▾</span>
+      <span class="pc-mov" style="display:inline-flex;flex-direction:column;vertical-align:middle;margin-right:3px"><button type="button" class="pc-mov-btn" onclick="pcMoverTiming(this,-1)" title="Subir" aria-label="Subir">▲</button><button type="button" class="pc-mov-btn" onclick="pcMoverTiming(this,1)" title="Bajar" aria-label="Bajar">▼</button></span><span class="pc-grp-toggle" onclick="pcToggleGroup(this)" style="cursor:pointer;display:inline-block;width:14px;user-select:none">▾</span>
       <input data-field="actividad" value="${esc(data.actividad||'')}" placeholder="Nombre del grupo"
         oninput="pcUpdateGroupsList();pcUpdateTimingCalcs()"
-        style="background:transparent;border:none;border-bottom:1px dashed var(--border2);color:var(--text);font-weight:800;font-size:11.5px;padding:3px 4px;width:calc(100% - 22px)">
+        style="background:transparent;border:none;border-bottom:1px dashed var(--border2);color:var(--text);font-weight:800;font-size:11.5px;padding:3px 4px;width:calc(100% - 42px)">
     </td>
     <td></td>
     <td></td>
@@ -11727,6 +11730,65 @@ function pcAddGroupRow(data={}) {
       style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px">Eliminar</button></td>`;
   tb.appendChild(tr);
   pcUpdateGroupsList();
+}
+
+// ════════════════════════════════════════════════════════
+//  rev58 — Reordenar el Timing (▲ ▼)
+//  · Actividad dentro de un grupo: se mueve entre las actividades de ese grupo.
+//  · Grupo: se mueve completo (encabezado + sus actividades) entre los demás
+//    grupos y actividades sin grupo.
+//  · Actividad sin grupo: se mueve entre los grupos (saltando el bloque completo)
+//    y las demás actividades sin grupo.
+//  Las fechas no dependen del orden (ver _pcResolverTiming), así que mover una
+//  actividad arriba de su actividad previa no rompe el cálculo.
+// ════════════════════════════════════════════════════════
+const _pcGrp = tr => tr.dataset.tipo==='grupo' ? '' : (_pcF(tr,'grupo')||'').trim().toUpperCase();
+const _pcGrpNombre = tr => (_pcF(tr,'actividad')||'').trim().toUpperCase();
+// Unidades de primer nivel: [encabezado de grupo + sus actividades contiguas] o [actividad suelta]
+function _pcUnidadesTiming(rows){
+  const out = []; let i = 0;
+  while(i < rows.length){
+    const tr = rows[i];
+    if(tr.dataset.tipo==='grupo'){
+      const g = _pcGrpNombre(tr), u = [tr]; i++;
+      while(i < rows.length && rows[i].dataset.tipo!=='grupo' && g && _pcGrp(rows[i])===g){ u.push(rows[i]); i++; }
+      out.push(u);
+    } else { out.push([tr]); i++; }
+  }
+  return out;
+}
+function pcMoverTiming(btn, dir){
+  const tr = btn.closest('tr'), tb = document.getElementById('pc-timing-body');
+  if(!tr || !tb) return;
+  const rows = [...tb.rows];
+  const unidades = _pcUnidadesTiming(rows);
+  const uIdx = unidades.findIndex(u=>u.includes(tr));
+  const u = unidades[uIdx];
+  let movido = false;
+  if(tr.dataset.tipo!=='grupo' && u[0]!==tr){
+    // actividad dentro del bloque de su grupo: intercambiar con la hermana de al lado
+    const herm = u.slice(1), i = herm.indexOf(tr), j = i + dir;
+    if(j < 0 || j >= herm.length){
+      toast(dir<0 ? 'Ya es la primera actividad del grupo. Para sacarla, cambia su Grupo.' : 'Ya es la última actividad del grupo. Para sacarla, cambia su Grupo.', 'er');
+      return;
+    }
+    if(dir<0) tb.insertBefore(tr, herm[j]); else tb.insertBefore(herm[j], tr);
+    movido = true;
+  } else {
+    // unidad de primer nivel (grupo completo o actividad sin grupo)
+    const vecino = unidades[uIdx + dir];
+    if(!vecino){ toast(dir<0 ? 'Ya está hasta arriba.' : 'Ya está hasta abajo.', 'er'); return; }
+    if(dir<0) u.forEach(r=>tb.insertBefore(r, vecino[0]));
+    else vecino.forEach(r=>tb.insertBefore(r, u[0]));
+    movido = true;
+  }
+  if(!movido) return;
+  pcUpdateTimingCalcs();
+  // resaltar lo que se movió y mantenerlo a la vista
+  const bloque = tr.dataset.tipo==='grupo' ? _pcUnidadesTiming([...tb.rows]).find(x=>x[0]===tr) : [tr];
+  bloque.forEach(r=>{ r.style.transition='box-shadow .6s'; r.style.boxShadow='inset 4px 0 0 var(--red)'; setTimeout(()=>{ r.style.boxShadow=''; }, 900); });
+  tr.scrollIntoView({block:'nearest'});
+  btn.focus();
 }
 
 // Al escribir/asignar un grupo en una actividad, se indenta visualmente para que
@@ -11785,9 +11847,34 @@ function _pcF(tr,field){
   return el.type==='checkbox'?el.checked:(el.value||'');
 }
 
+// rev58: las fechas se resuelven sin depender del orden de las filas. Antes, si una
+// actividad quedaba ARRIBA de su actividad previa, no encontraba su fecha (una sola
+// pasada) — y al poder reordenar el Timing eso pasaría seguido.
+function _pcResolverTiming(rows){
+  const nk = s => (s||'').trim().toUpperCase();
+  const info = rows.filter(tr=>tr.dataset.tipo!=='grupo').map(tr=>({tr, act:nk(_pcF(tr,'actividad')), prev:nk(_pcF(tr,'actividad_previa')),
+      ini:_pcFecha(_pcF(tr,'fecha_inicial')), dias:parseInt(_pcF(tr,'dias_estimados'))||0, fCond:null, fObj:null}));
+  const endDateMap = {}, nombres = new Set(info.map(i=>i.act).filter(Boolean));
+  let cambio = true, vueltas = 0;
+  while(cambio && vueltas++ <= info.length){
+    cambio = false;
+    info.forEach(i=>{
+      if(i.fCond) return;
+      let f = i.ini;
+      if(!f && i.prev && endDateMap[i.prev]){ f = new Date(endDateMap[i.prev]); f.setDate(f.getDate()+1); }
+      if(!f) return;
+      i.fCond = f; i.fObj = new Date(f); i.fObj.setDate(i.fObj.getDate()+i.dias);
+      if(i.act) endDateMap[i.act] = i.fObj;
+      cambio = true;
+    });
+  }
+  return {porFila: new Map(info.map(i=>[i.tr, i])), endDateMap, nombres};
+}
+
 function pcUpdateTimingCalcs() {
   const tb = document.getElementById('pc-timing-body');
   if(!tb) return;
+  const _res = _pcResolverTiming([...tb.rows]);
   pcUpdateActividadPreviaList();
   pcUpdateGroupsList();
   const today = new Date(); today.setHours(0,0,0,0);
@@ -11804,11 +11891,9 @@ function pcUpdateTimingCalcs() {
     const cumpl = _pcF(tr,'cumplido');
     const fReal = _pcF(tr,'fecha_real_finalizacion');
     const prevKey = normKey(prev);
-    const prevNotFound = !fIni && prev && !endDateMap[prevKey];
-    let fCond = _pcFecha(fIni);
-    if(!fCond && prev && endDateMap[prevKey]) {
-      fCond = new Date(endDateMap[prevKey]); fCond.setDate(fCond.getDate()+1);
-    }
+    const prevNotFound = !_pcFecha(fIni) && prev && !_res.nombres.has(prevKey);
+    const prevSinFecha = !_pcFecha(fIni) && prev && !prevNotFound;
+    let fCond = _res.porFila.get(tr)?.fCond || null;
     const condEl=tr.querySelector('.pc-t-cond'), objEl=tr.querySelector('.pc-t-obj'), statEl=tr.querySelector('.pc-t-status');
     if(fCond) {
       const fmt = d=>d.toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'});
@@ -11841,6 +11926,8 @@ function pcUpdateTimingCalcs() {
       if(condEl) {
         condEl.innerHTML = prevNotFound
           ? '<span style="color:var(--red)" title="No se encontró una actividad con ese nombre exacto en esta tabla">⚠ no encontrada</span>'
+          : prevSinFecha
+          ? '<span style="color:var(--amber)" title="La actividad previa todavía no tiene fecha (o hay una referencia circular)">sin fecha previa</span>'
           : '—';
       }
       if(objEl)  objEl.textContent='—';
@@ -12521,6 +12608,111 @@ function pcGetCambiosData() {
 }
 
 // ════════════════════════════════════════════════════════
+//  CONFIGURAR PROYECTO — DOCUMENTACIÓN (rev57)
+//  Un recuadro (drop) por tipo de documento. Cada subida = versión nueva; el servidor
+//  borra la versión anterior y solo conserva la última. Los documentos se suben al
+//  momento (no esperan a "Guardar Configuración").
+// ════════════════════════════════════════════════════════
+let _pcDocs = null;              // respuesta de /api/projconfig/documentos
+const PC_DOC_ICON = {aprobacion_diseno:'✅', diagrama_electrico:'⚡', diagrama_neumatico:'💨', modelo_3d:'🧊'};
+const _pcTam = b => b>=1048576 ? (b/1048576).toFixed(1)+' MB' : b>=1024 ? Math.round(b/1024)+' KB' : b+' B';
+const _pcFechaHora = v => { if(!v) return ''; const d=new Date(v); return isNaN(d)? v : d.toLocaleString('es-MX',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}); };
+
+async function pcDocsCargar(){
+  const grid = document.getElementById('pc-docs-grid');
+  if(!grid) return;
+  if(!pcCurrentPTSV){ grid.innerHTML = '<div style="color:var(--muted);font-size:12px">Selecciona un PT o SV.</div>'; return; }
+  const ptsv = pcCurrentPTSV;
+  if(!_pcDocs) grid.innerHTML = '<div style="color:var(--muted);font-size:12px">Cargando documentos…</div>';
+  try{
+    const r = await fetch('/api/projconfig/documentos?ptsv='+encodeURIComponent(ptsv));
+    const d = await r.json();
+    if(ptsv!==pcCurrentPTSV) return;
+    if(!r.ok || d.error) throw new Error(d.error||`HTTP ${r.status}`);
+    _pcDocs = d; pcDocsRender();
+  }catch(e){ grid.innerHTML = `<div style="color:var(--red);font-size:12px">No se pudieron cargar los documentos: ${esc(e.message)}</div>`; }
+}
+
+function pcDocsRender(){
+  const grid = document.getElementById('pc-docs-grid'); if(!grid || !_pcDocs) return;
+  grid.innerHTML = _pcDocs.tipos.map(t=>{
+    const reg = _pcDocs.docs[t.k];                          // registro (aunque el archivo se haya eliminado)
+    const doc = reg && reg.estado!=='eliminado' ? reg : null; // versión vigente con archivo
+    const url = `/api/projconfig/documentos/archivo?ptsv=${encodeURIComponent(pcCurrentPTSV)}&tipo=${t.k}`;
+    const hist = (reg?.historial||[]).slice().reverse();
+    const nVer = reg?.version || 0;
+    return `<div class="pc-doc-card" data-tipo="${t.k}" style="background:#fff;border-radius:14px;box-shadow:0 4px 18px rgba(0,0,0,.08);padding:16px 18px;display:flex;flex-direction:column;gap:12px;min-width:0">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:22px">${PC_DOC_ICON[t.k]||'📄'}</span>
+        <div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px">${esc(t.nombre)}</div>
+          <div style="font-size:10px;color:${reg&&!doc?'var(--red)':'var(--muted)'}">${doc?`Versión vigente`:reg?`v${nVer} eliminada · sin documento vigente`:'Sin documento'}</div></div>
+        <span title="Número de versiones subidas" style="font-family:'DM Mono',monospace;font-weight:700;font-size:13px;padding:3px 10px;border-radius:12px;background:${doc?'#1f3864':'rgba(0,0,0,.06)'};color:${doc?'#fff':'var(--muted)'}">v${nVer}</span>
+      </div>
+      ${doc?`<div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:12px">
+          <div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(doc.filename)}">${esc(doc.filename)}</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px">${_pcTam(doc.size)} · ${esc(_pcFechaHora(doc.fecha))}${doc.usuario?' · '+esc(doc.usuario):''}</div>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            ${/\.(pdf|png|jpe?g)$/i.test(doc.filename)?`<a href="${url}" target="_blank" rel="noopener" class="btn-reload" style="font-size:11px;padding:4px 10px;text-decoration:none">Ver</a>`:''}
+            <a href="${url}&descargar=1" class="btn-reload" style="font-size:11px;padding:4px 10px;text-decoration:none">Descargar</a>
+            <button type="button" onclick="pcDocEliminar('${t.k}')" class="btn-reload" style="font-size:11px;padding:4px 10px;margin-left:auto;color:var(--red);border-color:rgba(200,16,46,.35)">Eliminar</button>
+          </div></div>`:''}
+      <label class="pc-doc-drop" data-tipo="${t.k}"
+        ondragover="event.preventDefault();this.style.borderColor='var(--red)';this.style.background='rgba(200,16,46,.04)'"
+        ondragleave="this.style.borderColor='';this.style.background=''"
+        ondrop="event.preventDefault();this.style.borderColor='';this.style.background='';pcDocSubir('${t.k}', event.dataTransfer.files)"
+        style="display:block;border:2px dashed var(--border2);border-radius:10px;padding:18px 12px;text-align:center;cursor:pointer;font-size:12px;color:var(--muted2);transition:border-color .15s,background .15s">
+        <input type="file" style="display:none" onchange="pcDocSubir('${t.k}', this.files);this.value=''">
+        <div class="pc-doc-drop-txt">${doc?'Arrastra aquí la nueva versión o haz clic':'Arrastra aquí el archivo o haz clic'}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:3px">${doc?`Se guardará como v${nVer+1} y se borrará la v${nVer}`:`Se guardará como v${nVer+1}`} · máx. ${_pcDocs.max_mb} MB</div>
+      </label>
+      ${hist.length?`<details style="font-size:11px;color:var(--muted2)"><summary style="cursor:pointer">Historial de versiones (${hist.length})</summary>
+        <div style="margin-top:6px">${hist.map(h=>`<div style="display:flex;gap:8px;padding:4px 0;border-top:1px solid var(--border)">
+          <b style="font-family:'DM Mono',monospace;min-width:30px">v${h.version}</b>
+          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${h.accion==='eliminado'?'color:var(--red)':''}" title="${esc(h.filename)}">${h.accion==='eliminado'?'🗑 Eliminado · ':''}${esc(h.filename)}</span>
+          <span style="white-space:nowrap">${esc(_pcFechaHora(h.fecha))}</span></div>`).join('')}
+          <div style="font-size:10px;color:var(--muted);margin-top:4px">Solo la versión vigente tiene archivo; de las anteriores queda este registro.</div></div></details>`:''}
+    </div>`;
+  }).join('');
+}
+
+async function pcDocEliminar(tipo){
+  const t = _pcDocs?.tipos.find(x=>x.k===tipo), doc = _pcDocs?.docs[tipo];
+  if(!doc || doc.estado==='eliminado') return;
+  if(!confirm(`${t?.nombre||tipo}\n\nSe eliminará "${doc.filename}" (versión ${doc.version}).\nEl archivo se borra del servidor y no se puede recuperar. El conteo de versiones se conserva: la siguiente subida será la v${doc.version+1}.\n\n¿Eliminar?`)) return;
+  try{
+    const r = await fetch(`/api/projconfig/documentos?ptsv=${encodeURIComponent(pcCurrentPTSV)}&tipo=${tipo}`, {method:'DELETE'});
+    const d = await r.json().catch(()=>({error:`HTTP ${r.status}`}));
+    if(!r.ok || d.error) throw new Error(d.error||`HTTP ${r.status}`);
+    toast(`${t?.nombre||'Documento'}: archivo eliminado`,'ok');
+    await pcDocsCargar();
+  }catch(e){ toast('No se pudo eliminar: '+e.message,'er'); }
+}
+
+async function pcDocSubir(tipo, files){
+  if(!pcCurrentPTSV || !files || !files.length) return;
+  if(files.length>1){ toast('Sube un solo archivo por documento','er'); return; }
+  const f = files[0], t = _pcDocs?.tipos.find(x=>x.k===tipo), reg = _pcDocs?.docs[tipo];
+  const doc = reg && reg.estado!=='eliminado' ? reg : null;
+  if(_pcDocs && f.size > _pcDocs.max_mb*1048576){ toast(`${f.name} supera ${_pcDocs.max_mb} MB`,'er'); return; }
+  if(doc && !confirm(`${t?.nombre||tipo}\n\nSe subirá "${f.name}" como versión ${doc.version+1}.\nLa versión ${doc.version} ("${doc.filename}") se borrará y ya no estará disponible.\n\n¿Continuar?`)) return;
+  const drop = document.querySelector(`.pc-doc-drop[data-tipo="${tipo}"]`);
+  const txt = drop?.querySelector('.pc-doc-drop-txt');
+  if(drop){ drop.style.pointerEvents='none'; drop.style.opacity='.6'; }
+  if(txt) txt.textContent = `Subiendo ${f.name}…`;
+  try{
+    const fd = new FormData(); fd.append('ptsv', pcCurrentPTSV); fd.append('tipo', tipo); fd.append('file', f);
+    const r = await fetch('/api/projconfig/documentos',{method:'POST', body:fd});
+    const d = await r.json().catch(()=>({error:`Respuesta inválida del servidor (HTTP ${r.status})`}));
+    if(!r.ok || d.error) throw new Error(d.error||`HTTP ${r.status}`);
+    toast(`${t?.nombre||'Documento'}: versión ${d.doc.version} guardada`,'ok');
+    await pcDocsCargar();
+  }catch(e){
+    toast('No se pudo subir: '+e.message,'er');
+    pcDocsRender();
+  }
+}
+
+// ════════════════════════════════════════════════════════
 //  CONFIGURAR PROYECTO — DASHBOARD DEL PROYECTO
 //  Todo sale de lo que está en pantalla (aunque no se haya guardado), salvo el
 //  estatus de los Jobs y los costos reales del resultado operativo, que calcula
@@ -12675,6 +12867,8 @@ function pcRenderDashboard(){
     <div style="${PC_DASH_CARD}">${lbl('Resultado operativo')}<div id="pc-dash-ro" style="font-size:30px;font-weight:700;font-family:'DM Mono',monospace;color:var(--muted)">…</div><div id="pc-dash-ro-sub" style="font-size:11px;color:var(--muted)">Calculando…</div></div>
   </div>
 
+  <div style="${PC_DASH_CARD};margin-bottom:16px">${lbl('Documentación')}<div id="pc-dash-docs" style="font-size:12px;color:var(--muted)">Cargando…</div></div>
+
   <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px">
     <div style="${PC_DASH_CARD};flex:2 1 560px">${lbl('Jobs asociados')}<div id="pc-dash-jobs" style="overflow-x:auto"></div></div>
     <div style="${PC_DASH_CARD};flex:1 1 300px">${lbl('Lista de puntos abiertos')}${pie}
@@ -12693,6 +12887,40 @@ function pcRenderDashboard(){
 
   pcDashRenderJobs(local, null);
   pcDashCargarServidor(local, tok);
+  pcDashCargarDocs(tok);
+}
+
+// rev58: estatus de los documentos de la pestaña Documentación
+function pcDashDocsEstado(d){
+  return (d.tipos||[]).map(t=>{ const r=(d.docs||{})[t.k];
+    return {k:t.k, nombre:t.nombre, reg:r, estado: !r ? 'pendiente' : r.estado==='eliminado' ? 'eliminado' : 'vigente'}; });
+}
+function pcDashDocsHTML(d, pdf=false){
+  const est = pcDashDocsEstado(d), n = est.filter(x=>x.estado==='vigente').length;
+  const st = {vigente:['#1f8a4c','✓','Vigente'], pendiente:['#b45309','!','Pendiente'], eliminado:['#c8102e','✕','Eliminado']};
+  const f = v => v ? new Date(v).toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}) : '';
+  return `<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;font-size:12px;color:var(--text)">
+      <b style="font-size:20px;color:${n===est.length?'#1f8a4c':'#b45309'}">${n} de ${est.length}</b> documentos con versión vigente
+      <div style="flex:1;max-width:260px;height:8px;background:rgba(0,0,0,.07);border-radius:4px;overflow:hidden"><div style="height:100%;width:${est.length?n/est.length*100:0}%;background:${n===est.length?'#1f8a4c':'#f59e0b'}"></div></div>
+      ${pdf?'':`<a href="javascript:void(0)" onclick="pcSwitchTab('documentos')" style="margin-left:auto;font-size:11px;color:var(--red)">Ir a Documentación →</a>`}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px">${est.map(x=>{ const [c,ic,tx]=st[x.estado]; const r=x.reg;
+      return `<div style="border:1px solid ${x.estado==='vigente'?'var(--border)':c+'55'};border-left:4px solid ${c};border-radius:8px;padding:8px 10px;min-width:0">
+        <div style="display:flex;align-items:center;gap:6px"><span style="width:16px;height:16px;border-radius:50%;background:${c};color:#fff;font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center">${ic}</span>
+          <span style="font-size:11px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(x.nombre)}">${esc(x.nombre)}</span></div>
+        <div style="font-size:11px;margin-top:4px;color:${c};font-weight:700">${tx}${r?` · v${r.version}`:''}</div>
+        <div style="font-size:10px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r?.filename||'')}">${x.estado==='vigente'?`${esc(r.filename)} · ${f(r.fecha)}`:x.estado==='eliminado'?`Eliminado el ${f(r.fecha)}`:'Sin subir'}</div>
+      </div>`;}).join('')}</div>`;
+}
+async function pcDashCargarDocs(tok){
+  const el = () => document.getElementById('pc-dash-docs');
+  try{
+    const r = await fetch('/api/projconfig/documentos?ptsv='+encodeURIComponent(pcCurrentPTSV));
+    const d = await r.json();
+    if(tok !== _pcDashTok) return;
+    if(!r.ok || d.error) throw new Error(d.error||`HTTP ${r.status}`);
+    _pcDash.docs = d;
+    if(el()) el().innerHTML = pcDashDocsHTML(d);
+  }catch(e){ if(tok===_pcDashTok && el()) el().textContent = 'No se pudo cargar el estatus de documentos: '+e.message; }
 }
 
 function pcDashRenderJobs(local, srv){
@@ -13071,6 +13299,7 @@ function pcDashReportePDF(){
     ${kpi('Horas consumidas', _pcH(hc)+' h', pctH!=null?`${pctH}% de lo planeado`:'Sin horas planeadas', pcol(pctH))}
     ${kpi('Resultado operativo', _pcM(ro.tot), roPct!=null?`${roPct.toFixed(1)}% vs Internal Target`:'Sin Internal Target', col(ro.tot))}
   </div>
+  ${_pcDash.docs?`<h2>Documentación</h2><div class="hist">${pcDashDocsHTML(_pcDash.docs, true)}</div>`:''}
 
   <div class="row">
     <div style="flex:2">
@@ -13211,19 +13440,13 @@ function pcGetTimingDateRange() {
   if(!tb || !tb.rows.length) return null;
   const endDateMap = {};
   let minStart = null, maxEnd = null, runoffEnd = null;
+  const _res = _pcResolverTiming([...tb.rows]);
   [...tb.rows].forEach(tr => {
     const activ = _pcF(tr,'actividad');
-    const prev  = _pcF(tr,'actividad_previa');
-    const fIni  = _pcF(tr,'fecha_inicial');
-    const dias  = parseInt(_pcF(tr,'dias_estimados'))||0;
-    if(!activ) return;
-    const prevKey = (prev||'').trim().toUpperCase();
-    let fCond = _pcFecha(fIni);
-    if(!fCond && prev && endDateMap[prevKey]) {
-      fCond = new Date(endDateMap[prevKey]); fCond.setDate(fCond.getDate()+1);
-    }
-    if(!fCond) return;
-    const fObj = new Date(fCond); fObj.setDate(fObj.getDate()+dias);
+    if(!activ || tr.dataset.tipo==='grupo') return;
+    const r = _res.porFila.get(tr);
+    if(!r || !r.fCond) return;
+    const fCond = r.fCond, fObj = r.fObj;
     endDateMap[activ.trim().toUpperCase()] = fObj;
     if(!minStart || fCond < minStart) minStart = fCond;
     if(!maxEnd || fObj > maxEnd) maxEnd = fObj;
