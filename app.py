@@ -7773,6 +7773,7 @@ def api_dashboard_project_manager():
 #  Management y en el del administrador.
 # ══════════════════════════════════════════════════════════════════
 DASH_OM_ROLES = ("OPERATION MANAGER", "GENERAL MANAGEMENT")
+DASH_OM_STATUS = ("WIP",)             # rev65: la lista y el pastel muestran solo Jobs WIP
 
 def _puede_dash_om():
     me = session.get("user")
@@ -7781,13 +7782,13 @@ def _puede_dash_om():
 
 @app.route("/api/dashboard/operation-manager", methods=["GET"])
 def api_dashboard_operation_manager():
-    """Todos los Jobs Open/WIP (de cualquier PM) con Run Off interno y de cliente, fecha de
-    envío, Internal Target, costo actual y resultado operativo; y la suma de los puntos de
-    la LOP de los proyectos que tienen algún Job Open/WIP."""
+    """Jobs en WIP (de cualquier PM) con Run Off interno y de cliente, fecha de envío,
+    Internal Target, costo actual y resultado operativo; y la suma de los puntos de la LOP
+    de los proyectos que tienen algún Job WIP. (rev65: solo WIP; antes Open y WIP)"""
     if not _puede_dash_om(): return jsonify({"error": "Sin permiso"}), 403
     try:
         todos = scan_jobs()
-        activos = [j for j in todos if (j.get("status") or "").strip().upper() in PM_DASH_STATUS]
+        activos = [j for j in todos if (j.get("status") or "").strip().upper() in DASH_OM_STATUS]
         act_set = {j["job_number"].strip().upper() for j in activos}
         cfg_by_job = _cfg_por_job()
         today = datetime.date.today().isoformat()
