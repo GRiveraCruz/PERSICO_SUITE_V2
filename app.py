@@ -7874,7 +7874,7 @@ def api_dashboard_purchasing():
                 if not rows:
                     fila["boms"][tipo] = None; continue
                 vivos = [r for r in rows if r.get("status") != "Cancelado"]
-                fr_reas, fr_ord = [], []
+                fr_reas, fr_ord, fr_cub = [], [], []
                 for r in vivos:
                     q = float(r.get("quantity") or 0)
                     reas = float(r.get("cantidad_reasignada") or 0)
@@ -7886,6 +7886,7 @@ def api_dashboard_purchasing():
                         fr_ord.append(1.0 if r.get("status") in ("Comprado", "Orden interna", "Fabricado") else 0.0)
                     elif comp: fr_ord.append(min(1.0 - fr, comp / q) if q > 0 else 0.0)
                     else:    fr_ord.append((1.0 - fr) if r.get("status") == "Comprado" else 0.0)   # marcado a mano
+                    fr_cub.append(min(1.0, fr + fr_ord[-1]))     # rev66: parte cubierta (reasignada + ordenada)
                 # última actualización: alta, edición, reasignaciones y cambios de cantidad por carga
                 fechas = [str(r.get(k) or "") for r in rows for k in ("updated_at", "created_at") if r.get(k)]
                 fechas += [str(h.get("fecha") or "") for r in rows for h in (r.get("reasignaciones") or []) + (r.get("cambios_cantidad") or []) if h.get("fecha")]
@@ -7893,7 +7894,9 @@ def api_dashboard_purchasing():
                     "renglones": len(rows), "cancelados": len(rows) - len(vivos),
                     "ultima_actualizacion": max(fechas)[:10] if fechas else "",
                     "pct_reasignado": round(sum(fr_reas) / len(fr_reas), 4) if fr_reas else 0,
-                    "pct_ordenado": round(sum(fr_ord) / len(fr_ord), 4) if fr_ord else 0}
+                    "pct_ordenado": round(sum(fr_ord) / len(fr_ord), 4) if fr_ord else 0,
+                    "pct_cubierto": round(sum(fr_cub) / len(fr_cub), 4) if fr_cub else 0,
+                    "vivos": len(vivos)}
             tabla.append(fila)
         return jsonify({"year": year, "years": sorted({int(_year_of(j)) for j in all_jobs if _year_of(j)} | {CURRENT_YEAR}, reverse=True),
                         "grafica": grafica, "wip": tabla, "tipos": list(REQ_TIPOS),

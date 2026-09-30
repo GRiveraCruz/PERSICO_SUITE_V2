@@ -7251,26 +7251,125 @@ function renderPurchDashboard(d){
   wrap.innerHTML = head + kpis + charts + purchWipTableHTML(d, card);
 }
 
+// ════════════════════════════════════════════════════════
+//  rev66 — Jobs en WIP · requisiciones: un renglón por Job
+//  Cada celda de BOM: barras de % reasignado y % ordenado, antigüedad relativa y
+//  estado explícito (Sin requisición / Completo / Ningún BOM capturado).
+//  Resumen, búsqueda, filtros y orden. Clic en una celda abre esa requisición.
+// ════════════════════════════════════════════════════════
+const PURCH_DIAS_ALERTA = 14;          // sin movimiento por más de N días → alerta
+let _purchWip = null, _purchWipQ = '', _purchWipFiltro = 'todos', _purchWipOrden = 'avance';
+const PURCH_TITULO = {electrico:'Electric BOM', mecanico:'Mechanic BOM', componentes_mayores:'Major items', manufactura:'Manufacturing BOM'};
+const _purchDias = iso => { if(!iso) return null; const d = new Date(iso.slice(0,10)+'T00:00:00'), h = new Date(); h.setHours(0,0,0,0); return Math.round((h-d)/864e5); };
+const _purchHace = n => n==null ? '' : n<=0 ? 'hoy' : n===1 ? 'ayer' : n<30 ? `hace ${n} d` : n<365 ? `hace ${Math.round(n/30)} mes${Math.round(n/30)===1?'':'es'}` : `hace ${Math.round(n/365)} año${Math.round(n/365)===1?'':'s'}`;
+function _purchJobInfo(f, tipos){
+  const bs = tipos.map(t=>f.boms[t]).filter(Boolean);
+  const vivos = bs.filter(b=>b.vivos>0);
+  const avance = vivos.length ? vivos.reduce((a,b)=>a+b.pct_cubierto,0)/vivos.length : 0;
+  const dias = bs.map(b=>_purchDias(b.ultima_actualizacion)).filter(v=>v!=null);
+  const pend = vivos.some(b=>b.pct_cubierto < 0.999);
+  const estancado = vivos.some(b=>b.pct_cubierto < 0.999 && _purchDias(b.ultima_actualizacion) > PURCH_DIAS_ALERTA);
+  return {n: bs.length, avance, pend, estancado, ultima: dias.length ? Math.min(...dias) : null};
+}
+
 function purchWipTableHTML(d, card){
-  const tipos = d.tipos||['electrico','mecanico','componentes_mayores','manufactura'];
-  const titulo = {electrico:'Electric BOM', mecanico:'Mechanic BOM', componentes_mayores:'Major Items', manufactura:'Manufacturing BOM'};
-  const fdate = v => v ? new Date(v+'T12:00:00').toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'}) : '';
-  const bar = (p,col) => `<div style="position:relative;height:18px;background:rgba(0,0,0,.04);border-radius:3px;overflow:hidden">
-      <div style="position:absolute;left:0;top:0;bottom:0;width:${Math.min(100,p*100)}%;background:${col}"></div>
-      <span style="position:relative;font-size:11px;font-weight:600;line-height:18px">${(p*100).toFixed(0)}%</span></div>`;
-  const td = 'padding:5px 10px;border:1px solid var(--border);text-align:center';
+  _purchWip = d;
   if(!d.requisiciones_disponibles) return `<div style="${card}">Las requisiciones requieren la base de datos.</div>`;
   if(!(d.wip||[]).length) return `<div style="${card};color:var(--muted);text-align:center">No hay Jobs en WIP</div>`;
-  const body = d.wip.map(f=>{
-    const cel = (fn) => tipos.map(t=>`<td style="${td}">${f.boms[t]?fn(f.boms[t]):''}</td>`).join('');
-    return `<tr style="background:rgba(0,0,0,.05)"><td style="${td};text-align:left;font-weight:800;font-family:'DM Mono',monospace">${esc(f.job_number)}<div style="font-size:10px;font-weight:400;color:var(--muted);font-family:inherit">${esc(f.customer||'')}${f.pm?' · '+esc(f.pm):''}</div></td>
-        ${tipos.map(t=>`<td style="${td};${f.boms[t]?'background:#dcfce7;color:#15803d;font-weight:700':''}" ${f.boms[t]?`title="${f.boms[t].renglones} renglón(es)${f.boms[t].cancelados?`, ${f.boms[t].cancelados} cancelado(s)`:''}"`:''}>${f.boms[t]?'OK':''}</td>`).join('')}</tr>
-      <tr><td style="${td};text-align:left;font-size:11px">Última actualización</td>${cel(b=>fdate(b.ultima_actualizacion))}</tr>
-      <tr><td style="${td};text-align:left;font-size:11px">% Reasignado</td>${cel(b=>bar(b.pct_reasignado,'#c4b5fd'))}</tr>
-      <tr><td style="${td};text-align:left;font-size:11px">% Ordenado</td>${cel(b=>bar(b.pct_ordenado,'#fbbf24'))}</tr>`;}).join('');
-  return `<div style="${card};overflow-x:auto"><div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Jobs en WIP · requisiciones de compra</div>
-    <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:720px"><thead><tr><th style="${td}"></th>${tipos.map(t=>`<th style="${td};font-size:11px;text-transform:uppercase">${titulo[t]||t}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>
-    <div style="font-size:10px;color:var(--muted);margin-top:8px">% por renglón, sin contar renglones Cancelados. % Ordenado = renglones "Comprado" (solo la parte no reasignada). Celda vacía = no hay requisición de ese tipo.</div></div>`;
+  return `<div style="${card}" id="purch-wip-card">${purchWipInner()}</div>`;
+}
+
+function purchWipRender(){ const el = document.getElementById('purch-wip-card'); if(el) el.innerHTML = purchWipInner(); }
+
+function purchWipInner(){
+  const d = _purchWip, tipos = d.tipos||['electrico','mecanico','componentes_mayores','manufactura'];
+  const filas = d.wip.map(f=>({f, i:_purchJobInfo(f, tipos)}));
+  // resumen (sobre todos los Jobs WIP, sin filtros)
+  const sinReq = filas.filter(x=>!x.i.n).length, estanc = filas.filter(x=>x.i.estancado).length;
+  const bomsVivos = d.wip.flatMap(f=>tipos.map(t=>f.boms[t]).filter(b=>b && b.vivos>0));
+  const ordProm = bomsVivos.length ? Math.round(bomsVivos.reduce((a,b)=>a+b.pct_ordenado,0)/bomsVivos.length*100) : null;
+  const cubProm = bomsVivos.length ? Math.round(bomsVivos.reduce((a,b)=>a+b.pct_cubierto,0)/bomsVivos.length*100) : null;
+  // filtros
+  const q = _purchWipQ.trim().toLowerCase();
+  let vis = filas.filter(({f})=>!q || `${f.job_number} ${f.customer||''} ${f.pm||''}`.toLowerCase().includes(q));
+  if(_purchWipFiltro==='pendientes') vis = vis.filter(x=>x.i.pend || !x.i.n);
+  if(_purchWipFiltro==='sinreq')     vis = vis.filter(x=>tipos.some(t=>!x.f.boms[t]));
+  if(_purchWipFiltro==='estancados') vis = vis.filter(x=>x.i.estancado);
+  const ord = {
+    avance: (a,b)=> (a.i.n?1:0)-(b.i.n?1:0) || a.i.avance-b.i.avance || a.f.job_number.localeCompare(b.f.job_number),
+    job:    (a,b)=> a.f.job_number.localeCompare(b.f.job_number),
+    fecha:  (a,b)=> (b.i.ultima??-1)-(a.i.ultima??-1) || a.f.job_number.localeCompare(b.f.job_number),
+  }[_purchWipOrden];
+  vis.sort(ord);
+
+  const mini = (l,v,c,sub) => `<div style="background:rgba(0,0,0,.035);border-radius:8px;padding:10px 12px;flex:1;min-width:150px"><div style="font-size:11px;color:var(--muted2)">${l}</div><div style="font-size:22px;font-weight:700;color:${c||'var(--text)'}">${v}</div>${sub?`<div style="font-size:10px;color:var(--muted)">${sub}</div>`:''}</div>`;
+  const barra = (lbl, p, col) => `<div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted2)"><span>${lbl}</span><b style="color:var(--text)">${Math.round(p*100)}%</b></div>
+      <div style="height:5px;background:rgba(0,0,0,.06);border-radius:3px;overflow:hidden;margin:2px 0 4px"><div style="height:100%;width:${Math.min(100,p*100)}%;background:${col}"></div></div>`;
+  const chip = (t, bg, fg, ic='') => `<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:3px 9px;border-radius:6px;background:${bg};color:${fg};font-weight:600;white-space:nowrap">${ic}${t}</span>`;
+  const celda = (f, t) => {
+    const b = f.boms[t];
+    const abrir = `onclick="purchIrReq('${esc(f.job_number)}','${t}')" title="Abrir la requisición ${esc(PURCH_TITULO[t]||t)} de ${esc(f.job_number)}"`;
+    if(!b) return `<td style="padding:9px 10px;border-top:1px solid var(--border);vertical-align:middle;cursor:pointer" ${abrir}>${chip('Sin requisición','rgba(0,0,0,.05)','var(--muted)')}</td>`;
+    if(!b.vivos) return `<td style="padding:9px 10px;border-top:1px solid var(--border);vertical-align:middle;cursor:pointer" ${abrir}>${chip('Todo cancelado','rgba(0,0,0,.05)','var(--muted)')}</td>`;
+    const dias = _purchDias(b.ultima_actualizacion), completo = b.pct_cubierto >= 0.999;
+    const alerta = !completo && dias > PURCH_DIAS_ALERTA;
+    return `<td style="padding:9px 10px;border-top:1px solid var(--border);vertical-align:top;cursor:pointer" ${abrir} onmouseover="this.style.background='rgba(200,16,46,.03)'" onmouseout="this.style.background=''">
+      ${completo ? `<div style="margin-bottom:5px">${chip('Completo','#dcfce7','#15803d','✓ ')}</div>` : ''}
+      ${barra('Reasignado', b.pct_reasignado, '#8b7fe0')}${barra('Ordenado', b.pct_ordenado, '#1d9e75')}
+      <div style="font-size:10.5px;margin-top:2px;color:${alerta?'#b45309':'var(--muted)'};font-weight:${alerta?700:400}" title="Última actualización: ${esc(b.ultima_actualizacion||'—')} · ${b.vivos} renglón(es)${b.cancelados?`, ${b.cancelados} cancelado(s)`:''}">${alerta?'⚠ ':'🕒 '}${_purchHace(dias) || 'sin fecha'}</div>
+    </td>`;
+  };
+  const body = vis.map(({f,i})=>{
+    const jobCell = `<td style="padding:9px 10px;border-top:1px solid var(--border);vertical-align:top">
+        <div style="font-family:'DM Mono',monospace;font-weight:800">${esc(f.job_number)}</div>
+        <div style="font-size:10.5px;color:var(--muted)">${esc(f.customer||'')}${f.pm?' · '+esc(String(f.pm).replace(/ - Persico$/i,'')):''}</div>
+        <div style="font-size:10.5px;margin-top:4px;color:${i.n?'var(--muted2)':'var(--red)'};font-weight:${i.n?400:700}">${i.n?`${i.n} de ${tipos.length} BOMs`:'Sin requisiciones'}</div></td>`;
+    if(!i.n) return `<tr>${jobCell}<td colspan="${tipos.length}" style="padding:9px 10px;border-top:1px solid var(--border);vertical-align:middle;cursor:pointer" onclick="purchIrReq('${esc(f.job_number)}','electrico')" title="Abrir requisiciones de ${esc(f.job_number)}">${chip('Ningún BOM capturado','#fee2e2','#b91c1c')}</td></tr>`;
+    return `<tr>${jobCell}${tipos.map(t=>celda(f,t)).join('')}</tr>`;
+  }).join('');
+  const opt = (v, t, cur) => `<option value="${v}" ${v===cur?'selected':''}>${t}</option>`;
+  return `<div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);margin-bottom:10px">Jobs en WIP · requisiciones de compra</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+      ${mini('Jobs WIP', d.wip.length)}
+      ${mini('Sin ninguna requisición', sinReq, sinReq?'var(--red)':'var(--green)')}
+      ${mini(`Sin movimiento +${PURCH_DIAS_ALERTA} días`, estanc, estanc?'#b45309':'var(--green)', 'con renglones pendientes')}
+      ${mini('Ordenado promedio', ordProm==null?'—':ordProm+'%', null, cubProm==null?'':`cubierto (reasignado + ordenado): ${cubProm}%`)}
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+      <input type="search" value="${esc(_purchWipQ)}" placeholder="Buscar Job, cliente o PM" oninput="_purchWipQ=this.value;clearTimeout(window._pwT);window._pwT=setTimeout(()=>{purchWipRender();const i=document.querySelector('#purch-wip-card input[type=search]');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},250)" style="flex:1;min-width:200px;font-size:12px;padding:6px 10px;border:1px solid var(--border2);border-radius:6px">
+      <select onchange="_purchWipFiltro=this.value;purchWipRender()" style="font-size:12px;padding:5px 8px">
+        ${opt('todos','Todos los Jobs WIP',_purchWipFiltro)}${opt('pendientes','Con pendientes',_purchWipFiltro)}${opt('sinreq','Con algún BOM sin requisición',_purchWipFiltro)}${opt('estancados',`Sin movimiento +${PURCH_DIAS_ALERTA} días`,_purchWipFiltro)}
+      </select>
+      <select onchange="_purchWipOrden=this.value;purchWipRender()" style="font-size:12px;padding:5px 8px">
+        ${opt('avance','Ordenar: menor avance',_purchWipOrden)}${opt('job','Ordenar: Job',_purchWipOrden)}${opt('fecha','Ordenar: sin movimiento más tiempo',_purchWipOrden)}
+      </select>
+      <span style="font-size:11px;color:var(--muted)">${vis.length} de ${d.wip.length}</span>
+    </div>
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:820px;table-layout:fixed">
+      <colgroup><col style="width:22%">${tipos.map(()=>'<col>').join('')}</colgroup>
+      <thead><tr><th style="padding:7px 10px;text-align:left;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);cursor:default">Job</th>${tipos.map(t=>`<th style="padding:7px 10px;text-align:left;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);cursor:default">${PURCH_TITULO[t]||t}</th>`).join('')}</tr></thead>
+      <tbody>${body || `<tr><td colspan="${tipos.length+1}" style="padding:24px;text-align:center;color:var(--muted)">Ningún Job coincide con el filtro.</td></tr>`}</tbody></table></div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:10.5px;color:var(--muted2);margin-top:10px">
+      <span><span style="display:inline-block;width:12px;height:5px;background:#8b7fe0;border-radius:2px"></span> Reasignado de stock</span>
+      <span><span style="display:inline-block;width:12px;height:5px;background:#1d9e75;border-radius:2px"></span> Ordenado (OC)</span>
+      <span>✓ Completo = 100% cubierto entre reasignado y ordenado</span>
+      <span style="color:#b45309">⚠ Pendiente sin movimiento en más de ${PURCH_DIAS_ALERTA} días</span>
+      <span>Clic en una celda para abrir esa requisición</span>
+    </div>
+    <div style="font-size:10px;color:var(--muted);margin-top:4px">% por renglón, sin contar renglones Cancelados. Ordenado = parte comprada no reasignada.</div>`;
+}
+
+// Abre Compras → Requisición de Compra en el Job y el BOM elegidos
+function purchIrReq(job, tipo){
+  reqCurrentJob = job; reqCurrentTipo = tipo;
+  const idx = ['electrico','mecanico','componentes_mayores','manufactura'].indexOf(tipo);
+  document.querySelectorAll('#req-job-content .cl-toggle button').forEach((b,i)=>b.classList.toggle('on', i===idx));
+  const m = tipo==='manufactura';
+  const bc = document.getElementById('req-btns-compra'), bm = document.getElementById('req-btns-manuf');
+  if(bc) bc.style.display = m ? 'none' : '';
+  if(bm) bm.style.display = m ? '' : 'none';
+  const content = document.getElementById('req-job-content'); if(content) content.style.display = '';
+  switchMenu('requisicion','ng-compras');
 }
 
 // ── Admin: ligar usuario PROJECT MANAGER con el/los nombres de PM de los Jobs
