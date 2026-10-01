@@ -7751,7 +7751,13 @@ def api_dashboard_project_manager():
         for j in sorted({x["job_number"]: x for x in jobs + year_jobs}.values(), key=lambda x: x.get("job_number", "")):
             jn = j["job_number"]
             jc = cfg_by_job.get(jn.strip().upper(), {})
-            row, y = _dash_job_row(j, jc, pools, today)
+            row, y = _dash_job_row(j, jc, pools, today, con_revenue=True)
+            if "resultado_operativo" in row:      # rev71: datos de la sección "Resultado" de las tarjetas
+                row["costo_actual"] = round(row["base"] - row["resultado_operativo"], 2)
+                rv = float(row.get("revenue") or 0)
+                row["resultado_financiero"] = round(rv - row["costo_actual"], 2)
+                row["financiero_pct"] = round(row["resultado_financiero"] / rv * 100, 1) if rv else None
+                row["runoff_interno"] = jc.get("runoff_interno") or ""
             if j in jobs:
                 out["jobs"].append(row)
             # rev50: la gráfica de barras también recibe los Jobs Open/WIP de otros años (son la vista
@@ -7765,6 +7771,9 @@ def api_dashboard_project_manager():
                                        "target_configurado": row["internal_target"] is not None,
                                        # sin target (revenue 0 y sin Configurar Proyecto) el margen no tiene contra qué medirse
                                        "margen": round((row["base"] - cost) / cost, 4) if cost > 0 and row["base"] > 0 else None})
+        # rev71: tarjetas de sus Jobs Open/WIP (mismo formato que Operaciones / ENGINEERING)
+        out["cards"] = _ing_cards(sorted(jobs, key=lambda x: x.get("job_number", "")))
+        out["cards_meta"] = _ing_meta()
         return jsonify(out)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -7929,57 +7938,64 @@ def _docs_estado_por_ptsv(keys):
                                    "fecha": m.get("fecha", ""), "filename": m.get("filename")}
     return out
 
+def _ing_cards(wip):
+    """rev71: tarjetas de Jobs (documentación, fechas, tiempo, compras, LOP). Las usan el
+    dashboard ENGINEERING, Operaciones/superadmin y el dashboard PM."""
+    hoy = datetime.date.today()
+    cfg_de_job = {}
+    for cfg in projcfg_load():
+        for jc in cfg.get("jobs") or []:
+            cfg_de_job.setdefault(str(jc.get("job_number") or "").strip().upper(), (cfg, jc))
+    keys = {_ptsv_key(c.get("ptsv")) for c, _jc in cfg_de_job.values()}
+    docs = _docs_estado_por_ptsv(keys)
+    compras = {f["job_number"]: f["boms"] for f in _req_resumen_jobs(wip)}
+    def fd(v):
+        try: return datetime.date.fromisoformat(str(v or "")[:10])
+        except ValueError: return None
+    cards = []
+    for j in wip:
+        jn = j["job_number"]
+        cfg, jc = cfg_de_job.get(jn.strip().upper(), ({}, {}))
+        tf = _timing_fechas(cfg.get("timing"))
+        # Arranque: actividad "Kickoff" del Timing → F. Inicio del Job → alta del Job
+        kick = next((v[0] for k, v in tf.items() if re.sub(r"[^A-Z]", "", _sin_acentos(k)) == "KICKOFF"), None)
+        ini, ini_o = (kick, "Kickoff del Timing") if kick else ((fd(jc.get("fecha_inicio")), "F. Inicio") if fd(jc.get("fecha_inicio")) else (fd(j.get("created_at")), "alta del Job"))
+        # Final: envío → Run Off cliente → Run Off interno → última actividad del Timing
+        cand = [("Envío", fd(jc.get("fecha_envio")) or fd(j.get("ship_date"))), ("Run Off cliente", fd(jc.get("runoff_cliente"))),
+                ("Run Off interno", fd(jc.get("runoff_interno"))), ("fin del Timing", max((v[1] for v in tf.values()), default=None))]
+        fin_o, fin = next(((o, d) for o, d in cand if d), ("", None))
+        tiempo = None
+        if ini and fin:
+            total = max((fin - ini).days, 1)
+            trans = (hoy - ini).days
+            tiempo = {"inicio": ini.isoformat(), "inicio_origen": ini_o, "fin": fin.isoformat(), "fin_origen": fin_o,
+                      "total": total, "transcurridos": trans, "restantes": (fin - hoy).days,
+                      "pct": round(max(0, trans) / total * 100, 1)}
+        lop = {"OPEN": 0, "CLOSE": 0, "INFO": 0}
+        for pnt in cfg.get("puntos_abiertos") or []:
+            if not (pnt.get("descripcion") or pnt.get("tool_frame") or pnt.get("responsable")): continue
+            e = str(pnt.get("estatus") or "OPEN").strip().upper()
+            lop[e if e in lop else "OPEN"] += 1
+        cards.append({"job_number": jn, "status": j.get("status", ""), "customer": j.get("customer", ""), "description": j.get("description", ""),
+                      "pm": j.get("pm", ""), "ptsv": cfg.get("ptsv", ""),
+                      "docs": docs.get(_ptsv_key(cfg.get("ptsv")), {}) if cfg else {},
+                      "runoff_interno": jc.get("runoff_interno") or "", "runoff_cliente": jc.get("runoff_cliente") or "",
+                      "fecha_envio": jc.get("fecha_envio") or j.get("ship_date") or "",
+                      "tiempo": tiempo, "compras": compras.get(jn) or {}, "lop": lop})
+    return cards
+
+def _ing_meta():
+    return {"doc_tipos": [{"k": k, "nombre": n} for k, n in PROJ_DOC_TIPOS], "req_tipos": list(REQ_TIPOS),
+            "requisiciones_disponibles": bool(_orm and _orm.DB_ENABLED), "hoy": datetime.date.today().isoformat()}
+
 @app.route("/api/dashboard/engineering", methods=["GET"])
 def api_dashboard_engineering():
     """Una tarjeta por Job WIP: documentación del proyecto, Run Off interno y de cliente,
     envío, tiempo transcurrido/restante, estatus de compras y puntos abiertos."""
     if not _puede_dash_ing(): return jsonify({"error": "Sin permiso"}), 403
     try:
-        hoy = datetime.date.today()
         wip = sorted([j for j in scan_jobs() if (j.get("status") or "").strip().upper() == "WIP"], key=lambda x: x.get("job_number", ""))
-        cfg_de_job = {}
-        for cfg in projcfg_load():
-            for jc in cfg.get("jobs") or []:
-                cfg_de_job.setdefault(str(jc.get("job_number") or "").strip().upper(), (cfg, jc))
-        keys = {_ptsv_key(c.get("ptsv")) for c, _jc in cfg_de_job.values()}
-        docs = _docs_estado_por_ptsv(keys)
-        compras = {f["job_number"]: f["boms"] for f in _req_resumen_jobs(wip)}
-        def fd(v):
-            try: return datetime.date.fromisoformat(str(v or "")[:10])
-            except ValueError: return None
-        cards = []
-        for j in wip:
-            jn = j["job_number"]
-            cfg, jc = cfg_de_job.get(jn.strip().upper(), ({}, {}))
-            tf = _timing_fechas(cfg.get("timing"))
-            # Arranque: actividad "Kickoff" del Timing → F. Inicio del Job → alta del Job
-            kick = next((v[0] for k, v in tf.items() if re.sub(r"[^A-Z]", "", _sin_acentos(k)) == "KICKOFF"), None)
-            ini, ini_o = (kick, "Kickoff del Timing") if kick else ((fd(jc.get("fecha_inicio")), "F. Inicio") if fd(jc.get("fecha_inicio")) else (fd(j.get("created_at")), "alta del Job"))
-            # Final: envío → Run Off cliente → Run Off interno → última actividad del Timing
-            cand = [("Envío", fd(jc.get("fecha_envio")) or fd(j.get("ship_date"))), ("Run Off cliente", fd(jc.get("runoff_cliente"))),
-                    ("Run Off interno", fd(jc.get("runoff_interno"))), ("fin del Timing", max((v[1] for v in tf.values()), default=None))]
-            fin_o, fin = next(((o, d) for o, d in cand if d), ("", None))
-            tiempo = None
-            if ini and fin:
-                total = max((fin - ini).days, 1)
-                trans = (hoy - ini).days
-                tiempo = {"inicio": ini.isoformat(), "inicio_origen": ini_o, "fin": fin.isoformat(), "fin_origen": fin_o,
-                          "total": total, "transcurridos": trans, "restantes": (fin - hoy).days,
-                          "pct": round(max(0, trans) / total * 100, 1)}
-            lop = {"OPEN": 0, "CLOSE": 0, "INFO": 0}
-            for pnt in cfg.get("puntos_abiertos") or []:
-                if not (pnt.get("descripcion") or pnt.get("tool_frame") or pnt.get("responsable")): continue
-                e = str(pnt.get("estatus") or "OPEN").strip().upper()
-                lop[e if e in lop else "OPEN"] += 1
-            cards.append({"job_number": jn, "customer": j.get("customer", ""), "description": j.get("description", ""),
-                          "pm": j.get("pm", ""), "ptsv": cfg.get("ptsv", ""),
-                          "docs": docs.get(_ptsv_key(cfg.get("ptsv")), {}) if cfg else {},
-                          "runoff_interno": jc.get("runoff_interno") or "", "runoff_cliente": jc.get("runoff_cliente") or "",
-                          "fecha_envio": jc.get("fecha_envio") or j.get("ship_date") or "",
-                          "tiempo": tiempo, "compras": compras.get(jn) or {}, "lop": lop})
-        return jsonify({"cards": cards, "doc_tipos": [{"k": k, "nombre": n} for k, n in PROJ_DOC_TIPOS],
-                        "req_tipos": list(REQ_TIPOS), "requisiciones_disponibles": bool(_orm and _orm.DB_ENABLED),
-                        "hoy": hoy.isoformat()})
+        return jsonify({"cards": _ing_cards(wip), **_ing_meta()})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
