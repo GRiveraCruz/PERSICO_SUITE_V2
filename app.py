@@ -7674,7 +7674,7 @@ def _ro_job(jn, y, pres, pools, detalle=None):
 
 PM_DASH_STATUS = ("OPEN", "WIP")
 
-def _dash_job_row(j, jc, pools, today):
+def _dash_job_row(j, jc, pools, today, con_revenue=False):
     """Renglón de un Job para los dashboards (PM, Operation Manager): fechas de Configurar
     Proyecto, targets y resultado operativo (misma fórmula que el Job Report, vida del Job)."""
     jn = j["job_number"]
@@ -7691,7 +7691,8 @@ def _dash_job_row(j, jc, pools, today):
     row["target_mo"]       = _num(jc.get("target_mo"))
     try:
         r_ = _ro_job(jn, y, jc.get("presupuesto_disponible"), pools)
-        r_.pop("revenue", None)
+        rev = r_.pop("revenue", None)
+        if con_revenue: row["revenue"] = rev          # rev70: para el resultado financiero
         row.update(r_)
     except Exception as e:
         row["error"] = str(e)
@@ -7796,11 +7797,16 @@ def api_dashboard_operation_manager():
         filas = []
         for j in sorted(activos, key=lambda x: x.get("job_number", "")):
             jc = cfg_by_job.get(j["job_number"].strip().upper(), {})
-            row, _y = _dash_job_row(j, jc, pools, today)
+            row, _y = _dash_job_row(j, jc, pools, today, con_revenue=True)
             row["runoff_interno"] = jc.get("runoff_interno") or ""
             row["fecha_inicio"] = jc.get("fecha_inicio") or ""
             if "resultado_operativo" in row:
                 row["costo_actual"] = round(row["base"] - row["resultado_operativo"], 2)
+                # rev70: resultado financiero = revenue (CPO de todos los años, o el del Job) − costo actual,
+                # igual que el Gross Margin del Job Report
+                rv = float(row.get("revenue") or 0)
+                row["resultado_financiero"] = round(rv - row["costo_actual"], 2)
+                row["financiero_pct"] = round(row["resultado_financiero"] / rv * 100, 1) if rv else None
             filas.append(row)
         # LOP de los proyectos con algún Job Open/WIP
         lop = {"OPEN": 0, "CLOSE": 0, "INFO": 0}
@@ -7867,6 +7873,115 @@ def _req_resumen_jobs(wip):
                 "vivos": len(vivos)}
         tabla.append(fila)
     return tabla
+
+# ══════════════════════════════════════════════════════════════════
+#  DASHBOARD ENGINEERING (rev69) — tarjetas de los Jobs WIP
+# ══════════════════════════════════════════════════════════════════
+DASH_ING_ROLES = ("ENGINEERING", "GENERAL MANAGEMENT", "OPERATION MANAGER")
+
+def _puede_dash_ing():
+    me = session.get("user")
+    info = get_user_perms(me) if me else {}
+    return is_admin() or info.get("role") in DASH_ING_ROLES
+
+def _timing_fechas(timing):
+    """Resuelve fechas del Timing guardado (sin depender del orden): {actividad: (inicio, fin)}."""
+    def fd(v):
+        try:
+            d = datetime.date.fromisoformat(str(v or "")[:10])
+            return d if 2000 <= d.year <= 2100 else None
+        except ValueError: return None
+    filas = [t for t in (timing or []) if t.get("tipo") != "grupo" and (t.get("actividad") or "").strip()]
+    nk = lambda v: (v or "").strip().upper()
+    res, cambio, vueltas = {}, True, 0
+    while cambio and vueltas <= len(filas):
+        cambio, vueltas = False, vueltas + 1
+        for t in filas:
+            k = nk(t.get("actividad"))
+            if k in res: continue
+            ini = fd(t.get("fecha_inicial"))
+            if not ini and t.get("actividad_previa") and nk(t["actividad_previa"]) in res:
+                ini = res[nk(t["actividad_previa"])][1] + datetime.timedelta(days=1)
+            if not ini: continue
+            try: dias = int(float(t.get("dias_estimados") or 0))
+            except (TypeError, ValueError): dias = 0
+            res[k] = (ini, ini + datetime.timedelta(days=dias)); cambio = True
+    return res
+
+def _docs_estado_por_ptsv(keys):
+    """{ptsv_key: {tipo: {"version", "estado", "fecha", "filename"}}} sin cargar archivos."""
+    out = {k: {} for k in keys}
+    if not keys: return out
+    if _orm and _orm.DB_ENABLED:
+        s = _orm.get_session()
+        try:
+            P = _orm.ProyectoDocumento
+            for k, t, v, fn, fe in s.query(P.ptsv_key, P.tipo, P.version, P.filename, P.updated_at).filter(P.ptsv_key.in_(list(keys))).all():
+                out.setdefault(k, {})[t] = {"version": v, "estado": "vigente" if fn else "eliminado",
+                                            "fecha": fe.isoformat(timespec="minutes") if fe else "", "filename": fn}
+        finally:
+            s.close()
+    else:
+        for k in keys:
+            for t, _n in PROJ_DOC_TIPOS:
+                m = _doc_fs_meta(k, t)
+                if m: out[k][t] = {"version": m["version"], "estado": "vigente" if m.get("filename") else "eliminado",
+                                   "fecha": m.get("fecha", ""), "filename": m.get("filename")}
+    return out
+
+@app.route("/api/dashboard/engineering", methods=["GET"])
+def api_dashboard_engineering():
+    """Una tarjeta por Job WIP: documentación del proyecto, Run Off interno y de cliente,
+    envío, tiempo transcurrido/restante, estatus de compras y puntos abiertos."""
+    if not _puede_dash_ing(): return jsonify({"error": "Sin permiso"}), 403
+    try:
+        hoy = datetime.date.today()
+        wip = sorted([j for j in scan_jobs() if (j.get("status") or "").strip().upper() == "WIP"], key=lambda x: x.get("job_number", ""))
+        cfg_de_job = {}
+        for cfg in projcfg_load():
+            for jc in cfg.get("jobs") or []:
+                cfg_de_job.setdefault(str(jc.get("job_number") or "").strip().upper(), (cfg, jc))
+        keys = {_ptsv_key(c.get("ptsv")) for c, _jc in cfg_de_job.values()}
+        docs = _docs_estado_por_ptsv(keys)
+        compras = {f["job_number"]: f["boms"] for f in _req_resumen_jobs(wip)}
+        def fd(v):
+            try: return datetime.date.fromisoformat(str(v or "")[:10])
+            except ValueError: return None
+        cards = []
+        for j in wip:
+            jn = j["job_number"]
+            cfg, jc = cfg_de_job.get(jn.strip().upper(), ({}, {}))
+            tf = _timing_fechas(cfg.get("timing"))
+            # Arranque: actividad "Kickoff" del Timing → F. Inicio del Job → alta del Job
+            kick = next((v[0] for k, v in tf.items() if re.sub(r"[^A-Z]", "", _sin_acentos(k)) == "KICKOFF"), None)
+            ini, ini_o = (kick, "Kickoff del Timing") if kick else ((fd(jc.get("fecha_inicio")), "F. Inicio") if fd(jc.get("fecha_inicio")) else (fd(j.get("created_at")), "alta del Job"))
+            # Final: envío → Run Off cliente → Run Off interno → última actividad del Timing
+            cand = [("Envío", fd(jc.get("fecha_envio")) or fd(j.get("ship_date"))), ("Run Off cliente", fd(jc.get("runoff_cliente"))),
+                    ("Run Off interno", fd(jc.get("runoff_interno"))), ("fin del Timing", max((v[1] for v in tf.values()), default=None))]
+            fin_o, fin = next(((o, d) for o, d in cand if d), ("", None))
+            tiempo = None
+            if ini and fin:
+                total = max((fin - ini).days, 1)
+                trans = (hoy - ini).days
+                tiempo = {"inicio": ini.isoformat(), "inicio_origen": ini_o, "fin": fin.isoformat(), "fin_origen": fin_o,
+                          "total": total, "transcurridos": trans, "restantes": (fin - hoy).days,
+                          "pct": round(max(0, trans) / total * 100, 1)}
+            lop = {"OPEN": 0, "CLOSE": 0, "INFO": 0}
+            for pnt in cfg.get("puntos_abiertos") or []:
+                if not (pnt.get("descripcion") or pnt.get("tool_frame") or pnt.get("responsable")): continue
+                e = str(pnt.get("estatus") or "OPEN").strip().upper()
+                lop[e if e in lop else "OPEN"] += 1
+            cards.append({"job_number": jn, "customer": j.get("customer", ""), "description": j.get("description", ""),
+                          "pm": j.get("pm", ""), "ptsv": cfg.get("ptsv", ""),
+                          "docs": docs.get(_ptsv_key(cfg.get("ptsv")), {}) if cfg else {},
+                          "runoff_interno": jc.get("runoff_interno") or "", "runoff_cliente": jc.get("runoff_cliente") or "",
+                          "fecha_envio": jc.get("fecha_envio") or j.get("ship_date") or "",
+                          "tiempo": tiempo, "compras": compras.get(jn) or {}, "lop": lop})
+        return jsonify({"cards": cards, "doc_tipos": [{"k": k, "nombre": n} for k, n in PROJ_DOC_TIPOS],
+                        "req_tipos": list(REQ_TIPOS), "requisiciones_disponibles": bool(_orm and _orm.DB_ENABLED),
+                        "hoy": hoy.isoformat()})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/api/dashboard/purchasing", methods=["GET"])
 def api_dashboard_purchasing():
@@ -8280,6 +8395,10 @@ MODULES = [
     "viaticos", "gastos-viaje", "envios",
     # Reportes y Configuración
     "wh", "report", "multirpt", "fx", "projconfig",
+    # rev69: pestañas de Configurar Proyecto. Si un usuario no tiene la llave, la pestaña
+    # hereda el nivel de "projconfig" (así los usuarios existentes no pierden nada).
+    "projconfig-dashboard", "projconfig-presupuesto", "projconfig-timing",
+    "projconfig-abiertos", "projconfig-cambios", "projconfig-documentos",
     # Finanzas
     "fin-recepciones", "fin-procesarcompra", "fin-cpp", "fin-pagos", "fin-esquemas",
     # Recursos Humanos
@@ -8888,6 +9007,24 @@ def can(action, module):
         return _level_gte(level, LEVEL_FULL)
     return False
 
+PC_TABS = ("dashboard", "presupuesto", "timing", "abiertos", "cambios", "documentos")
+
+def pc_tab_level(tab, info=None):
+    """Nivel efectivo del usuario en una pestaña de Configurar Proyecto: el de
+    "projconfig-<pestaña>" si está definido; si no, el de "projconfig"."""
+    if info is None:
+        user = session.get("user")
+        if not user: return LEVEL_NONE
+        info = get_user_perms(user)
+    if info.get("role") == "admin": return LEVEL_FULL
+    perms = info.get("permissions", {}) or {}
+    lv = perms.get("projconfig-" + tab)
+    return lv if lv in (LEVEL_NONE, LEVEL_VIEW, LEVEL_CREATE, LEVEL_FULL) else perms.get("projconfig", LEVEL_NONE)
+
+def pc_tab_can(action, tab):
+    need = {"view": LEVEL_VIEW, "create": LEVEL_CREATE, "edit": LEVEL_CREATE, "delete": LEVEL_FULL}[action]
+    return _level_gte(pc_tab_level(tab), need)
+
 def is_admin():
     user = session.get("user")
     if not user: return False
@@ -9114,6 +9251,8 @@ def api_admin_update_user(username):
         # Merge single-module update into existing permissions
         existing = users[username].get("permissions", _default_perms(new_role))
         existing.update(data["permissions"])
+        # rev69: null = quitar la llave (la pestaña vuelve a heredar de "projconfig")
+        existing = {k: v for k, v in existing.items() if v is not None}
         users[username]["permissions"] = existing
     elif role_changed:
         # Antes esta condición comparaba new_role contra users[username]["role"] DESPUÉS
@@ -9132,6 +9271,7 @@ def api_me_perms():
     return jsonify({"user": user, "role": info.get("role","viewer"),
                     "permissions": info.get("permissions", _default_perms("viewer")),
                     "puede_ver_salarios": bool(info.get("puede_ver_salarios")) or is_admin(),
+                    "projconfig_tabs": {t: pc_tab_level(t, info) for t in PC_TABS},
                     "is_admin": is_admin()})
 
 
@@ -13337,7 +13477,10 @@ def api_get_projconfig():
 
 @app.route("/api/projconfig", methods=["POST"])
 def api_create_projconfig():
-    if not can("create", "projconfig"): return jsonify({"error":"Sin permiso"}), 403
+    # rev69: basta con poder editar alguna pestaña; lo de las pestañas sin permiso de
+    # edición se conserva tal como estaba guardado.
+    if not (can("create", "projconfig") or any(pc_tab_can("create", t) for t in ("presupuesto", "timing", "abiertos", "cambios"))):
+        return jsonify({"error":"Sin permiso"}), 403
     try:
         data = request.get_json()
         ptsv = str(data.get("ptsv","")).strip().upper()
@@ -13349,7 +13492,7 @@ def api_create_projconfig():
             if existing: ptsv = existing.get("ptsv", ptsv).upper()     # conservar el nombre ya guardado
 
             jobs_in = data.get("jobs", [])
-            if not can("delete", "projconfig") and existing:
+            if not pc_tab_can("delete", "presupuesto") and existing:
                 old_jobs = {j.get("job_number"): j for j in existing.get("jobs", [])}
                 for j in jobs_in:
                     old = old_jobs.get(j.get("job_number"))
@@ -13374,6 +13517,12 @@ def api_create_projconfig():
                 "created_at": datetime.datetime.now().isoformat(),
                 "updated_at": datetime.datetime.now().isoformat(),
             }
+            # rev69: pestañas sin permiso de edición → se conserva lo guardado
+            for tab, campo in (("presupuesto", "jobs"), ("timing", "timing"), ("abiertos", "puntos_abiertos"), ("cambios", "control_cambios")):
+                if not pc_tab_can("create", tab):
+                    rec[campo] = (existing or {}).get(campo, [])
+            if existing and not pc_tab_can("create", "presupuesto"):
+                rec["plan_personal"] = existing.get("plan_personal", [])
             records.append(rec)
             projcfg_save(records)
         return jsonify({"ok": True, "record": rec})
@@ -13745,7 +13894,7 @@ def _doc_fs_meta(key, tipo):
 
 @app.route("/api/projconfig/documentos", methods=["GET"])
 def api_projconfig_documentos():
-    if not can("view", "projconfig"): return jsonify({"error": "Sin permiso"}), 403
+    if not (pc_tab_can("view", "documentos") or pc_tab_can("view", "dashboard") or _puede_dash_ing()): return jsonify({"error": "Sin permiso"}), 403
     key = _ptsv_key(request.args.get("ptsv"))
     if not key: return jsonify({"error": "Falta el PT/SV"}), 400
     docs = {}
@@ -13770,7 +13919,7 @@ def api_projconfig_documentos():
 @app.route("/api/projconfig/documentos", methods=["POST"])
 def api_projconfig_documentos_subir():
     """Sube la versión nueva de un documento. Reemplaza (borra) la versión anterior."""
-    if not can("create", "projconfig"): return jsonify({"error": "Sin permiso"}), 403
+    if not pc_tab_can("create", "documentos"): return jsonify({"error": "Sin permiso"}), 403
     ptsv = (request.form.get("ptsv") or "").strip()
     key, tipo = _ptsv_key(ptsv), (request.form.get("tipo") or "").strip()
     f = request.files.get("file")
@@ -13827,7 +13976,7 @@ def api_projconfig_documentos_subir():
 def api_projconfig_documentos_eliminar():
     """Elimina el archivo vigente de un documento. Se conserva el número de versión y el
     historial: la siguiente subida será la versión siguiente."""
-    if not (can("delete", "projconfig") or can("create", "projconfig")): return jsonify({"error": "Sin permiso"}), 403
+    if not pc_tab_can("create", "documentos"): return jsonify({"error": "Sin permiso"}), 403
     key, tipo = _ptsv_key(request.args.get("ptsv")), (request.args.get("tipo") or "").strip()
     if not key or tipo not in dict(PROJ_DOC_TIPOS): return jsonify({"error": "Parámetros inválidos"}), 400
     user = session.get("user", "")
@@ -13871,7 +14020,7 @@ def api_projconfig_documentos_eliminar():
 @app.route("/api/projconfig/documentos/archivo", methods=["GET"])
 def api_projconfig_documentos_archivo():
     """Descarga (o abre, si es PDF/imagen) la versión vigente de un documento."""
-    if not can("view", "projconfig"): return jsonify({"error": "Sin permiso"}), 403
+    if not (pc_tab_can("view", "documentos") or _puede_dash_ing()): return jsonify({"error": "Sin permiso"}), 403
     key, tipo = _ptsv_key(request.args.get("ptsv")), (request.args.get("tipo") or "").strip()
     if not key or tipo not in dict(PROJ_DOC_TIPOS): return jsonify({"error": "Parámetros inválidos"}), 400
     if _orm and _orm.DB_ENABLED:
