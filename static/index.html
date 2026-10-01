@@ -527,6 +527,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
           <button class="nav-sub-btn">Control de Personal ▸</button>
           <div class="nav-submenu">
             <button onclick="switchMenu('personal-areas','ng-rrhh')">Áreas</button>
+            <button onclick="switchMenu('personal-tipos-puesto','ng-rrhh')">Tipo de Puesto</button>
             <button onclick="switchMenu('personal-perfiles','ng-rrhh')">Perfiles de Trabajo</button>
             <button onclick="switchMenu('personal-listado','ng-rrhh')">Listado de Trabajadores</button>
           </div>
@@ -2894,6 +2895,37 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
 </div>
 
 <!-- ══════════════════════════════════════════════════
+     MODULE: CONTROL DE PERSONAL — Tipo de Puesto (rev77)
+══════════════════════════════════════════════════ -->
+<div class="module" id="mod-personal-tipos-puesto">
+  <div class="main-content" style="overflow-y:auto">
+    <div class="bar-top"><h1>🕘 Tipo de Puesto</h1><button class="btn-reload" onclick="loadTiposPuesto()">Recargar</button></div>
+    <div style="padding:24px;display:grid;grid-template-columns:minmax(420px,600px) 1fr;gap:20px;align-items:start">
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:20px" id="tp-form-card">
+        <div class="sl" style="margin-top:0" id="tp-form-titulo">Nuevo tipo de puesto</div>
+        <div class="fi"><label>Nombre del tipo de puesto</label><input type="text" id="tp-nombre" placeholder="Ej. Administrativo, Operativo turno A, Ingeniería…"></div>
+        <div class="sl">Jornada laboral de la semana</div>
+        <div style="font-size:11px;color:var(--muted);margin:-4px 0 8px">Deja la entrada y la salida vacías en los días de descanso. Si la salida es menor que la entrada, el turno termina al día siguiente.</div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px" id="tp-jornada"></table>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+          <button type="button" class="btn-reload" style="font-size:10.5px;padding:3px 9px" onclick="tpCopiarLunes(4)">Copiar lunes a martes–viernes</button>
+          <button type="button" class="btn-reload" style="font-size:10.5px;padding:3px 9px" onclick="tpCopiarLunes(3)">Copiar lunes a martes–jueves</button>
+          <button type="button" class="btn-reload" style="font-size:10.5px;padding:3px 9px" onclick="tpLimpiar()">Limpiar</button>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+          <button class="btn btn-s" id="tp-cancelar" style="width:auto;padding:8px 16px;display:none" onclick="tpNuevo()">Cancelar edición</button>
+          <button class="btn btn-p" id="tp-guardar" style="width:auto;padding:8px 18px" onclick="tpGuardar()">+ Agregar tipo de puesto</button>
+        </div>
+      </div>
+      <div>
+        <div class="sl" style="margin-top:0">Tipos de puesto registrados</div>
+        <div id="tp-list" style="display:flex;flex-direction:column;gap:8px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
      MODULE: CONTROL DE PERSONAL — Perfiles de Trabajo
 ══════════════════════════════════════════════════ -->
 <div class="module" id="mod-personal-perfiles">
@@ -2907,6 +2939,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
         </div>
         <div class="fr" style="align-items:flex-end;gap:8px;margin-top:10px">
           <div class="fi" style="flex:1;margin-bottom:0"><label>Área</label><select id="perfil-new-area"><option value="">— Sin área —</option></select></div>
+          <div class="fi" style="flex:1;margin-bottom:0"><label>Tipo de puesto</label><select id="perfil-new-tipo"><option value="">— Sin tipo —</option></select></div>
           <button class="btn btn-p" style="width:auto;padding:9px 18px;margin-bottom:0" onclick="perfilCreate()">+ Agregar</button>
         </div>
       </div>
@@ -4302,6 +4335,8 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
 
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
           <div style="font-size:11px;color:var(--muted)"><span id="req-tab-count">—</span></div>
+          <span id="req-btns-excel" style="margin-right:6px"><button class="btn-reload" onclick="reqDescargarExcel(false)" title="Descarga en Excel el BOM de la pestaña actual">⬇ Excel de este BOM</button>
+          <button class="btn-reload" onclick="reqDescargarExcel(true)" title="Un archivo con una hoja por BOM, resumen e historial de cargas" style="margin-left:6px">⬇ Excel de todos los BOMs</button></span>
           <span id="req-btns-compra"><button class="btn-reload" onclick="reqBuscarStock()">Buscar en Stock</button>
           <button class="btn-reload" onclick="reqOpenOC()" style="margin-left:6px;border-color:var(--red);color:var(--red)">Generar Orden de Compra</button></span>
           <span id="req-btns-manuf" style="display:none"><input type="file" id="req-planos-file" accept=".pdf,application/pdf" multiple style="display:none" onchange="reqSubirPlanos(this.files)">
@@ -5811,6 +5846,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
       </div>
       <div class="fr"><div class="fi"><label>Jefe Directo</label><select id="te-jefe"><option value="">— Sin jefe directo asignado —</option></select></div></div>
       <div class="fi" style="margin-top:10px"><label>Antigüedad</label><div style="font-size:13px;font-weight:600;color:var(--gold)" id="te-antiguedad">—</div></div>
+      <div class="fi" style="margin-top:10px"><label>Tipo de puesto y jornada (heredado del perfil)</label><div style="font-size:12px" id="te-tipo-puesto">—</div></div>
       <div class="sl">Estatus Laboral</div>
       <div class="fr">
         <div class="fi"><label>Estado</label>

@@ -118,6 +118,7 @@ function switchMenu(mod, groupId) {
   if(mod==='admin') { setTimeout(loadAdminUsers,100); setTimeout(backupLoadConfig,150); setTimeout(loadDocCounters,150); setTimeout(dbLoadEstatus,150); setTimeout(dbLoadEstatusGeneral,150); }
   if(mod==='personal-areas') { setTimeout(loadAreas,100); }
   if(mod==='personal-perfiles') { setTimeout(loadPerfiles,100); }
+  if(mod==='personal-tipos-puesto') { setTimeout(loadTiposPuesto,100); }
   if(mod==='personal-listado') { setTimeout(loadPersonal,100); }
   if(mod==='consignacion') { setTimeout(loadCsg,50); }
   if(mod==='apartados') { setTimeout(loadApartados,50); }   // antes solo se cargaba al abrir la suite
@@ -1110,6 +1111,7 @@ function areaRenderOrgChart(){
 
 
 async function loadPerfiles(){
+  try{ const t=await(await fetch('/api/tipos-puesto')).json(); tiposPuestoList=Array.isArray(t)?t:[]; }catch(e){ tiposPuestoList=[]; }
   try{ perfilesList=await(await fetch('/api/perfiles')).json(); }catch(e){ perfilesList=[]; }
   if(!Array.isArray(perfilesList)) perfilesList=[];   // rev69: sin permiso el servidor responde {error}
   perfilRenderList();
@@ -1123,6 +1125,7 @@ function perfilRenderList(){
       <div>
         <span style="font-size:13px;font-weight:500">${esc(p.nombre)}</span>
         ${p.area?`<span style="font-size:10px;color:var(--muted);margin-left:8px">🏢 ${esc(p.area)}</span>`:'<span style="font-size:10px;color:var(--muted);margin-left:8px">(sin área)</span>'}
+        ${(()=>{ const t=tiposPuestoList.find(x=>x.tpid===p.tipo_puesto); return t?`<span style="font-size:10px;color:var(--muted2);margin-left:8px" title="${esc(tpTextoJornada(t))}">🕘 ${esc(t.nombre)} · ${tpH(t.horas_semana)} h/sem</span>`:'<span style="font-size:10px;color:var(--amber);margin-left:8px">(sin tipo de puesto)</span>'; })()}
       </div>
       <div style="display:flex;gap:4px;flex-shrink:0">
         <button class="fi-del" onclick="pfOpenDocs(${idx})" title="Documentos · Perfil de Puesto" style="color:var(--muted2)">Documentos · Perfil de Puesto</button>
@@ -1139,6 +1142,7 @@ function perfilEditStart(idx){
     <div id="perfil-view-${idx}" style="display:flex;flex-direction:column;gap:8px">
       <input type="text" id="perfil-edit-nombre-${idx}" value="${esc(p.nombre)}" style="width:100%;background:var(--inp);border:1px solid var(--border);border-radius:4px;padding:6px 8px;font-size:12px;color:var(--text);outline:none">
       <select id="perfil-edit-area-${idx}" style="width:100%;background:var(--inp);border:1px solid var(--border);border-radius:4px;padding:6px 8px;font-size:12px;color:var(--text);outline:none">${opts}</select>
+      <select id="perfil-edit-tipo-${idx}" title="Tipo de puesto (jornada)" style="width:100%;background:var(--inp);border:1px solid var(--border);border-radius:4px;padding:6px 8px;font-size:12px;color:var(--text);outline:none">${tpOpciones(p.tipo_puesto)}</select>
       <div style="display:flex;gap:6px;justify-content:flex-end">
         <button class="btn btn-s" style="width:auto;padding:5px 12px;font-size:11px" onclick="perfilRenderList()">Cancelar</button>
         <button class="btn btn-p" style="width:auto;padding:5px 12px;font-size:11px" onclick="perfilEditSave(${idx})">Guardar</button>
@@ -1148,9 +1152,10 @@ function perfilEditStart(idx){
 async function perfilEditSave(idx){
   const nombre=document.getElementById('perfil-edit-nombre-'+idx).value.trim();
   const area=document.getElementById('perfil-edit-area-'+idx).value||null;
+  const tipo_puesto=document.getElementById('perfil-edit-tipo-'+idx)?.value||null;
   if(!nombre){toast('El nombre es obligatorio','er');return;}
   try{
-    const r=await(await fetch('/api/perfiles/'+idx,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({nombre,area})})).json();
+    const r=await(await fetch('/api/perfiles/'+idx,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({nombre,area,tipo_puesto})})).json();
     if(r.error){toast(r.error,'er');return;}
     toast('Perfil actualizado ✓','ok');
     await loadPerfiles();
@@ -1160,11 +1165,13 @@ async function perfilEditSave(idx){
 async function perfilCreate(){
   const inp=document.getElementById('perfil-new-input'); const nombre=inp.value.trim();
   const area=document.getElementById('perfil-new-area')?.value||null;
+  const tipo_puesto=document.getElementById('perfil-new-tipo')?.value||null;
   if(!nombre){toast('Escribe un nombre de perfil','er');return;}
   try{
-    const r=await(await fetch('/api/perfiles',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nombre,area})})).json();
+    const r=await(await fetch('/api/perfiles',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nombre,area,tipo_puesto})})).json();
     if(r.error){toast(r.error,'er');return;}
     inp.value=''; const as=document.getElementById('perfil-new-area'); if(as) as.value='';
+    const ts=document.getElementById('perfil-new-tipo'); if(ts) ts.value='';
     toast('Perfil agregado ✓','ok'); await loadPerfiles();
   }catch(e){toast('Error: '+e,'er');}
 }
@@ -1179,7 +1186,133 @@ function perfilPopulateSelects(){
   const flt=document.getElementById('personal-puesto-flt'); if(flt){const cur=flt.value;flt.innerHTML=optsAll;flt.value=cur;}
   const na=document.getElementById('perfil-new-area');
   if(na){ na.innerHTML='<option value="">— Sin área —</option>'+areasList.map(a=>`<option value="${esc(a.nombre)}">${esc(a.nombre)}</option>`).join(''); }
+  const nt=document.getElementById('perfil-new-tipo');
+  if(nt){ const cur=nt.value; nt.innerHTML=tpOpciones(cur); }
 }
+
+// ════════════════════════════════════════════════════════
+//  rev77 — TIPO DE PUESTO: nombre + jornada semanal (entrada / salida por día)
+//  Cada perfil de puesto elige un tipo; cada persona lo hereda por su perfil.
+// ════════════════════════════════════════════════════════
+let tiposPuestoList = [], _tpEditando = null;
+const TP_DIAS = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
+const tpH = v => Number(v||0).toLocaleString('es-MX',{maximumFractionDigits:2});
+function tpOpciones(sel){ return '<option value="">— Sin tipo de puesto —</option>'+tiposPuestoList.map(t=>`<option value="${esc(t.tpid)}" ${t.tpid===sel?'selected':''}>${esc(t.nombre)} · ${tpH(t.horas_semana)} h/sem</option>`).join(''); }
+function tpTextoJornada(t){
+  return TP_DIAS.map((d,i)=>{ const x=(t.jornada||{})[i]||{}; return `${d.slice(0,3)} ${x.entrada?`${x.entrada}–${x.salida}`:'descanso'}`; }).join(' · ');
+}
+function tpResumenPersona(r){
+  const t = r && r.tipo_puesto;
+  if(!r || !r.puesto) return '<span style="color:var(--muted)">Asigna un puesto para heredar su tipo de puesto.</span>';
+  if(!t) return `<span style="color:var(--amber)">El perfil "${esc(r.puesto)}" no tiene tipo de puesto asignado.</span>`;
+  return `<b>${esc(t.nombre)}</b> · ${tpH(t.horas_semana)} h/semana<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-top:5px">${TP_DIAS.map((d,i)=>{ const x=(t.jornada||{})[i]||{};
+    return `<div style="text-align:center;border:1px solid var(--border);border-radius:5px;padding:3px 2px;font-size:10px;${x.entrada?'':'color:var(--muted);background:rgba(0,0,0,.03)'}"><b>${d.slice(0,2)}</b><br>${x.entrada?`${x.entrada}<br>${x.salida}`:'—'}</div>`; }).join('')}</div>`;
+}
+function _tpMin(v){ const m=/^(\d{1,2}):(\d{2})$/.exec(v||''); return m ? (+m[1])*60 + (+m[2]) : null; }
+function _tpHorasDia(e, s){ const a=_tpMin(e), b=_tpMin(s); if(a==null||b==null) return null; let d=b-a; if(d===0) return null; if(d<0) d+=1440; return d/60; }
+
+async function loadTiposPuesto(){
+  try{ const t=await(await fetch('/api/tipos-puesto')).json(); if(t.error) throw new Error(t.error); tiposPuestoList=Array.isArray(t)?t:[]; }
+  catch(e){ tiposPuestoList=[]; toast('No se pudieron cargar los tipos de puesto: '+e.message,'er'); }
+  if(!_tpEditando) tpNuevo(); tpRenderList();
+}
+function tpRenderJornada(j){
+  const tb=document.getElementById('tp-jornada'); if(!tb) return;
+  tb.innerHTML = `<tr><th style="text-align:left;padding:4px 6px;cursor:default">Día</th><th style="padding:4px 6px;cursor:default">Hora de entrada</th><th style="padding:4px 6px;cursor:default">Hora de salida</th><th style="padding:4px 6px;text-align:right;cursor:default">Horas</th></tr>`
+    + TP_DIAS.map((d,i)=>{ const x=(j||{})[i]||{}; return `<tr style="border-top:1px solid var(--border)">
+      <td style="padding:5px 6px;font-weight:600">${d}</td>
+      <td style="padding:5px 6px;text-align:center"><input type="time" data-dia="${i}" data-campo="entrada" value="${esc(x.entrada||'')}" oninput="tpRecalcular()" aria-label="Hora de entrada ${d}" style="padding:5px 6px"></td>
+      <td style="padding:5px 6px;text-align:center"><input type="time" data-dia="${i}" data-campo="salida" value="${esc(x.salida||'')}" oninput="tpRecalcular()" aria-label="Hora de salida ${d}" style="padding:5px 6px"></td>
+      <td style="padding:5px 6px;text-align:right;font-family:'DM Mono',monospace" id="tp-h-${i}">—</td></tr>`; }).join('')
+    + `<tr style="border-top:2px solid var(--border)"><td colspan="3" style="padding:6px;font-weight:700;text-align:right">Total semanal</td><td style="padding:6px;text-align:right;font-family:'DM Mono',monospace;font-weight:800" id="tp-h-total">0 h</td></tr>`;
+  tpRecalcular();
+}
+function tpLeerJornada(){
+  const j = {};
+  for(let i=0;i<7;i++){
+    const e=document.querySelector(`#tp-jornada input[data-dia="${i}"][data-campo="entrada"]`)?.value||'';
+    const s=document.querySelector(`#tp-jornada input[data-dia="${i}"][data-campo="salida"]`)?.value||'';
+    j[i] = {entrada:e, salida:s};
+  }
+  return j;
+}
+function tpRecalcular(){
+  const j = tpLeerJornada(); let tot = 0;
+  for(let i=0;i<7;i++){
+    const {entrada:e, salida:s} = j[i], el=document.getElementById('tp-h-'+i); if(!el) continue;
+    if(!e && !s){ el.innerHTML='<span style="color:var(--muted)">descanso</span>'; continue; }
+    const h = _tpHorasDia(e, s);
+    if(h==null){ el.innerHTML='<span style="color:var(--red)">incompleto</span>'; continue; }
+    tot += h; el.innerHTML = `${tpH(h)} h${_tpMin(s)<_tpMin(e)?' <span title="Termina al día siguiente">🌙</span>':''}`;
+  }
+  const t=document.getElementById('tp-h-total'); if(t) t.textContent = tpH(tot)+' h';
+}
+function tpCopiarLunes(hasta){
+  const j = tpLeerJornada();
+  for(let i=1;i<=hasta;i++) j[i] = {...j[0]};
+  tpRenderJornada(j);
+}
+function tpLimpiar(){ tpRenderJornada({}); }
+function tpNuevo(){
+  _tpEditando = null;
+  document.getElementById('tp-nombre').value='';
+  document.getElementById('tp-form-titulo').textContent='Nuevo tipo de puesto';
+  document.getElementById('tp-guardar').textContent='+ Agregar tipo de puesto';
+  document.getElementById('tp-cancelar').style.display='none';
+  // sugerencia inicial: jornada de la planta (L-J 10 h, V 8 h)
+  tpRenderJornada({0:{entrada:'07:00',salida:'17:00'},1:{entrada:'07:00',salida:'17:00'},2:{entrada:'07:00',salida:'17:00'},3:{entrada:'07:00',salida:'17:00'},4:{entrada:'07:00',salida:'15:00'}});
+  tpRenderList();
+}
+function tpEditar(tpid){
+  const t = tiposPuestoList.find(x=>x.tpid===tpid); if(!t) return;
+  _tpEditando = tpid;
+  document.getElementById('tp-nombre').value = t.nombre;
+  document.getElementById('tp-form-titulo').textContent = 'Editar tipo de puesto · '+t.nombre;
+  document.getElementById('tp-guardar').textContent = 'Guardar cambios';
+  document.getElementById('tp-cancelar').style.display='';
+  tpRenderJornada(t.jornada); tpRenderList();
+  document.getElementById('tp-form-card').scrollIntoView({block:'nearest'});
+}
+async function tpGuardar(){
+  const nombre = document.getElementById('tp-nombre').value.trim();
+  if(!nombre){ toast('Escribe el nombre del tipo de puesto','er'); return; }
+  const jornada = tpLeerJornada();
+  for(let i=0;i<7;i++){ const {entrada:e, salida:s}=jornada[i]; if((e&&!s)||(!e&&s)||(e&&s&&_tpHorasDia(e,s)==null)){ toast(`${TP_DIAS[i]}: captura entrada y salida válidas, o deja ambas vacías si es descanso`,'er'); return; } }
+  try{
+    const url = _tpEditando ? '/api/tipos-puesto/'+encodeURIComponent(_tpEditando) : '/api/tipos-puesto';
+    const r = await (await fetch(url,{method:_tpEditando?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nombre, jornada})})).json();
+    if(r.error){ toast(r.error,'er'); return; }
+    toast(_tpEditando ? 'Tipo de puesto actualizado ✓ (lo heredan sus perfiles y personas)' : 'Tipo de puesto agregado ✓','ok');
+    _tpEditando = null; await loadTiposPuesto();
+  }catch(e){ toast('Error: '+e,'er'); }
+}
+async function tpEliminar(tpid){
+  const t = tiposPuestoList.find(x=>x.tpid===tpid); if(!t) return;
+  if(!confirm(`¿Eliminar el tipo de puesto "${t.nombre}"?`)) return;
+  try{
+    const r = await (await fetch('/api/tipos-puesto/'+encodeURIComponent(tpid),{method:'DELETE'})).json();
+    if(r.error){ toast(r.error,'er'); return; }
+    toast('Tipo de puesto eliminado','if'); if(_tpEditando===tpid) _tpEditando=null; await loadTiposPuesto();
+  }catch(e){ toast('Error: '+e,'er'); }
+}
+function tpRenderList(){
+  const c = document.getElementById('tp-list'); if(!c) return;
+  if(!tiposPuestoList.length){ c.innerHTML='<div class="es"><div class="ei">🕘</div><p>Sin tipos de puesto registrados.</p></div>'; return; }
+  c.innerHTML = tiposPuestoList.map(t=>`<div style="background:var(--card);border:1px solid ${t.tpid===_tpEditando?'var(--red)':'var(--border)'};border-radius:var(--r);padding:12px 14px">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <b style="font-size:13px">${esc(t.nombre)}</b>
+      <span style="font-size:11px;color:var(--muted2)">${tpH(t.horas_semana)} h/semana · ${t.dias_laborables} día${t.dias_laborables===1?'':'s'}</span>
+      <div style="margin-left:auto;display:flex;gap:4px">
+        <button class="fi-del" style="color:var(--muted2)" onclick="tpEditar('${esc(t.tpid)}')">Editar</button>
+        <button class="fi-del" onclick="tpEliminar('${esc(t.tpid)}')">Eliminar</button>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:8px">${TP_DIAS.map((d,i)=>{ const x=(t.jornada||{})[i]||{};
+      return `<div style="text-align:center;border:1px solid var(--border);border-radius:6px;padding:4px 2px;font-size:10.5px;${x.entrada?'':'color:var(--muted);background:rgba(0,0,0,.03)'}"><b>${d.slice(0,3)}</b><br>${x.entrada?`${x.entrada}<br>${x.salida}<br><span style="color:var(--muted2)">${tpH(t.horas_dia[i])} h</span>`:'descanso'}</div>`; }).join('')}</div>
+    <div style="font-size:10.5px;color:var(--muted);margin-top:6px">${t.perfiles.length?`Perfiles: ${t.perfiles.map(esc).join(', ')}`:'Ningún perfil lo usa todavía'}</div>
+  </div>`).join('');
+}
+
 
 // ── Documentos del Perfil de Puesto ──
 let pfCurrentIdx=null;
@@ -1345,6 +1478,7 @@ function personalOpen(row){
   document.getElementById('te-jefe').innerHTML=personalJefeOptions(r.tid);
   document.getElementById('te-jefe').value=r.jefe_directo||'';
   document.getElementById('te-antiguedad').textContent=personalAntiguedad(r.fecha_ingreso);
+  const tpEl=document.getElementById('te-tipo-puesto'); if(tpEl) tpEl.innerHTML=tpResumenPersona(r);
   document.getElementById('te-estado').value=r.estado||'Activo';
   document.getElementById('te-fecha-baja').value=r.fecha_baja||'';
   tEstadoChange();
@@ -1390,6 +1524,7 @@ async function personalSave(){
     document.getElementById('tp-nombre').textContent=r.nombre;
     document.getElementById('tp-puesto').textContent=[r.puesto,r.area].filter(Boolean).join(' · ')||'Sin puesto asignado';
     document.getElementById('te-antiguedad').textContent=personalAntiguedad(r.fecha_ingreso);
+    const tpEl2=document.getElementById('te-tipo-puesto'); if(tpEl2){ const pf=perfilesList.find(x=>x.nombre===r.puesto); const t=tiposPuestoList.find(x=>pf&&x.tpid===pf.tipo_puesto); r.tipo_puesto=t?{nombre:t.nombre,jornada:t.jornada,horas_semana:t.horas_semana}:null; tpEl2.innerHTML=tpResumenPersona(r); }
     personalRender(); toast('Guardado ✓','ok');
   }catch(e){toast('Error al guardar: '+e,'er');}
 }
@@ -5786,6 +5921,9 @@ function ptConfirmGenerate() {
 let adminData = null;
 let USER_PERMS = null;
 
+// rev77: módulos que heredan el nivel de otro mientras el administrador no les fije uno
+const MODULOS_HEREDAN = {'projconfig-dashboard':'projconfig','projconfig-presupuesto':'projconfig','projconfig-timing':'projconfig',
+  'projconfig-abiertos':'projconfig','projconfig-cambios':'projconfig','projconfig-documentos':'projconfig','personal-tipos-puesto':'personal-perfiles'};
 const MODULE_LABELS = {
   // Proyectos
   'jobs':'Job Register', 'pt':'PT Numbers', 'sv':'SV Numbers',
@@ -5819,6 +5957,7 @@ const MODULE_LABELS = {
   'rrhh-asistencia':'Asistencia', 'rrhh-vacaciones':'Vacaciones', 'rrhh-permisos':'Permisos (RH)',
   'rrhh-salario':'Calcular Salario', 'rrhh-sueldos':'Sueldos y Salarios', 'rrhh-nomina':'Nómina',
   'personal-areas':'Control de Personal — Áreas', 'personal-perfiles':'Control de Personal — Perfiles de Trabajo',
+  'personal-tipos-puesto':'Control de Personal — Tipo de Puesto',
   'personal-listado':'Control de Personal — Listado de Trabajadores',
   // Operaciones
   'ops-capacidad':'Operaciones — Capacidad', 'ops-ot':'Operaciones — Tareas Asignadas',
@@ -5842,7 +5981,7 @@ const MODULE_GROUPS = [
   { label: '✈ Servicio',             mods: ['viaticos','gastos-viaje','envios'] },
   { label: '📊 Reportes y Config',    mods: ['wh','report','multirpt','fx','projconfig','projconfig-dashboard','projconfig-presupuesto','projconfig-timing','projconfig-abiertos','projconfig-cambios','projconfig-documentos'] },
   { label: '💹 Finanzas',             mods: ['fin-recepciones','fin-procesarcompra','fin-cpp','fin-pagos','fin-esquemas'] },
-  { label: '🧑‍💼 Recursos Humanos',    mods: ['rrhh-asistencia','rrhh-vacaciones','rrhh-permisos','rrhh-salario','rrhh-sueldos','rrhh-nomina','personal-areas','personal-perfiles','personal-listado'] },
+  { label: '🧑‍💼 Recursos Humanos',    mods: ['rrhh-asistencia','rrhh-vacaciones','rrhh-permisos','rrhh-salario','rrhh-sueldos','rrhh-nomina','personal-areas','personal-tipos-puesto','personal-perfiles','personal-listado'] },
   { label: '🏭 Operaciones',           mods: ['ops-capacidad','ops-ot','ops-op','ops-os'] },
 ];
 
@@ -5895,11 +6034,14 @@ function adminSelectUser(uname) {
     const hdr = `<tr style="background:rgba(0,0,0,.035)"><td colspan="2"
       style="padding:6px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--red);border-bottom:1px solid var(--border)">${grp.label}</td></tr>`;
     return hdr + gm.map(mod => {
-      // rev69: las pestañas de Configurar Proyecto pueden "heredar" el nivel del módulo
-      const esTab = mod.startsWith('projconfig-');
-      const lv = isAdmin ? 'full' : (esTab && !perms[mod] ? 'inherit' : (perms[mod]||'none'));
+      // rev69/77: módulos que heredan el nivel de otro (pestañas de Configurar Proyecto,
+      // Tipo de Puesto ← Perfiles de Trabajo). Solo cuenta el valor fijado por el administrador.
+      const padre = MODULOS_HEREDAN[mod];
+      const esTab = !!padre;
+      const expl = (info.perm_explicitos||[]).includes(mod) || (perms[mod] && perms[mod]!=='view');   // igual que nivel_heredado()
+      const lv = isAdmin ? 'full' : (esTab && !expl ? 'inherit' : (perms[mod]||'none'));
       const clr = lv==='full'?'var(--green)':lv==='create'?'var(--gold)':lv==='view'?'var(--text)':'var(--muted)';
-      const opts = (esTab?[`<option value="inherit" ${lv==='inherit'?'selected':''}>Igual que Configurar Proyecto (${LEVEL_LABELS[perms['projconfig']||'none']})</option>`]:[]).concat(['none','view','create','full'].map(l=>
+      const opts = (esTab?[`<option value="inherit" ${lv==='inherit'?'selected':''}>Igual que ${esc(MODULE_LABELS[padre]||padre)} (${LEVEL_LABELS[perms[padre]||'none']})</option>`]:[]).concat(['none','view','create','full'].map(l=>
         `<option value="${l}" ${lv===l?'selected':''}>${LEVEL_LABELS[l]}</option>`)).join('');
       return `<tr style="border-bottom:1px solid rgba(0,0,0,.045)">
         <td style="padding:7px 10px 7px 18px;font-size:11px;color:var(--muted2);width:55%">${MODULE_LABELS[mod]||mod}</td>
@@ -5982,7 +6124,8 @@ async function adminSetLevel(sel) {
       body: JSON.stringify({permissions: {[mod]: level}})
     }).then(r=>r.json());
     if(d.error){toast(d.error,'er');return;}
-    if(_adminUsersData?.users?.[uname]){ const pp=_adminUsersData.users[uname].permissions=_adminUsersData.users[uname].permissions||{}; if(level===null) delete pp[mod]; else pp[mod]=level; }
+    if(_adminUsersData?.users?.[uname]){ const u=_adminUsersData.users[uname]; const pp=u.permissions=u.permissions||{}; if(level===null) delete pp[mod]; else pp[mod]=level;
+      if(MODULOS_HEREDAN[mod]){ const e=new Set(u.perm_explicitos||[]); if(level===null) e.delete(mod); else e.add(mod); u.perm_explicitos=[...e]; } }
     toast(`${uname} · ${MODULE_LABELS[mod]||mod} → ${level===null?'igual que Configurar Proyecto':LEVEL_LABELS[level]}`,'ok',2000);
   } catch(e){toast('Error guardando permiso','er');}
 }
@@ -6063,6 +6206,7 @@ function applyPermsToDom(d) {
     'rrhh-nomina':        ["switchMenu('rrhh-nomina'"],
     'personal-areas':     ["switchMenu('personal-areas'"],
     'personal-perfiles':  ["switchMenu('personal-perfiles'"],
+    'personal-tipos-puesto': ["switchMenu('personal-tipos-puesto'"],
     'personal-listado':   ["switchMenu('personal-listado'"],
     'ops-capacidad':      ["switchMenu('ops-capacidad'"],
     'ops-ot':             ["switchMenu('ops-ot'"],
@@ -6196,6 +6340,8 @@ function applyPermsToDom(d) {
     { pat:'areaEditStart(',      mod:'personal-areas',   need:'create' },
     { pat:'areaDelete(',         mod:'personal-areas',   need:'full' },
     { pat:'perfilCreate(',       mod:'personal-perfiles',need:'create' },
+    { pat:'tpGuardar(',          mod:'personal-tipos-puesto',need:'create' },
+    { pat:'tpEliminar(',         mod:'personal-tipos-puesto',need:'full' },
     { pat:'perfilEditStart(',    mod:'personal-perfiles',need:'create' },
     { pat:'perfilDelete(',       mod:'personal-perfiles',need:'full' },
     { pat:'vacImport(',          mod:'rrhh-vacaciones',  need:'create' },
@@ -8499,6 +8645,16 @@ async function reqLoadJob(){
   if(!job){ content.style.display='none'; return; }
   content.style.display='';
   await reqRenderTab();
+}
+
+// rev76: respaldo en Excel del BOM actual o de todos los BOMs del Job
+function reqDescargarExcel(todos){
+  if(!reqCurrentJob){ toast('Selecciona un Job','er'); return; }
+  const tipo = todos ? 'todos' : reqCurrentTipo;
+  const a = document.createElement('a');
+  a.href = `/api/requisiciones/${encodeURIComponent(reqCurrentJob)}/excel?tipo=${encodeURIComponent(tipo)}`;
+  document.body.appendChild(a); a.click(); a.remove();
+  toast(todos ? 'Descargando todos los BOMs…' : 'Descargando el BOM…', 'ok', 2500);
 }
 
 function reqSetTipo(tipo){

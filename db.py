@@ -205,6 +205,13 @@ class Perfil(Base, JSONBMixin):
     pid = Column(String, unique=True, index=True)
 
 
+class TipoPuesto(Base, JSONBMixin):
+    """rev77: tipo de puesto con su jornada semanal (hora de entrada y salida por día).
+    Cada perfil de puesto elige un tipo; las personas lo heredan por su perfil."""
+    __tablename__ = "tipos_puesto"
+    tpid = Column(String, unique=True, index=True)
+
+
 class Vacacion(Base, JSONBMixin):
     __tablename__ = "vacaciones"
     tid = Column(String, unique=True, nullable=False, index=True)
