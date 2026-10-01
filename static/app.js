@@ -7755,19 +7755,34 @@ function rhRender(){
       <span>12 meses: <b>${tot12}</b> bajas · rotación anual ≈ <b>${prom12?(tot12/prom12*100).toFixed(1):'—'}%</b></span>
       ${d.bajas_sin_fecha?`<span style="color:var(--amber)">⚠ ${d.bajas_sin_fecha} baja(s) sin fecha de baja no se pueden ubicar en un mes</span>`:''}</div>`;
 
-  // Horas extra semanales
+  // Horas extra semanales — rev75: barras con la suma de horas extra de cada semana ISO (1…52/53) del año en curso
   const HX = d.horas_extra||{}, areasX = ['Total', ...d.areas_extra];
   if(!areasX.includes(_rhExtraArea)) _rhExtraArea = 'Total';
   const serie = HX[_rhExtraArea] || [];
   const xs = d.semanas.map(w=>new Date(w+'T00:00:00'));
-  const chartX = serie.length ? pcDashChart({xs, H:230, yFmt:v=>Math.round(v)+'%', xLabel:t=>t.toLocaleDateString('es-MX',{day:'2-digit',month:'short'}),
-      series:[{name:'Índice', values:serie.map(x=>x.indice), color:'#c8102e', width:2.6, area:true}],
-      tip:(i,t)=>{ const x=serie[i]; return `Semana del ${t.toLocaleDateString('es-MX',{day:'2-digit',month:'short'})}${x.parcial?' (en curso)':''}\nÍndice: ${x.indice==null?'—':x.indice+'%'}\nHoras extra: ${x.extra} de ${x.ordinarias} ordinarias\nEmpleados: ${x.empleados} · con horas extra: ${x.con_extra} · más de ${d.extra_max_lft} h extra: ${x.sobre_lft}`; }}) : '';
-  const ult = serie.filter(x=>!x.parcial).slice(-1)[0];
-  const tablaX = `<div style="overflow-x:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse;font-size:11px;white-space:nowrap">
-    <thead><tr><th style="text-align:left;padding:4px 6px;cursor:default">Área</th>${d.semanas.map((w,i)=>`<th style="padding:4px 6px;cursor:default;text-align:right">${new Date(w+'T00:00:00').toLocaleDateString('es-MX',{day:'2-digit',month:'short'})}${i===d.semanas.length-1?'*':''}</th>`).join('')}</tr></thead>
-    <tbody>${areasX.map(a=>`<tr ${a==='Total'?'style="border-top:2px solid var(--border);font-weight:700"':''}><td style="padding:4px 6px">${esc(a)}</td>${(HX[a]||[]).map(x=>`<td title="${x.extra} h extra · ${x.empleados} empleados · ${x.con_extra} con extra" style="padding:4px 6px;text-align:right;font-family:'DM Mono',monospace;color:${x.indice==null?'var(--muted)':x.indice>10?'#c8102e':x.indice>5?'#b45309':'var(--text)'}">${x.indice==null?'—':x.indice.toFixed(1)+'%'}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
-    <div style="font-size:10.5px;color:var(--muted2);margin-top:6px">Índice = horas extra / horas ordinarias. Horas extra = lo que pasa de ${d.horas_semana} h por persona en la semana (jornada L-J 10 h, V 8 h), según Work Hours; el área sale del departamento del trabajador en Hourly Rate y la relación línea → área de Capacidad. * Semana en curso.</div>`;
+  const nums = serie.map(x=>x.num);
+  const colA = a => CAP_AREA_COLORES[d.areas_extra.indexOf(a) % CAP_AREA_COLORES.length];
+  const seriesX = _rhExtraArea==='Total'
+    ? d.areas_extra.map(a=>({name:a, color:colA(a), values:(HX[a]||[]).map(x=>x.futura?0:x.extra)}))
+    : [{name:_rhExtraArea, color:colA(_rhExtraArea), values:serie.map(x=>x.futura?0:x.extra)}];
+  const idxHoy = serie.findIndex(x=>x.parcial);
+  const chartX = serie.length ? pcDashChart({xs, H:250, stack:true, yFmt:v=>Math.round(v)+' h', xLabel:(t)=>'S'+nums[xs.indexOf(t)],
+      series: seriesX, marcas: idxHoy>=0 ? [{i:idxHoy, label:'Hoy', color:'#c8102e'}] : [],
+      tip:(i,t)=>{ const x=serie[i]; if(x.futura) return `Semana ${x.num} · ${t.toLocaleDateString('es-MX',{day:'2-digit',month:'short'})}\n(semana futura)`;
+        return `Semana ${x.num} · del ${t.toLocaleDateString('es-MX',{day:'2-digit',month:'short'})}${x.parcial?' (en curso)':''}\nHoras extra: ${x.extra} h${_rhExtraArea==='Total'?'\n'+d.areas_extra.map(a=>`  ${a}: ${(HX[a]||[])[i]?.extra||0} h`).join('\n'):''}\nÍndice: ${x.indice==null?'—':x.indice+'%'} de ${x.ordinarias} h ordinarias\nPersonas con extra: ${x.con_extra} · más de ${d.extra_max_lft} h: ${x.sobre_lft}`; }}) : '';
+  const ult = serie.filter(x=>!x.parcial && !x.futura).slice(-1)[0];
+  const resumen = a => { const v = (HX[a]||[]).filter(x=>!x.futura), tot = v.reduce((s,x)=>s+x.extra,0), n = v.filter(x=>!x.parcial).length;
+    const pico = v.reduce((m,x)=>x.extra>(m?.extra??-1)?x:m, null), u = v.filter(x=>!x.parcial).slice(-1)[0];
+    return `<tr ${a==='Total'?'style="border-top:2px solid var(--border);font-weight:700"':''}><td style="padding:4px 8px">${a==='Total'?'Las 4 áreas':esc(a)}${a!=='Total'?` <span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${colA(a)}"></span>`:''}</td>
+      <td style="padding:4px 8px;text-align:right;font-family:'DM Mono',monospace">${_capH(tot)} h</td>
+      <td style="padding:4px 8px;text-align:right;font-family:'DM Mono',monospace">${n?_capH(v.filter(x=>!x.parcial).reduce((s,x)=>s+x.extra,0)/n):'—'} h</td>
+      <td style="padding:4px 8px;text-align:right">${pico&&pico.extra?`S${pico.num} · ${_capH(pico.extra)} h`:'—'}</td>
+      <td style="padding:4px 8px;text-align:right;font-family:'DM Mono',monospace">${u?`${_capH(u.extra)} h · ${u.indice==null?'—':u.indice+'%'}`:'—'}</td>
+      <td style="padding:4px 8px;text-align:right;color:${u&&u.sobre_lft?'#c8102e':'var(--muted)'};font-weight:700">${u?u.sobre_lft:'—'}</td></tr>`; };
+  const tablaX = `<div style="overflow-x:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse;font-size:11.5px;white-space:nowrap">
+    <thead><tr>${['Área','Horas extra en el año','Promedio por semana','Semana pico','Última semana completa',`Personas con más de ${d.extra_max_lft} h`].map((h,i)=>`<th style="padding:5px 8px;text-align:${i?'right':'left'};cursor:default">${h}</th>`).join('')}</tr></thead>
+    <tbody>${d.areas_extra.map(resumen).join('')}${resumen('Total')}</tbody></table></div>
+    <div style="font-size:10.5px;color:var(--muted2);margin-top:6px">Semanas ISO del año ${d.anio_semanas} (la semana 1 es la que contiene el 4 de enero). Horas extra = lo que pasa de ${d.horas_semana} h por persona en la semana (jornada L-J 10 h, V 8 h), según Work Hours; el área sale del departamento del trabajador en Hourly Rate y la relación línea → área de Capacidad. Promedio sobre semanas completas transcurridas.</div>`;
 
   // Asistencia del día
   let asis;
@@ -7809,9 +7824,10 @@ function rhRender(){
     </div>
     <div style="${card};margin-bottom:16px">${lbl('Índice de rotación de personal mensual por área (%)')}${areasRot.length||(rot.Total||[]).some(x=>x.plantilla)?rotTabla:'<div style="font-size:12px;color:var(--muted)">Sin datos de ingreso o baja.</div>'}</div>
     <div style="${card};margin-bottom:16px">
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px">${lbl('Índice de horas extraordinarias semanal')}
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px">${lbl(`Horas extraordinarias por semana · ${d.anio_semanas}`)}
         <select onchange="_rhExtraArea=this.value;rhRender()" style="font-size:11px;padding:3px 6px;margin:-10px 0 0">${areasX.map(a=>`<option ${a===_rhExtraArea?'selected':''} value="${esc(a)}">${a==='Total'?'Las 4 áreas':esc(a)}</option>`).join('')}</select>
-        ${ult?`<span style="margin:-10px 0 0 auto;font-size:11px;color:var(--muted2)">Última semana completa: <b>${ult.indice==null?'—':ult.indice+'%'}</b> · ${ult.extra} h extra · ${ult.con_extra} persona(s) con extra${ult.sobre_lft?` · <b style="color:#c8102e">${ult.sobre_lft} con más de ${d.extra_max_lft} h (límite LFT)</b>`:''}</span>`:''}</div>
+        ${ult?`<span style="margin:-10px 0 0 auto;font-size:11px;color:var(--muted2)">Última semana completa (S${ult.num}): <b>${ult.extra} h extra</b> · índice ${ult.indice==null?'—':ult.indice+'%'} · ${ult.con_extra} persona(s) con extra${ult.sobre_lft?` · <b style="color:#c8102e">${ult.sobre_lft} con más de ${d.extra_max_lft} h (límite LFT)</b>`:''}</span>`:''}</div>
+      ${_rhExtraArea==='Total'?`<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:11px;margin-bottom:4px">${d.areas_extra.map(a=>`<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:11px;height:11px;border-radius:2px;background:${colA(a)}"></span>${esc(a)}</span>`).join('')}</div>`:''}
       ${chartX || '<div style="font-size:12px;color:var(--muted)">Sin horas registradas en las últimas semanas.</div>'}
       ${tablaX}
     </div>`;

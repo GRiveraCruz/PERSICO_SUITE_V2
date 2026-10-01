@@ -8063,8 +8063,13 @@ def api_dashboard_rh():
         bajas_sin_fecha = sum(1 for p in bajas if not fd(p.get("fecha_baja")))
 
         # ── Horas extraordinarias semanales (Work Hours) de las 4 áreas de Capacidad
+        # rev75: semanas ISO del año en curso (1 … 52/53); la semana 1 puede empezar a fines
+        # de diciembre del año anterior.
         lunes_hoy = hoy - datetime.timedelta(days=hoy.weekday())
-        semanas = [lunes_hoy - datetime.timedelta(weeks=i) for i in range(11, -1, -1)]
+        iso_y = hoy.isocalendar()[0]
+        sem1 = datetime.date.fromisocalendar(iso_y, 1, 1)
+        n_sem = datetime.date(iso_y, 12, 28).isocalendar()[1]          # 52 o 53
+        semanas = [sem1 + datetime.timedelta(weeks=i) for i in range(n_sem)]
         anios = sorted({d.year for d in semanas} | {(d + datetime.timedelta(days=6)).year for d in semanas})
         todas_areas = _load_catalog("areas") or []
         _na = lambda v: " ".join(_sin_acentos(v).split())
@@ -8076,7 +8081,7 @@ def api_dashboard_rh():
         for yy in anios:
             for r in wh_load(yy):
                 f = fd(r.get("date_worked"))
-                if not f or f < semanas[0] or f > hoy: continue
+                if not f or f < semanas[0] or f > min(hoy, semanas[-1] + datetime.timedelta(days=6)): continue
                 c = clasif(r, yy)
                 if not c: continue
                 _f, k, _dep, h, _c, _t = c
@@ -8091,7 +8096,8 @@ def api_dashboard_rh():
                 tot = [h for (e, l), h in por_emp.items() if l == lun and area_emp.get(e) and (a == "Total" or area_emp[e] == a)]
                 ords = sum(min(h, RH_HORAS_SEMANA) for h in tot)
                 ext = sum(max(0.0, h - RH_HORAS_SEMANA) for h in tot)
-                extra[a].append({"semana": lun.isoformat(), "parcial": lun == lunes_hoy, "empleados": len(tot),
+                extra[a].append({"semana": lun.isoformat(), "num": lun.isocalendar()[1], "parcial": lun == lunes_hoy,
+                                 "futura": lun > lunes_hoy, "empleados": len(tot),
                                  "ordinarias": round(ords, 1), "extra": round(ext, 1),
                                  "indice": round(ext / ords * 100, 1) if ords else None,
                                  "con_extra": sum(1 for h in tot if h > RH_HORAS_SEMANA),
@@ -8147,7 +8153,7 @@ def api_dashboard_rh():
             "ultima_baja": pick(baj[0], "fecha_baja") if baj else None,
             "ultimas_bajas": [pick(p, "fecha_baja") for p in baj[:5]],
             "rotacion": rot, "rotacion_meses": [f"{yy}-{mm:02d}" for yy, mm in meses], "bajas_sin_fecha": bajas_sin_fecha,
-            "horas_extra": extra, "semanas": [d.isoformat() for d in semanas], "horas_semana": RH_HORAS_SEMANA,
+            "horas_extra": extra, "semanas": [d.isoformat() for d in semanas], "anio_semanas": iso_y, "horas_semana": RH_HORAS_SEMANA,
             "extra_max_lft": RH_EXTRA_MAX_LFT, "areas_extra": nombres4,
             "asistencia": asis,
         })
