@@ -7823,6 +7823,51 @@ def api_dashboard_operation_manager():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+def _req_resumen_jobs(wip):
+    """rev68: resumen de requisiciones por Job y tipo de BOM (lo comparten el Dashboard
+    de Compras y el Dashboard del proyecto). wip: lista de registros de Job."""
+    tabla = []
+    reqs = {}
+    if _orm and _orm.DB_ENABLED and wip:
+        s = _orm.get_session()
+        try:
+            for r in s.query(_orm.RequisicionCompra).filter(_orm.RequisicionCompra.job.in_([j["job_number"] for j in wip])).all():
+                reqs.setdefault((r.job, r.tipo), []).append(r.data)
+        finally:
+            s.close()
+    for j in wip:
+        fila = {"job_number": j["job_number"], "customer": j.get("customer", ""), "pm": j.get("pm", ""), "boms": {}}
+        for tipo in REQ_TIPOS:
+            rows = reqs.get((j["job_number"], tipo)) or []
+            if not rows:
+                fila["boms"][tipo] = None; continue
+            vivos = [r for r in rows if r.get("status") != "Cancelado"]
+            fr_reas, fr_ord, fr_cub = [], [], []
+            for r in vivos:
+                q = float(r.get("quantity") or 0)
+                reas = float(r.get("cantidad_reasignada") or 0)
+                if r.get("status") == "Reasignado" and not reas: reas = q      # renglones anteriores a rev18
+                fr = min(1.0, reas / q) if q > 0 else 0.0
+                fr_reas.append(fr)
+                comp = float(r.get("cantidad_comprada") or 0)
+                if tipo == "manufactura":
+                    fr_ord.append(1.0 if r.get("status") in ("Comprado", "Orden interna", "Fabricado") else 0.0)
+                elif comp: fr_ord.append(min(1.0 - fr, comp / q) if q > 0 else 0.0)
+                else:    fr_ord.append((1.0 - fr) if r.get("status") == "Comprado" else 0.0)   # marcado a mano
+                fr_cub.append(min(1.0, fr + fr_ord[-1]))     # rev66: parte cubierta (reasignada + ordenada)
+            # última actualización: alta, edición, reasignaciones y cambios de cantidad por carga
+            fechas = [str(r.get(k) or "") for r in rows for k in ("updated_at", "created_at") if r.get(k)]
+            fechas += [str(h.get("fecha") or "") for r in rows for h in (r.get("reasignaciones") or []) + (r.get("cambios_cantidad") or []) if h.get("fecha")]
+            fila["boms"][tipo] = {
+                "renglones": len(rows), "cancelados": len(rows) - len(vivos),
+                "ultima_actualizacion": max(fechas)[:10] if fechas else "",
+                "pct_reasignado": round(sum(fr_reas) / len(fr_reas), 4) if fr_reas else 0,
+                "pct_ordenado": round(sum(fr_ord) / len(fr_ord), 4) if fr_ord else 0,
+                "pct_cubierto": round(sum(fr_cub) / len(fr_cub), 4) if fr_cub else 0,
+                "vivos": len(vivos)}
+        tabla.append(fila)
+    return tabla
+
 @app.route("/api/dashboard/purchasing", methods=["GET"])
 def api_dashboard_purchasing():
     """Dashboard de inicio del perfil PURCHASING.
@@ -7858,46 +7903,7 @@ def api_dashboard_purchasing():
                             "ahorro_pct": round((tc - adq) / tc, 4) if tc else None})
         # Tabla de Jobs en WIP (requisiciones por tipo)
         wip = sorted([j for j in all_jobs if (j.get("status") or "").strip().upper() == "WIP"], key=lambda x: x.get("job_number", ""))
-        tabla = []
-        reqs = {}
-        if _orm and _orm.DB_ENABLED and wip:
-            s = _orm.get_session()
-            try:
-                for r in s.query(_orm.RequisicionCompra).filter(_orm.RequisicionCompra.job.in_([j["job_number"] for j in wip])).all():
-                    reqs.setdefault((r.job, r.tipo), []).append(r.data)
-            finally:
-                s.close()
-        for j in wip:
-            fila = {"job_number": j["job_number"], "customer": j.get("customer", ""), "pm": j.get("pm", ""), "boms": {}}
-            for tipo in REQ_TIPOS:
-                rows = reqs.get((j["job_number"], tipo)) or []
-                if not rows:
-                    fila["boms"][tipo] = None; continue
-                vivos = [r for r in rows if r.get("status") != "Cancelado"]
-                fr_reas, fr_ord, fr_cub = [], [], []
-                for r in vivos:
-                    q = float(r.get("quantity") or 0)
-                    reas = float(r.get("cantidad_reasignada") or 0)
-                    if r.get("status") == "Reasignado" and not reas: reas = q      # renglones anteriores a rev18
-                    fr = min(1.0, reas / q) if q > 0 else 0.0
-                    fr_reas.append(fr)
-                    comp = float(r.get("cantidad_comprada") or 0)
-                    if tipo == "manufactura":
-                        fr_ord.append(1.0 if r.get("status") in ("Comprado", "Orden interna", "Fabricado") else 0.0)
-                    elif comp: fr_ord.append(min(1.0 - fr, comp / q) if q > 0 else 0.0)
-                    else:    fr_ord.append((1.0 - fr) if r.get("status") == "Comprado" else 0.0)   # marcado a mano
-                    fr_cub.append(min(1.0, fr + fr_ord[-1]))     # rev66: parte cubierta (reasignada + ordenada)
-                # última actualización: alta, edición, reasignaciones y cambios de cantidad por carga
-                fechas = [str(r.get(k) or "") for r in rows for k in ("updated_at", "created_at") if r.get(k)]
-                fechas += [str(h.get("fecha") or "") for r in rows for h in (r.get("reasignaciones") or []) + (r.get("cambios_cantidad") or []) if h.get("fecha")]
-                fila["boms"][tipo] = {
-                    "renglones": len(rows), "cancelados": len(rows) - len(vivos),
-                    "ultima_actualizacion": max(fechas)[:10] if fechas else "",
-                    "pct_reasignado": round(sum(fr_reas) / len(fr_reas), 4) if fr_reas else 0,
-                    "pct_ordenado": round(sum(fr_ord) / len(fr_ord), 4) if fr_ord else 0,
-                    "pct_cubierto": round(sum(fr_cub) / len(fr_cub), 4) if fr_cub else 0,
-                    "vivos": len(vivos)}
-            tabla.append(fila)
+        tabla = _req_resumen_jobs(wip)
         return jsonify({"year": year, "years": sorted({int(_year_of(j)) for j in all_jobs if _year_of(j)} | {CURRENT_YEAR}, reverse=True),
                         "grafica": grafica, "wip": tabla, "tipos": list(REQ_TIPOS),
                         "requisiciones_disponibles": bool(_orm and _orm.DB_ENABLED),
@@ -11112,24 +11118,42 @@ def api_requisiciones_upload():
 
         wb = openpyxl.load_workbook(io.BytesIO(f.read()), read_only=True, data_only=True)
         ws = wb.active
-        headers = {}
-        for cell in list(ws.iter_rows(min_row=1, max_row=1))[0]:
-            if cell.value:
-                headers[str(cell.value).strip().upper()] = cell.column - 1
-        def col(*aliases):
-            for a in aliases:
-                if a.upper() in headers: return headers[a.upper()]
+        # rev67: encabezados tolerantes. Antes la marca solo se reconocía como BRAND o
+        # MARCA; los BOM mecánicos la traen como FABRICANTE (formato normalizado
+        # FABRICANTE / NUMERO DE PARTE / DESCRIPCION / CANTIDAD) y se perdía en silencio.
+        # Se comparan sin acentos, sin signos y sin espacios extra, y la fila de
+        # encabezados se busca en los primeros 15 renglones (algunos BOM traen título).
+        _hn = lambda v: " ".join(re.sub(r"[^A-Z0-9#]+", " ", _sin_acentos(v)).split())
+        ALIAS = {
+            "brand": ("BRAND", "MARCA", "FABRICANTE", "MANUFACTURER", "MANUFACTURE", "MFR", "MFG", "MAKER",
+                      "BRAND NAME", "MARCA FABRICANTE", "FABRICANTE MARCA", "MANUFACTURER NAME", "VENDOR BRAND"),
+            "pn":    ("PART NUMBER", "PART NO", "PART #", "PN", "P N", "NO PARTE", "NO DE PARTE", "NUMERO DE PARTE",
+                      "NUM DE PARTE", "N DE PARTE", "NUMERO PARTE", "MANUFACTURER PART NUMBER", "MFR PART NUMBER", "CATALOG NUMBER", "CATALOGO"),
+            "desc":  ("DESCRIPTION", "DESCRIPCION", "DESC"),
+            "qty":   ("QUANTITY", "CANTIDAD", "QTY", "CANT", "Q TY"),
+            "stat":  ("STATUS", "ESTATUS"),
+        }
+        filas_top = [list(r) for r in ws.iter_rows(min_row=1, max_row=15, values_only=True)]
+        fila_hdr, headers = None, {}
+        for i, r in enumerate(filas_top):
+            h = {_hn(v): j for j, v in enumerate(r) if v not in (None, "")}
+            if any(a in h for a in ALIAS["pn"]):
+                fila_hdr, headers = i + 1, h
+                break
+        def col(clave):
+            for a in ALIAS[clave]:
+                if a in headers: return headers[a]
             return None
-        ci_brand = col("BRAND", "MARCA")
-        ci_pn    = col("PART NUMBER", "PART_NUMBER", "NO. PARTE", "NUMERO DE PARTE")
-        ci_desc  = col("DESCRIPTION", "DESCRIPCIÓN", "DESCRIPCION")
-        ci_qty   = col("QUANTITY", "CANTIDAD", "QTY")
-        ci_stat  = col("STATUS", "ESTATUS")
+        ci_brand, ci_pn, ci_desc, ci_qty, ci_stat = (col(k) for k in ("brand", "pn", "desc", "qty", "stat"))
         if ci_pn is None:
-            return jsonify({"error": "No se encontró la columna PART NUMBER en el Excel"}), 400
+            return jsonify({"error": "No se encontró la columna de número de parte (PART NUMBER / NUMERO DE PARTE) en los primeros 15 renglones del Excel"}), 400
+        avisos = []
+        if ci_brand is None:
+            avisos.append("No se encontró columna de marca (BRAND, MARCA o FABRICANTE). Encabezados leídos: "
+                          + ", ".join(sorted(headers, key=headers.get)))
 
         def g(row, ci):
-            if ci is None or row[ci] is None: return ""
+            if ci is None or ci >= len(row) or row[ci] is None: return ""
             v = re.sub(r"<[^>]*>", " ", str(row[ci]))      # "<br>TL-POE160S" → "TL-POE160S"
             v = " ".join(v.split())
             return "" if v in ("None", "nan", "#N/A") else v
@@ -11137,7 +11161,7 @@ def api_requisiciones_upload():
         # 1) Leer el archivo y consolidar números de parte repetidos DENTRO del archivo
         #    (misma pieza en dos renglones → un solo renglón con la suma).
         archivo, orden, repetidos = {}, [], 0
-        for row in ws.iter_rows(min_row=2, values_only=True):
+        for row in ws.iter_rows(min_row=fila_hdr + 1, values_only=True):
             pn = g(row, ci_pn)
             if not pn: continue
             qty_raw = g(row, ci_qty)
@@ -11146,6 +11170,8 @@ def api_requisiciones_upload():
             k = _req_pn(pn)
             if k in archivo:
                 archivo[k]["quantity"] += qty; repetidos += 1
+                if not archivo[k]["brand"]: archivo[k]["brand"] = g(row, ci_brand)
+                if not archivo[k]["description"]: archivo[k]["description"] = g(row, ci_desc)
                 continue
             estatus_excel = g(row, ci_stat)
             archivo[k] = {"brand": g(row, ci_brand), "part_number": pn, "description": g(row, ci_desc),
@@ -11154,7 +11180,8 @@ def api_requisiciones_upload():
 
         # 2) Comparar contra los renglones que ya existen para este Job + tipo.
         user, ahora = session.get("user", ""), datetime.datetime.now().isoformat()
-        res = {"agregados": 0, "actualizados": [], "iguales": 0, "revision": [], "consolidados_en_archivo": repetidos}
+        res = {"agregados": 0, "actualizados": [], "iguales": 0, "revision": [], "consolidados_en_archivo": repetidos,
+               "completados": 0, "avisos": avisos}
         s = _orm.get_session()
         try:
             existentes = {}
@@ -11172,6 +11199,14 @@ def api_requisiciones_upload():
                     res["agregados"] += 1
                     continue
                 d = row.data
+                # rev67: si el renglón ya existía sin marca o sin descripción (por ejemplo, se
+                # cargó antes sin la columna FABRICANTE), se completan con lo del archivo. Lo
+                # que ya tenía valor no se sobrescribe.
+                lleno = False
+                for campo in ("brand", "description"):
+                    if nuevo.get(campo) and not str(d.get(campo) or "").strip():
+                        d[campo] = nuevo[campo]; lleno = True
+                if lleno: res["completados"] += 1
                 actual, nueva = float(d.get("quantity") or 0), float(nuevo["quantity"])
                 if nueva == actual:
                     d.pop("revision", None); res["iguales"] += 1
@@ -13864,6 +13899,23 @@ def api_projconfig_documentos_archivo():
     return Response(data, mimetype=mime, headers={
         "Content-Disposition": f"{disp}; filename=\"{nombre.encode('ascii', 'replace').decode()}\"; filename*=UTF-8''{quote(nombre)}",
         "X-Content-Type-Options": "nosniff", "X-Doc-Version": str(version)})
+
+@app.route("/api/projconfig/compras", methods=["GET"])
+def api_projconfig_compras():
+    """Estatus de compras (requisiciones por BOM) de los Jobs de un PT/SV, mismo formato que
+    el Dashboard de Compras. ?jobs=652-50,665-00"""
+    if not (can("view", "projconfig") or can("view", "compras-requisicion")): return jsonify({"error": "Sin permiso"}), 403
+    try:
+        pedidos = [j.strip().upper() for j in (request.args.get("jobs") or "").split(",") if j.strip()]
+        if len(pedidos) > 60: return jsonify({"error": "Máximo 60 Jobs"}), 400
+        por_jn = {str(j.get("job_number") or "").strip().upper(): j for j in scan_jobs()}
+        jobs = [por_jn.get(jn) or {"job_number": jn} for jn in pedidos]
+        tabla = _req_resumen_jobs(jobs)
+        for f in tabla:
+            f["status"] = (por_jn.get(f["job_number"].strip().upper()) or {}).get("status", "")
+        return jsonify({"wip": tabla, "tipos": list(REQ_TIPOS), "requisiciones_disponibles": bool(_orm and _orm.DB_ENABLED)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/api/projconfig/plan-personal/import", methods=["POST"])
 def api_import_plan_personal():

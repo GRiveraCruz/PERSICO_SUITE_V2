@@ -7258,7 +7258,10 @@ function renderPurchDashboard(d){
 //  Resumen, búsqueda, filtros y orden. Clic en una celda abre esa requisición.
 // ════════════════════════════════════════════════════════
 const PURCH_DIAS_ALERTA = 14;          // sin movimiento por más de N días → alerta
-let _purchWip = null, _purchWipQ = '', _purchWipFiltro = 'todos', _purchWipOrden = 'avance';
+// rev68: estado por tabla (ctx), porque la misma tabla se usa en el Dashboard de Compras
+// ('purch') y en el Dashboard del proyecto ('pc').
+const _pw = {};
+const _pwSt = ctx => (_pw[ctx] = _pw[ctx] || {d:null, q:'', filtro:'todos', orden:'avance'});
 const PURCH_TITULO = {electrico:'Electric BOM', mecanico:'Mechanic BOM', componentes_mayores:'Major items', manufactura:'Manufacturing BOM'};
 const _purchDias = iso => { if(!iso) return null; const d = new Date(iso.slice(0,10)+'T00:00:00'), h = new Date(); h.setHours(0,0,0,0); return Math.round((h-d)/864e5); };
 const _purchHace = n => n==null ? '' : n<=0 ? 'hoy' : n===1 ? 'ayer' : n<30 ? `hace ${n} d` : n<365 ? `hace ${Math.round(n/30)} mes${Math.round(n/30)===1?'':'es'}` : `hace ${Math.round(n/365)} año${Math.round(n/365)===1?'':'s'}`;
@@ -7272,17 +7275,19 @@ function _purchJobInfo(f, tipos){
   return {n: bs.length, avance, pend, estancado, ultima: dias.length ? Math.min(...dias) : null};
 }
 
-function purchWipTableHTML(d, card){
-  _purchWip = d;
+function purchWipTableHTML(d, card, ctx='purch', opts={}){
+  const st = _pwSt(ctx); st.d = d; st.opts = opts;
   if(!d.requisiciones_disponibles) return `<div style="${card}">Las requisiciones requieren la base de datos.</div>`;
-  if(!(d.wip||[]).length) return `<div style="${card};color:var(--muted);text-align:center">No hay Jobs en WIP</div>`;
-  return `<div style="${card}" id="purch-wip-card">${purchWipInner()}</div>`;
+  if(!(d.wip||[]).length) return `<div style="${card};color:var(--muted);text-align:center">${opts.vacio||'No hay Jobs en WIP'}</div>`;
+  return `<div style="${card}" id="${ctx}-wip-card">${purchWipInner(ctx)}</div>`;
 }
 
-function purchWipRender(){ const el = document.getElementById('purch-wip-card'); if(el) el.innerHTML = purchWipInner(); }
+function purchWipRender(ctx='purch'){ const el = document.getElementById(ctx+'-wip-card'); if(el) el.innerHTML = purchWipInner(ctx); }
 
-function purchWipInner(){
-  const d = _purchWip, tipos = d.tipos||['electrico','mecanico','componentes_mayores','manufactura'];
+function purchWipInner(ctx='purch'){
+  const st = _pwSt(ctx), opts = st.opts||{};
+  const d = st.d, tipos = d.tipos||['electrico','mecanico','componentes_mayores','manufactura'];
+  const _purchWipQ = st.q, _purchWipFiltro = st.filtro, _purchWipOrden = st.orden;
   const filas = d.wip.map(f=>({f, i:_purchJobInfo(f, tipos)}));
   // resumen (sobre todos los Jobs WIP, sin filtros)
   const sinReq = filas.filter(x=>!x.i.n).length, estanc = filas.filter(x=>x.i.estancado).length;
@@ -7321,26 +7326,27 @@ function purchWipInner(){
   };
   const body = vis.map(({f,i})=>{
     const jobCell = `<td style="padding:9px 10px;border-top:1px solid var(--border);vertical-align:top">
-        <div style="font-family:'DM Mono',monospace;font-weight:800">${esc(f.job_number)}</div>
+        <div style="font-family:'DM Mono',monospace;font-weight:800">${esc(f.job_number)}${opts.conEstatus&&f.status?` <span class="badge" style="font-family:'DM Sans',sans-serif;font-weight:600">${esc(f.status)}</span>`:''}</div>
         <div style="font-size:10.5px;color:var(--muted)">${esc(f.customer||'')}${f.pm?' · '+esc(String(f.pm).replace(/ - Persico$/i,'')):''}</div>
         <div style="font-size:10.5px;margin-top:4px;color:${i.n?'var(--muted2)':'var(--red)'};font-weight:${i.n?400:700}">${i.n?`${i.n} de ${tipos.length} BOMs`:'Sin requisiciones'}</div></td>`;
     if(!i.n) return `<tr>${jobCell}<td colspan="${tipos.length}" style="padding:9px 10px;border-top:1px solid var(--border);vertical-align:middle;cursor:pointer" onclick="purchIrReq('${esc(f.job_number)}','electrico')" title="Abrir requisiciones de ${esc(f.job_number)}">${chip('Ningún BOM capturado','#fee2e2','#b91c1c')}</td></tr>`;
     return `<tr>${jobCell}${tipos.map(t=>celda(f,t)).join('')}</tr>`;
   }).join('');
   const opt = (v, t, cur) => `<option value="${v}" ${v===cur?'selected':''}>${t}</option>`;
-  return `<div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);margin-bottom:10px">Jobs en WIP · requisiciones de compra</div>
+  const W = opts.etiquetaJobs || 'Jobs WIP';
+  return `<div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);margin-bottom:10px">${opts.titulo || 'Jobs en WIP · requisiciones de compra'}</div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
-      ${mini('Jobs WIP', d.wip.length)}
-      ${mini('Sin ninguna requisición', sinReq, sinReq?'var(--red)':'var(--green)')}
+      ${mini(W, d.wip.length)}
+      ${mini(d.wip.length===1?'BOMs sin requisición':'Sin ninguna requisición', d.wip.length===1?tipos.filter(t=>!d.wip[0].boms[t]).length:sinReq, (d.wip.length===1?tipos.some(t=>!d.wip[0].boms[t]):sinReq)?'var(--red)':'var(--green)')}
       ${mini(`Sin movimiento +${PURCH_DIAS_ALERTA} días`, estanc, estanc?'#b45309':'var(--green)', 'con renglones pendientes')}
       ${mini('Ordenado promedio', ordProm==null?'—':ordProm+'%', null, cubProm==null?'':`cubierto (reasignado + ordenado): ${cubProm}%`)}
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
-      <input type="search" value="${esc(_purchWipQ)}" placeholder="Buscar Job, cliente o PM" oninput="_purchWipQ=this.value;clearTimeout(window._pwT);window._pwT=setTimeout(()=>{purchWipRender();const i=document.querySelector('#purch-wip-card input[type=search]');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},250)" style="flex:1;min-width:200px;font-size:12px;padding:6px 10px;border:1px solid var(--border2);border-radius:6px">
-      <select onchange="_purchWipFiltro=this.value;purchWipRender()" style="font-size:12px;padding:5px 8px">
-        ${opt('todos','Todos los Jobs WIP',_purchWipFiltro)}${opt('pendientes','Con pendientes',_purchWipFiltro)}${opt('sinreq','Con algún BOM sin requisición',_purchWipFiltro)}${opt('estancados',`Sin movimiento +${PURCH_DIAS_ALERTA} días`,_purchWipFiltro)}
+      ${d.wip.length>1?`<input type="search" value="${esc(_purchWipQ)}" placeholder="Buscar Job, cliente o PM" oninput="_pwSt('${ctx}').q=this.value;clearTimeout(window._pwT);window._pwT=setTimeout(()=>{purchWipRender('${ctx}');const i=document.querySelector('#${ctx}-wip-card input[type=search]');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},250)" style="flex:1;min-width:200px;font-size:12px;padding:6px 10px;border:1px solid var(--border2);border-radius:6px">`:''}
+      <select onchange="_pwSt('${ctx}').filtro=this.value;purchWipRender('${ctx}')" style="font-size:12px;padding:5px 8px">
+        ${opt('todos','Todos los '+W,_purchWipFiltro)}${opt('pendientes','Con pendientes',_purchWipFiltro)}${opt('sinreq','Con algún BOM sin requisición',_purchWipFiltro)}${opt('estancados',`Sin movimiento +${PURCH_DIAS_ALERTA} días`,_purchWipFiltro)}
       </select>
-      <select onchange="_purchWipOrden=this.value;purchWipRender()" style="font-size:12px;padding:5px 8px">
+      <select onchange="_pwSt('${ctx}').orden=this.value;purchWipRender('${ctx}')" style="font-size:12px;padding:5px 8px">
         ${opt('avance','Ordenar: menor avance',_purchWipOrden)}${opt('job','Ordenar: Job',_purchWipOrden)}${opt('fecha','Ordenar: sin movimiento más tiempo',_purchWipOrden)}
       </select>
       <span style="font-size:11px;color:var(--muted)">${vis.length} de ${d.wip.length}</span>
@@ -8102,6 +8108,8 @@ async function reqUploadFile(file){
       <div>• ${d.iguales} sin cambios (misma cantidad, no se duplicaron)</div>
       ${d.revision.length?`<div style="color:var(--amber);font-weight:700">• ${d.revision.length} para revisión (no se cambiaron):</div><ul style="margin:0 0 0 18px;font-size:11px;color:var(--amber)">${li(d.revision,x=>`${esc(x.part_number)}: actual ${x.actual} → archivo ${x.nueva}${x.status==='Comprado'||x.status==='Cancelado'?` (renglón ${esc(x.status)})`:''}`)}</ul>`:''}
       ${d.consolidados_en_archivo?`<div style="color:var(--muted)">• ${d.consolidados_en_archivo} renglón(es) repetido(s) dentro del archivo se sumaron en uno</div>`:''}
+      ${d.completados?`<div>• ${d.completados} renglón(es) existente(s) completado(s) con la marca o descripción del archivo</div>`:''}
+      ${(d.avisos||[]).map(a=>`<div style="color:var(--amber);font-weight:700">⚠ ${esc(a)}</div>`).join('')}
     </div>`;
     toast(`Requisición: ${d.agregados} nuevo(s) · ${d.actualizados.length} actualizado(s) · ${d.iguales} igual(es)${d.revision.length?` · ${d.revision.length} para revisión`:''}`,'ok',6000);
     if(job===reqCurrentJob && tipo===reqCurrentTipo) reqLoadJob();
@@ -13353,6 +13361,8 @@ function pcRenderDashboard(){
       ${vencidos?`<div style="margin-top:8px;font-size:11px;color:var(--red);text-align:center">⚠ ${vencidos} punto(s) abierto(s) con fecha compromiso vencida</div>`:''}</div>
   </div>
 
+  <div id="pc-dash-compras" style="margin-bottom:16px"><div style="${PC_DASH_CARD};font-size:12px;color:var(--muted)">${lbl('Estatus de compras')}Cargando requisiciones…</div></div>
+
   <div style="${PC_DASH_CARD};margin-bottom:16px">${lbl('Timing del proyecto')}${timingCard}</div>
 
   <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px">
@@ -13366,6 +13376,21 @@ function pcRenderDashboard(){
   pcDashRenderJobs(local, null);
   pcDashCargarServidor(local, tok);
   pcDashCargarDocs(tok);
+  pcDashCargarCompras(tok, local.map(j=>j.job_number));
+}
+
+// rev68: estatus de compras de los Jobs del proyecto, con la tabla del Dashboard de Compras
+async function pcDashCargarCompras(tok, jobs){
+  const el = () => document.getElementById('pc-dash-compras');
+  if(!jobs.length){ if(el()) el().innerHTML=''; return; }
+  try{
+    const r = await fetch('/api/projconfig/compras?jobs='+encodeURIComponent(jobs.join(',')));
+    const d = await r.json();
+    if(tok !== _pcDashTok) return;
+    if(!r.ok || d.error) throw new Error(d.error||`HTTP ${r.status}`);
+    _pcDash.compras = d;
+    if(el()) el().innerHTML = purchWipTableHTML(d, PC_DASH_CARD, 'pc', {titulo:'Estatus de compras · requisiciones por BOM', etiquetaJobs:'Jobs del proyecto', conEstatus:true, vacio:'El proyecto no tiene Jobs.'});
+  }catch(e){ if(tok===_pcDashTok && el()) el().innerHTML = `<div style="${PC_DASH_CARD};font-size:12px;color:var(--red)">No se pudo cargar el estatus de compras: ${esc(e.message)}</div>`; }
 }
 
 // rev58: estatus de los documentos de la pestaña Documentación
