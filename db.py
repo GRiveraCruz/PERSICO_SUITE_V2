@@ -154,6 +154,15 @@ class RequisicionCompra(Base, JSONBMixin):
     status = Column(String, index=True)
 
 
+class RequisicionCarga(Base, JSONBMixin):
+    """rev72: cada carga (versión) de un BOM por Excel, con la lista de lo que cambió:
+    renglones nuevos, modificados, por revisar, que ya no vienen y diferencias."""
+    __tablename__ = "requisiciones_cargas"
+    job = Column(String, index=True)
+    tipo = Column(String, index=True)
+    version = Column(Integer)
+
+
 # ══════════════════════════════════════════════════════════════════
 #  WORK HOURS (la colección más grande — 4,253+ registros y creciendo)
 # ══════════════════════════════════════════════════════════════════

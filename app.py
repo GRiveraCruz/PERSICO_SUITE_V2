@@ -7754,10 +7754,8 @@ def api_dashboard_project_manager():
             row, y = _dash_job_row(j, jc, pools, today, con_revenue=True)
             if "resultado_operativo" in row:      # rev71: datos de la sección "Resultado" de las tarjetas
                 row["costo_actual"] = round(row["base"] - row["resultado_operativo"], 2)
-                rv = float(row.get("revenue") or 0)
-                row["resultado_financiero"] = round(rv - row["costo_actual"], 2)
-                row["financiero_pct"] = round(row["resultado_financiero"] / rv * 100, 1) if rv else None
                 row["runoff_interno"] = jc.get("runoff_interno") or ""
+                # rev72: el Project Manager solo ve el resultado operativo (no el financiero)
             if j in jobs:
                 out["jobs"].append(row)
             # rev50: la gráfica de barras también recibe los Jobs Open/WIP de otros años (son la vista
@@ -7879,7 +7877,10 @@ def _req_resumen_jobs(wip):
                 "pct_reasignado": round(sum(fr_reas) / len(fr_reas), 4) if fr_reas else 0,
                 "pct_ordenado": round(sum(fr_ord) / len(fr_ord), 4) if fr_ord else 0,
                 "pct_cubierto": round(sum(fr_cub) / len(fr_cub), 4) if fr_cub else 0,
-                "vivos": len(vivos)}
+                "vivos": len(vivos),
+                # rev73: pendientes de la última carga del BOM
+                "por_revisar": sum(1 for r in rows if isinstance(r.get("revision"), dict)),
+                "ausentes": sum(1 for r in vivos if r.get("ausente_desde"))}
         tabla.append(fila)
     return tabla
 
@@ -7999,6 +8000,160 @@ def api_dashboard_engineering():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# ══════════════════════════════════════════════════════════════════
+#  DASHBOARD RECURSOS HUMANOS (rev74)
+# ══════════════════════════════════════════════════════════════════
+DASH_RH_ROLES = ("HUMAN RESOURCES", "GENERAL MANAGEMENT")
+RH_HORAS_SEMANA = CAP_HORAS_SEMANA        # 48 h (L-J 10 h, V 8 h)
+RH_EXTRA_MAX_LFT = 9                      # art. 66 LFT: 3 h diarias, no más de 3 veces por semana
+
+@app.route("/api/dashboard/rh", methods=["GET"])
+def api_dashboard_rh():
+    """Personal activo, subtotal por perfil de puesto, última contratación y baja, rotación
+    mensual por área, horas extraordinarias semanales (4 áreas) y asistencia del día."""
+    me = session.get("user")
+    info = get_user_perms(me) if me else {}
+    if not (is_admin() or info.get("role") in DASH_RH_ROLES): return jsonify({"error": "Sin permiso"}), 403
+    try:
+        hoy = datetime.date.today()
+        def fd(v):
+            try: return datetime.date.fromisoformat(str(v or "")[:10])
+            except ValueError: return None
+        personal = _load_personal() or []
+        activo = lambda p: (p.get("estado") or "Activo") != "Baja"
+        activos = [p for p in personal if activo(p)]
+        bajas = [p for p in personal if not activo(p)]
+        def cuenta(clave):
+            out = {}
+            for p in activos:
+                k = (p.get(clave) or "").strip() or "Sin asignar"
+                out[k] = out.get(k, 0) + 1
+            return dict(sorted(out.items(), key=lambda x: (-x[1], x[0])))
+        pick = lambda p, f: {"nombre": p.get("nombre"), "puesto": p.get("puesto"), "area": p.get("area"), "fecha": str(p.get(f))[:10]}
+        ing = sorted([p for p in personal if fd(p.get("fecha_ingreso"))], key=lambda p: fd(p["fecha_ingreso"]), reverse=True)
+        baj = sorted([p for p in bajas if fd(p.get("fecha_baja"))], key=lambda p: fd(p["fecha_baja"]), reverse=True)
+
+        # ── Rotación mensual por área: bajas del mes / plantilla promedio (inicio + fin) / 2 × 100
+        meses = []
+        y, m = hoy.year, hoy.month
+        for _ in range(12):
+            meses.append((y, m)); m -= 1
+            if m == 0: y, m = y - 1, 12
+        meses.reverse()
+        def activo_en(p, d):
+            fi, fb = fd(p.get("fecha_ingreso")), fd(p.get("fecha_baja"))
+            if fi and fi > d: return False
+            if not activo(p) and fb and fb < d: return False
+            if not activo(p) and not fb: return False          # baja sin fecha: no se puede ubicar
+            return True
+        areas_all = sorted({(p.get("area") or "").strip() or "Sin área" for p in personal})
+        rot = {a: [] for a in areas_all + ["Total"]}
+        for (yy, mm) in meses:
+            d0 = datetime.date(yy, mm, 1)
+            d1 = (datetime.date(yy + (mm == 12), mm % 12 + 1, 1) - datetime.timedelta(days=1))
+            for a in areas_all + ["Total"]:
+                grupo = personal if a == "Total" else [p for p in personal if ((p.get("area") or "").strip() or "Sin área") == a]
+                ini = sum(1 for p in grupo if activo_en(p, d0))
+                fin_ = sum(1 for p in grupo if activo_en(p, d1))
+                b = sum(1 for p in grupo if not activo(p) and fd(p.get("fecha_baja")) and d0 <= fd(p["fecha_baja"]) <= d1)
+                alt = sum(1 for p in grupo if fd(p.get("fecha_ingreso")) and d0 <= fd(p["fecha_ingreso"]) <= d1)
+                prom = (ini + fin_) / 2
+                rot[a].append({"mes": f"{yy}-{mm:02d}", "bajas": b, "altas": alt, "plantilla": round(prom, 1),
+                               "indice": round(b / prom * 100, 1) if prom else None})
+        bajas_sin_fecha = sum(1 for p in bajas if not fd(p.get("fecha_baja")))
+
+        # ── Horas extraordinarias semanales (Work Hours) de las 4 áreas de Capacidad
+        lunes_hoy = hoy - datetime.timedelta(days=hoy.weekday())
+        semanas = [lunes_hoy - datetime.timedelta(weeks=i) for i in range(11, -1, -1)]
+        anios = sorted({d.year for d in semanas} | {(d + datetime.timedelta(days=6)).year for d in semanas})
+        todas_areas = _load_catalog("areas") or []
+        _na = lambda v: " ".join(_sin_acentos(v).split())
+        areas4 = [a for a in todas_areas if _na(a.get("nombre")) in CAP_AREAS_INDICES]
+        mapeo, _sug = _cap_mapeo(areas4)
+        clasif = _wh_clasificador([]).clasificar
+        por_emp = {}                  # (empleado, lunes) -> horas ;  empleado -> área
+        area_emp = {}
+        for yy in anios:
+            for r in wh_load(yy):
+                f = fd(r.get("date_worked"))
+                if not f or f < semanas[0] or f > hoy: continue
+                c = clasif(r, yy)
+                if not c: continue
+                _f, k, _dep, h, _c, _t = c
+                e = normalize_name(r.get("employee", ""))
+                if k and mapeo.get(k): area_emp.setdefault(e, mapeo[k])
+                lun = f - datetime.timedelta(days=f.weekday())
+                por_emp[(e, lun)] = por_emp.get((e, lun), 0.0) + h
+        nombres4 = [a["nombre"] for a in areas4]
+        extra = {a: [] for a in nombres4 + ["Total"]}
+        for lun in semanas:
+            for a in nombres4 + ["Total"]:
+                tot = [h for (e, l), h in por_emp.items() if l == lun and area_emp.get(e) and (a == "Total" or area_emp[e] == a)]
+                ords = sum(min(h, RH_HORAS_SEMANA) for h in tot)
+                ext = sum(max(0.0, h - RH_HORAS_SEMANA) for h in tot)
+                extra[a].append({"semana": lun.isoformat(), "parcial": lun == lunes_hoy, "empleados": len(tot),
+                                 "ordinarias": round(ords, 1), "extra": round(ext, 1),
+                                 "indice": round(ext / ords * 100, 1) if ords else None,
+                                 "con_extra": sum(1 for h in tot if h > RH_HORAS_SEMANA),
+                                 "sobre_lft": sum(1 for h in tot if h - RH_HORAS_SEMANA > RH_EXTRA_MAX_LFT)})
+
+        # ── Asistencia del día (kiosco) + permisos aprobados de hoy
+        hs = hoy.isoformat()
+        permisos_hoy = {}
+        for pm in _load_permisos() or []:
+            if pm.get("estatus") != "Aprobado": continue
+            pi, pf = str(pm.get("fecha_inicio") or pm.get("fecha") or "")[:10], str(pm.get("fecha_fin") or pm.get("fecha") or "")[:10]
+            if pi and pi <= hs <= (pf or pi):
+                permisos_hoy[pm.get("tid")] = pm.get("tipo") or "Permiso"
+        asis = {"configurado": _attendance_configured(), "conectado": False, "error": None, "laborable": CAP_JORNADA[hoy.weekday()] > 0,
+                "festivo": next((n for f, n in _festivos_lft(hoy.year) if f == hoy), None)}
+        presentes = {}
+        if asis["configurado"]:
+            try:
+                rw = _requests.get(ATTENDANCE_URL + "/api/workers", timeout=8)
+                rr = _requests.get(ATTENDANCE_URL + "/api/records", params={"from": hs, "to": hs + "T23:59:59"}, timeout=10)
+                if rw.status_code == 200 and rr.status_code == 200:
+                    asis["conectado"] = True
+                    ext = {w.get("id"): w.get("externalId") for w in rw.json()}
+                    for rec in rr.json():
+                        if rec.get("type") != "entrada": continue
+                        tid = ext.get(rec.get("workerId"))
+                        if tid and (tid not in presentes or rec.get("timestamp", "") < presentes[tid]):
+                            presentes[tid] = rec.get("timestamp", "")
+                else:
+                    asis["error"] = f"El servicio de asistencia respondió {rw.status_code}/{rr.status_code}"
+            except Exception as e:
+                asis["error"] = f"No se pudo conectar con el servicio de asistencia: {e}"
+        por_area_asis = {}
+        lista = []
+        for p in activos:
+            a = (p.get("area") or "").strip() or "Sin área"
+            x = por_area_asis.setdefault(a, {"activos": 0, "presentes": 0, "permiso": 0, "sin_registro": 0})
+            x["activos"] += 1
+            tid = p.get("tid")
+            if tid in presentes: x["presentes"] += 1; est = "presente"
+            elif tid in permisos_hoy: x["permiso"] += 1; est = permisos_hoy[tid]
+            else: x["sin_registro"] += 1; est = "sin registro"
+            lista.append({"nombre": p.get("nombre"), "area": a, "puesto": p.get("puesto"), "estado": est,
+                          "entrada": presentes.get(tid, "")})
+        asis.update(por_area=dict(sorted(por_area_asis.items())), personas=sorted(lista, key=lambda x: (x["estado"] != "sin registro", x["area"], x["nombre"] or "")),
+                    presentes=sum(v["presentes"] for v in por_area_asis.values()), permiso=sum(v["permiso"] for v in por_area_asis.values()))
+
+        return jsonify({
+            "hoy": hs, "activos": len(activos), "bajas_total": len(bajas),
+            "por_perfil": cuenta("puesto"), "por_area": cuenta("area"),
+            "ultima_contratacion": pick(ing[0], "fecha_ingreso") if ing else None,
+            "ultimas_contrataciones": [pick(p, "fecha_ingreso") for p in ing[:5]],
+            "ultima_baja": pick(baj[0], "fecha_baja") if baj else None,
+            "ultimas_bajas": [pick(p, "fecha_baja") for p in baj[:5]],
+            "rotacion": rot, "rotacion_meses": [f"{yy}-{mm:02d}" for yy, mm in meses], "bajas_sin_fecha": bajas_sin_fecha,
+            "horas_extra": extra, "semanas": [d.isoformat() for d in semanas], "horas_semana": RH_HORAS_SEMANA,
+            "extra_max_lft": RH_EXTRA_MAX_LFT, "areas_extra": nombres4,
+            "asistencia": asis,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/api/dashboard/purchasing", methods=["GET"])
 def api_dashboard_purchasing():
     """Dashboard de inicio del perfil PURCHASING.
@@ -8035,7 +8190,39 @@ def api_dashboard_purchasing():
         # Tabla de Jobs en WIP (requisiciones por tipo)
         wip = sorted([j for j in all_jobs if (j.get("status") or "").strip().upper() == "WIP"], key=lambda x: x.get("job_number", ""))
         tabla = _req_resumen_jobs(wip)
+        # rev73: tarjetas de los Jobs WIP — tiempo, BOMs subidos (última versión de carga),
+        # estatus de compras y resultado comercial (Target Compras vs adquirido, % de ahorro)
+        cards = _ing_cards(wip)
+        cargas = {}
+        if _orm and _orm.DB_ENABLED and wip:
+            s = _orm.get_session()
+            try:
+                C = _orm.RequisicionCarga
+                for r in s.query(C).filter(C.job.in_([j["job_number"] for j in wip])).all():
+                    k = (r.job, r.tipo)
+                    if k not in cargas or r.version > cargas[k]["version"]:
+                        cargas[k] = {"version": r.version, "fecha": (r.data or {}).get("fecha", ""), "usuario": (r.data or {}).get("usuario", "")}
+            finally:
+                s.close()
+        resumen_bom = {f["job_number"]: f["boms"] for f in tabla}
+        anio_job = {j["job_number"]: int(_year_of(j) or CURRENT_YEAR) for j in wip}
+        for c in cards:
+            jn = c["job_number"]
+            jc = cfg_by_job.get(jn.strip().upper(), {})
+            tc = jc.get("target_compras")
+            tc = float(tc) if tc not in (None, "") else None
+            try:
+                adq = round(float(_build_report_data_vida(jn, anio_inicio=anio_job.get(jn), pools=pools).get("purchasing_total") or 0), 2)
+                c["comercial"] = {"target_compras": tc, "adquirido": adq, "ahorro": round(tc - adq, 2) if tc else None,
+                                  "ahorro_pct": round((tc - adq) / tc, 4) if tc else None}
+            except Exception as e:
+                c["comercial"] = {"error": str(e)}
+            bj = resumen_bom.get(jn, {})
+            c["boms_carga"] = {t: (dict(cargas.get((jn, t)) or {}, renglones=bj[t].get("renglones"), por_revisar=bj[t].get("por_revisar"),
+                                        ausentes=bj[t].get("ausentes"), ultima_actualizacion=bj[t].get("ultima_actualizacion"))
+                                   if bj.get(t) else None) for t in REQ_TIPOS}
         return jsonify({"year": year, "years": sorted({int(_year_of(j)) for j in all_jobs if _year_of(j)} | {CURRENT_YEAR}, reverse=True),
+                        "cards": cards, "cards_meta": _ing_meta(),
                         "grafica": grafica, "wip": tabla, "tipos": list(REQ_TIPOS),
                         "requisiciones_disponibles": bool(_orm and _orm.DB_ENABLED),
                         "now": datetime.datetime.now().isoformat(timespec="minutes")})
@@ -11340,6 +11527,14 @@ def api_requisiciones_upload():
                "completados": 0, "avisos": avisos}
         s = _orm.get_session()
         try:
+            # rev72: número de versión de esta carga (por Job + tipo de BOM) y bitácora de cambios
+            _pg_lock(s, f"req-carga:{job}:{tipo}")
+            version = (s.query(_orm.RequisicionCarga).filter(_orm.RequisicionCarga.job == job,
+                                                              _orm.RequisicionCarga.tipo == tipo).count()) + 1
+            cambios = []          # [{accion, part_number, description, ...}]
+            def marca(d, campo, de, a, aplicado=True):
+                d.setdefault("cambios_carga", []).append({"version": version, "campo": campo, "de": de, "a": a,
+                                                          "aplicado": aplicado, "fecha": ahora, "usuario": user})
             existentes = {}
             for r in (s.query(_orm.RequisicionCompra)
                       .filter(_orm.RequisicionCompra.job == job, _orm.RequisicionCompra.tipo == tipo)
@@ -11350,11 +11545,25 @@ def api_requisiciones_upload():
                 row = existentes.get(k)
                 if row is None:
                     item = {"id": _req_gen_item_id(), "job": job, "tipo": tipo, **nuevo,
-                            "created_by": user, "created_at": ahora}
+                            "created_by": user, "created_at": ahora, "carga_version": version}
                     s.add(_orm.RequisicionCompra(data=item, item_id=item["id"], job=job, tipo=tipo, status=item["status"]))
                     res["agregados"] += 1
+                    cambios.append({"accion": "nuevo", "part_number": nuevo["part_number"], "description": nuevo.get("description", ""),
+                                    "brand": nuevo.get("brand", ""), "cantidad": nuevo["quantity"]})
                     continue
                 d = row.data
+                if d.get("ausente_desde"):          # volvió a aparecer en el BOM
+                    cambios.append({"accion": "reaparece", "part_number": d.get("part_number"), "description": d.get("description", ""),
+                                    "ausente_desde": d.get("ausente_desde")})
+                    d.pop("ausente_desde", None)
+                # diferencias de marca/descripción contra lo guardado (no se sobrescribe: solo se informa)
+                for campo in ("brand", "description"):
+                    nv, av = str(nuevo.get(campo) or "").strip(), str(d.get(campo) or "").strip()
+                    ya = next((x for x in reversed(d.get("cambios_carga") or []) if x.get("campo") == campo and not x.get("aplicado")), None)
+                    if nv and av and nv.upper() != av.upper() and not (ya and str(ya.get("a")).upper() == nv.upper()):
+                        cambios.append({"accion": "diferencia", "part_number": d.get("part_number"), "description": d.get("description", ""),
+                                        "campo": campo, "de": av, "a": nv})
+                        marca(d, campo, av, nv, aplicado=False)
                 # rev67: si el renglón ya existía sin marca o sin descripción (por ejemplo, se
                 # cargó antes sin la columna FABRICANTE), se completan con lo del archivo. Lo
                 # que ya tenía valor no se sobrescribe.
@@ -11362,6 +11571,9 @@ def api_requisiciones_upload():
                 for campo in ("brand", "description"):
                     if nuevo.get(campo) and not str(d.get(campo) or "").strip():
                         d[campo] = nuevo[campo]; lleno = True
+                        marca(d, campo, "", nuevo[campo])
+                        cambios.append({"accion": "modificado", "part_number": d.get("part_number"), "description": d.get("description", ""),
+                                        "campo": campo, "de": "", "a": nuevo[campo]})
                 if lleno: res["completados"] += 1
                 actual, nueva = float(d.get("quantity") or 0), float(nuevo["quantity"])
                 if nueva == actual:
@@ -11373,21 +11585,66 @@ def api_requisiciones_upload():
                     d["quantity"] = nueva
                     d.pop("revision", None)
                     d.setdefault("cambios_cantidad", []).append({"de": actual, "a": nueva, "fecha": ahora, "usuario": user, "origen": "carga de requisición"})
+                    marca(d, "quantity", actual, nueva)
+                    cambios.append({"accion": "modificado", "part_number": d.get("part_number"), "description": d.get("description", ""),
+                                    "campo": "quantity", "de": actual, "a": nueva})
                     _req_aplicar_estatus(d, row)
                     res["actualizados"].append({"part_number": d.get("part_number"), "de": actual, "a": nueva})
                 else:
                     # Baja la cantidad, o el renglón ya está Comprado/Cancelado: no se toca,
                     # se marca para que alguien lo revise y decida.
-                    d["revision"] = {"cantidad_nueva": nueva, "cantidad_actual": actual, "fecha": ahora, "usuario": user}
+                    previa = d.get("revision") if isinstance(d.get("revision"), dict) else None
+                    if previa and float(previa.get("cantidad_nueva") or -1) == nueva:
+                        # rev72: la misma revisión pendiente de una carga anterior: se deja como
+                        # estaba y no se vuelve a listar como cambio de esta carga
+                        res["iguales"] += 1
+                        row.data = d; _orm_flag_modified(row, "data"); continue
+                    d["revision"] = {"cantidad_nueva": nueva, "cantidad_actual": actual, "fecha": ahora, "usuario": user, "version": version}
                     res["revision"].append({"part_number": d.get("part_number"), "actual": actual, "nueva": nueva, "status": d.get("status")})
+                    marca(d, "quantity", actual, nueva, aplicado=False)
+                    cambios.append({"accion": "revision", "part_number": d.get("part_number"), "description": d.get("description", ""),
+                                    "campo": "quantity", "de": actual, "a": nueva, "status": d.get("status")})
                 row.data = d
                 _orm_flag_modified(row, "data")
+            # rev72: renglones que ya existían y no vienen en esta carga (posible baja del BOM).
+            # No se tocan: solo se marcan para revisarlos.
+            en_archivo = set(orden)
+            for k, row in existentes.items():
+                if k in en_archivo: continue
+                d = row.data
+                if d.get("status") == "Cancelado" or d.get("ausente_desde"): continue
+                d["ausente_desde"] = version
+                cambios.append({"accion": "ausente", "part_number": d.get("part_number"), "description": d.get("description", ""),
+                                "cantidad": d.get("quantity"), "status": d.get("status")})
+                row.data = d; _orm_flag_modified(row, "data")
+            resumen = {}
+            for c in cambios: resumen[c["accion"]] = resumen.get(c["accion"], 0) + 1
+            resumen["iguales"] = res["iguales"]
+            s.add(_orm.RequisicionCarga(job=job, tipo=tipo, version=version, data={
+                "version": version, "fecha": ahora, "usuario": user, "archivo": f.filename, "renglones_archivo": len(orden),
+                "resumen": resumen, "cambios": cambios}))
             s.commit()
+            res["version"] = version; res["resumen"] = resumen
         finally:
             s.close()
         return jsonify({"ok": True, "imported": res["agregados"], **res})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/requisiciones/<job>/cargas", methods=["GET"])
+def api_requisiciones_cargas(job):
+    """rev72: historial de cargas (versiones) de un BOM con lo que cambió en cada una."""
+    if not (can("view", "compras-requisicion") or can("view", "projconfig")): return jsonify({"error": "Sin permiso"}), 403
+    if not _orm or not _orm.DB_ENABLED: return jsonify({"cargas": []})
+    tipo = (request.args.get("tipo") or "").strip()
+    s = _orm.get_session()
+    try:
+        q = s.query(_orm.RequisicionCarga).filter(_orm.RequisicionCarga.job == job)
+        if tipo: q = q.filter(_orm.RequisicionCarga.tipo == tipo)
+        return jsonify({"cargas": [dict(r.data, tipo=r.tipo) for r in q.order_by(_orm.RequisicionCarga.version.desc()).all()]})
+    finally:
+        s.close()
 
 @app.route("/api/requisiciones/<item_id>", methods=["PUT"])
 def api_requisiciones_update(item_id):
