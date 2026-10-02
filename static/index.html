@@ -1810,6 +1810,52 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
   </div>
 </div>
 
+<!-- ── Modal: Punto abierto (rev79) -->
+<div class="mo" id="mo-pc-punto" style="z-index:150">
+  <div class="md" style="max-width:920px;width:calc(100% - 32px)">
+    <div class="mh"><h2 id="pcp-titulo">Punto</h2><button class="px" id="pcp-cerrar" onclick="closeMo('mo-pc-punto')">Cerrar</button></div>
+    <div class="mb2">
+      <div id="pcp-ro" style="display:none;margin-bottom:10px;padding:7px 12px;border-radius:8px;background:rgba(0,0,0,.04);font-size:11px;color:var(--muted2)">🔒 Solo lectura: tu usuario puede ver esta pestaña pero no modificarla.</div>
+      <div style="display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:18px">
+        <div>
+          <div class="fi"><label>Descripción del punto</label><textarea data-pcp="descripcion" rows="3" style="width:100%;resize:vertical"></textarea></div>
+          <div class="fi"><label>Notas</label><textarea data-pcp="notas" rows="5" style="width:100%;resize:vertical" placeholder="Detalle, acuerdos, referencias…"></textarea></div>
+          <div class="fr">
+            <div class="fi"><label>Proyecto</label><input data-pcp="proyecto" list="pc-lop-jobs"></div>
+            <div class="fi"><label>Tool / Frame</label><input data-pcp="tool_frame"></div>
+          </div>
+          <div class="fr">
+            <div class="fi"><label>Responsable</label><input data-pcp="responsable"></div>
+            <div class="fi"><label>Estatus</label><select data-pcp="estatus" onchange="pcPuntoInfo()" style="font-weight:700"><option>OPEN</option><option>CLOSE</option><option>INFO</option></select></div>
+          </div>
+          <div class="fr">
+            <div class="fi"><label>Fecha de apertura</label><input type="date" data-pcp="fecha_apertura" onchange="pcPuntoInfo()"></div>
+            <div class="fi"><label>Fecha compromiso</label><input type="date" data-pcp="fecha_compromiso" onchange="pcPuntoInfo()"></div>
+            <div class="fi"><label>Fecha de finalización</label><input type="date" data-pcp="fecha_finalizacion" onchange="pcPuntoInfo()"></div>
+          </div>
+          <div id="pcp-info" style="font-size:11.5px;color:var(--muted2)"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;min-width:0">
+          <div class="sl" style="margin-top:0">Avances <span id="pcp-avances-n" style="color:var(--muted)"></span></div>
+          <div id="pcp-avance-box" style="margin-bottom:10px">
+            <textarea id="pcp-avance-txt" rows="3" style="width:100%;resize:vertical" placeholder="¿Qué se avanzó? (queda con tu usuario, la fecha y el estatus actual)"
+              onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)){event.preventDefault();pcPuntoAgregarAvance();}"></textarea>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px"><span style="font-size:10px;color:var(--muted)">Ctrl+Enter para agregar</span>
+              <button type="button" class="btn-reload" onclick="pcPuntoAgregarAvance()" style="font-size:11px;padding:4px 12px">+ Agregar avance</button></div>
+          </div>
+          <div id="pcp-avances" style="max-height:340px;overflow-y:auto;padding-right:4px"></div>
+        </div>
+      </div>
+    </div>
+    <div class="mf" style="display:flex;gap:8px;align-items:center">
+      <button class="btn-reload" onclick="pcPuntoNavegar(-1)" title="Punto anterior">◀ Anterior</button>
+      <button class="btn-reload" onclick="pcPuntoNavegar(1)" title="Punto siguiente">Siguiente ▶</button>
+      <span style="flex:1;font-size:10.5px;color:var(--muted)">Los cambios quedan registrados con "Guardar Configuración".</span>
+      <button class="btn-new" id="pcp-aplicar" onclick="pcPuntoAplicar()" style="width:auto;padding:9px 20px">Aplicar cambios</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Modal: Importar LOP (Configurar Proyecto → Puntos Abiertos) -->
 <div class="mo" id="mo-lop-imp" style="z-index:150">
   <div class="md" style="max-width:860px;width:calc(100% - 32px)">

@@ -14549,7 +14549,7 @@ def api_projconfig_lop_export():
     ws["A1"].alignment = Alignment(vertical="center")
     ws["I1"] = "Code Intern"; ws["J1"] = "F.PM.007"
     for c in ("I1", "J1"): ws[c].font = F(size=9, color="555555")
-    ws.merge_cells("A3:J3"); ws["A3"] = "OPEN ISSUES LIST"
+    ws.merge_cells("A3:K3"); ws["A3"] = "OPEN ISSUES LIST"
     ws["A3"].font = F(size=14, bold=True, color="FFFFFF"); ws["A3"].fill = PatternFill("solid", fgColor=red)
     ws["A3"].alignment = Alignment(horizontal="center", vertical="center"); ws.row_dimensions[3].height = 22
     last = 8 + max(len(rows), 1)
@@ -14564,7 +14564,7 @@ def api_projconfig_lop_export():
         ws.cell(row=i, column=8, value=lbl).font = F(size=10, bold=True)
         c = ws.cell(row=i, column=9, value=fml); c.font = F(size=10, bold=True); c.alignment = Alignment(horizontal="center")
     hdrs = ["ITEM", "OPEN DATE", "PROJECT", "TOOL / FRAME", "DESCRIPTION", "COMMENTS", "RESPONSIBLE",
-            "COMMITMENT DATE", "FINISH DATE", "STATUS"]
+            "COMMITMENT DATE", "FINISH DATE", "STATUS", "PROGRESS LOG"]          # rev79: bitácora de avances
     for j, h in enumerate(hdrs, start=1):
         c = ws.cell(row=8, column=j, value=h)
         c.font = F(size=9, bold=True, color="FFFFFF"); c.fill = PatternFill("solid", fgColor="1F3864")
@@ -14578,19 +14578,21 @@ def api_projconfig_lop_export():
     for i, r in enumerate(rows, start=1):
         rr = 8 + i
         st = str(r.get("estatus") or "OPEN").upper()
+        avs = r.get("avances") or []
+        log = "\n".join(f"{str(a.get('fecha',''))[8:10]}/{str(a.get('fecha',''))[5:7]}/{str(a.get('fecha',''))[:4]} {a.get('usuario','')}: {a.get('texto','')}" for a in avs)
         vals = [i, d(r.get("fecha_apertura")), r.get("proyecto") or "", r.get("tool_frame") or "",
                 r.get("descripcion") or "", r.get("notas") or "", r.get("responsable") or "",
-                d(r.get("fecha_compromiso")), d(r.get("fecha_finalizacion")), st]
+                d(r.get("fecha_compromiso")), d(r.get("fecha_finalizacion")), st, log]
         for j, v in enumerate(vals, start=1):
             c = ws.cell(row=rr, column=j, value=v)
             c.font = F(size=9); c.border = border
-            c.alignment = Alignment(vertical="top", wrap_text=j in (4, 5, 6, 7),
+            c.alignment = Alignment(vertical="top", wrap_text=j in (4, 5, 6, 7, 11),
                                     horizontal="center" if j in (1, 2, 3, 8, 9, 10) else "left")
             if isinstance(v, datetime.date): c.number_format = "DD/MM/YYYY"
         sc = ws.cell(row=rr, column=10)
         sc.fill = PatternFill("solid", fgColor=st_fill.get(st, "FFFFFF"))
         sc.font = F(size=9, bold=True, color=st_font.get(st, "000000"))
-    for j, w in enumerate([6, 12, 11, 16, 44, 50, 18, 14, 13, 10], start=1):
+    for j, w in enumerate([6, 12, 11, 16, 44, 50, 18, 14, 13, 10, 60], start=1):
         ws.column_dimensions[get_column_letter(j)].width = w
     ws.freeze_panes = "A9"
     ws.page_setup.orientation = "landscape"; ws.page_setup.fitToWidth = 1; ws.page_setup.fitToHeight = 0

@@ -11308,6 +11308,7 @@ function pcAplicarSoloLectura(tab){
   // botones de edición (agregar, eliminar, mover, importar); se dejan las descargas
   cont.querySelectorAll('button').forEach(b=>{
     const oc = b.getAttribute('onclick')||'';
+    if(/pcPuntoAbrir/.test(oc)) return;                 // rev79: el modal del punto se puede ver en solo lectura
     if(/Export|PDF|Excel|pcToggleGroup|pcSetGanttZoom|pcPrintGantt/i.test(oc) && !/Abrir|Import/i.test(oc)) return;
     b.style.display='none';
   });
@@ -13613,8 +13614,12 @@ function pcAddPuntoRow(data={}) {
   const jobsPT = (typeof pcJobRows!=='undefined' ? pcJobRows||[] : []);
   const proyecto = data.proyecto ?? (jobsPT.length===1 && !Object.keys(data).length ? jobsPT[0].job_number : '');
   const tr = document.createElement('tr');
+  // rev79: los avances del punto (bitácora) viajan con la fila
+  tr.dataset.avances = JSON.stringify(Array.isArray(data.avances) ? data.avances : []);
   tr.innerHTML = `
-    <td class="pc-punto-item" style="text-align:center;font-weight:700;color:var(--muted)">—</td>
+    <td style="text-align:center;white-space:nowrap"><button type="button" onclick="pcPuntoAbrir(this.closest('tr'))" title="Ver / editar el punto y sus avances"
+      style="background:none;border:1px solid var(--border2);border-radius:6px;cursor:pointer;padding:3px 7px;font-size:11px;color:var(--text)">🔍 <b class="pc-punto-item">—</b></button>
+      <div class="pc-punto-avn" style="font-size:9.5px;color:var(--muted);margin-top:2px"></div></td>
     <td><input data-field="fecha_apertura" type="date" value="${esc(data.fecha_apertura||'')}"
       onchange="pcUpdatePuntosSummary()" style="${inpS};width:100%"></td>
     <td><input data-field="proyecto" list="pc-lop-jobs" value="${esc(proyecto||'')}"
@@ -13640,6 +13645,7 @@ function pcAddPuntoRow(data={}) {
     <td><button onclick="this.closest('tr').remove();pcUpdatePuntosSummary()"
       style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px">Eliminar</button></td>`;
   tb.appendChild(tr);
+  pcPuntoMarcarAvances(tr);
   pcUpdatePuntosSummary();
 }
 
@@ -13664,6 +13670,7 @@ function pcGetPuntosData() {
   if(!tb) return [];
   const v = (tr,f) => tr.querySelector(`[data-field="${f}"]`)?.value||'';
   return [...tb.rows].map(tr => ({
+    avances:             (()=>{ try{ return JSON.parse(tr.dataset.avances||'[]'); }catch(e){ return []; } })(),   // rev79
     fecha_apertura:      v(tr,'fecha_apertura'),
     proyecto:            v(tr,'proyecto'),
     tool_frame:          v(tr,'tool_frame'),
@@ -13675,6 +13682,100 @@ function pcGetPuntosData() {
     estatus:             v(tr,'estatus')||'OPEN',
   })).filter(r=>r.descripcion || r.tool_frame || r.responsable)
      .map((r,i)=>({item:i+1, ...r}));
+}
+
+// ════════════════════════════════════════════════════════
+//  rev79 — Modal del punto abierto: ver todo el punto y editar notas, estatus, fechas
+//  y la bitácora de AVANCES (fecha, usuario, texto). Los cambios se aplican a la fila;
+//  quedan registrados con "Guardar Configuración", como el resto de la pestaña.
+// ════════════════════════════════════════════════════════
+let _pcPuntoTr = null;
+const _pcPuntoAv = tr => { try{ return JSON.parse(tr.dataset.avances||'[]'); }catch(e){ return []; } };
+function pcPuntoMarcarAvances(tr){
+  const el = tr.querySelector('.pc-punto-avn'); if(!el) return;
+  const av = _pcPuntoAv(tr), u = av[av.length-1];
+  el.textContent = av.length ? `${av.length} avance${av.length===1?'':'s'} · ${String(u.fecha||'').slice(5,10).split('-').reverse().join('/')}` : '';
+}
+function pcPuntoAbrir(tr){
+  _pcPuntoTr = tr;
+  const v = f => tr.querySelector(`[data-field="${f}"]`)?.value || '';
+  const soloLectura = typeof pcTabPuede==='function' && !pcTabPuede('abiertos','create');
+  const n = tr.querySelector('.pc-punto-item')?.textContent || '';
+  const mo = document.getElementById('mo-pc-punto');
+  mo.querySelector('#pcp-titulo').textContent = `Punto ${n}${v('proyecto')?' · '+v('proyecto'):''}`;
+  ['fecha_apertura','proyecto','tool_frame','descripcion','notas','responsable','fecha_compromiso','fecha_finalizacion','estatus'].forEach(f=>{
+    const el = mo.querySelector(`[data-pcp="${f}"]`); if(!el) return;
+    el.value = v(f) || (f==='estatus'?'OPEN':''); el.disabled = soloLectura;
+  });
+  mo.querySelector('#pcp-avance-txt').value = '';
+  mo.querySelector('#pcp-avance-box').style.display = soloLectura ? 'none' : '';
+  mo.querySelector('#pcp-aplicar').style.display = soloLectura ? 'none' : '';
+  mo.querySelector('#pcp-ro').style.display = soloLectura ? '' : 'none';
+  pcPuntoRenderAvances();
+  pcPuntoInfo();
+  mo.classList.add('on');
+  setTimeout(()=>mo.querySelector(soloLectura?'#pcp-cerrar':'[data-pcp="notas"]')?.focus(), 50);
+}
+function pcPuntoInfo(){
+  const mo = document.getElementById('mo-pc-punto'), g = f => mo.querySelector(`[data-pcp="${f}"]`).value;
+  const hoy = new Date().toISOString().slice(0,10), est = g('estatus'), comp = g('fecha_compromiso'), ap = g('fecha_apertura'), fin = g('fecha_finalizacion');
+  const dias = (a,b) => Math.round((new Date(b+'T00:00:00') - new Date(a+'T00:00:00'))/864e5);
+  const partes = [];
+  if(ap) partes.push(est==='CLOSE' && fin ? `Cerrado en ${dias(ap,fin)} día(s)` : `Abierto hace ${dias(ap,hoy)} día(s)`);
+  if(est==='OPEN' && comp) partes.push(comp < hoy ? `<b style="color:var(--red)">⚠ Compromiso vencido hace ${dias(comp,hoy)} día(s)</b>` : `Compromiso en ${dias(hoy,comp)} día(s)`);
+  mo.querySelector('#pcp-info').innerHTML = partes.join(' · ');
+  const sel = mo.querySelector('[data-pcp="estatus"]'); sel.style.color = PC_PUNTO_COLOR[est] || 'var(--text)';
+}
+function pcPuntoRenderAvances(){
+  const box = document.getElementById('pcp-avances'); if(!box || !_pcPuntoTr) return;
+  const av = _pcPuntoAv(_pcPuntoTr);
+  const soloLectura = typeof pcTabPuede==='function' && !pcTabPuede('abiertos','create');
+  box.innerHTML = av.length ? av.slice().reverse().map((a, iRev)=>{ const i = av.length-1-iRev;
+    return `<div style="border-left:3px solid ${a.estatus==='CLOSE'?'var(--green)':'var(--amber)'};padding:6px 10px;margin-bottom:8px;background:rgba(0,0,0,.025);border-radius:0 6px 6px 0">
+      <div style="display:flex;gap:8px;font-size:10.5px;color:var(--muted)"><b style="color:var(--text)">${esc(a.usuario||'')}</b><span>${esc(new Date(a.fecha).toLocaleString('es-MX',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}))}</span>
+        ${a.estatus?`<span style="color:${PC_PUNTO_COLOR[a.estatus]||'var(--muted)'};font-weight:700">${esc(a.estatus)}</span>`:''}
+        ${soloLectura?'':`<button type="button" onclick="pcPuntoBorrarAvance(${i})" title="Quitar este avance" style="margin-left:auto;background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px">✕</button>`}</div>
+      <div style="font-size:12.5px;white-space:pre-wrap;margin-top:3px">${esc(a.texto||'')}</div></div>`; }).join('')
+    : '<div style="font-size:12px;color:var(--muted);padding:10px 0">Sin avances registrados.</div>';
+  document.getElementById('pcp-avances-n').textContent = av.length ? `(${av.length})` : '';
+}
+function pcPuntoAgregarAvance(){
+  const ta = document.getElementById('pcp-avance-txt'), texto = ta.value.trim();
+  if(!texto){ toast('Escribe el avance','er'); ta.focus(); return; }
+  const av = _pcPuntoAv(_pcPuntoTr);
+  av.push({fecha: new Date().toISOString(), usuario: USER_PERMS?.user || '', texto,
+           estatus: document.querySelector('#mo-pc-punto [data-pcp="estatus"]').value});
+  _pcPuntoTr.dataset.avances = JSON.stringify(av);
+  ta.value = ''; pcPuntoRenderAvances(); pcPuntoMarcarAvances(_pcPuntoTr);
+  toast('Avance agregado. Recuerda "Guardar Configuración".','ok');
+}
+function pcPuntoBorrarAvance(i){
+  if(!confirm('¿Quitar este avance?')) return;
+  const av = _pcPuntoAv(_pcPuntoTr); av.splice(i,1);
+  _pcPuntoTr.dataset.avances = JSON.stringify(av); pcPuntoRenderAvances(); pcPuntoMarcarAvances(_pcPuntoTr);
+}
+function pcPuntoAplicar(cerrar=true){
+  if(!_pcPuntoTr) return;
+  const mo = document.getElementById('mo-pc-punto');
+  // un avance escrito pero no agregado también se registra
+  if(document.getElementById('pcp-avance-txt').value.trim()) pcPuntoAgregarAvance();
+  const est = mo.querySelector('[data-pcp="estatus"]').value;
+  if(est==='CLOSE' && !mo.querySelector('[data-pcp="fecha_finalizacion"]').value)
+    mo.querySelector('[data-pcp="fecha_finalizacion"]').value = new Date().toISOString().slice(0,10);   // cierre sin fecha → hoy
+  mo.querySelectorAll('[data-pcp]').forEach(el=>{
+    const f = el.dataset.pcp, dst = _pcPuntoTr.querySelector(`[data-field="${f}"]`);
+    if(dst && dst.value !== el.value){ dst.value = el.value; if(dst.title!==undefined && (f==='descripcion'||f==='notas')) dst.title = el.value; }
+  });
+  pcUpdatePuntosSummary(); pcPuntoMarcarAvances(_pcPuntoTr);
+  _pcPuntoTr.style.transition='box-shadow .6s'; _pcPuntoTr.style.boxShadow='inset 4px 0 0 var(--red)'; const t=_pcPuntoTr; setTimeout(()=>{ t.style.boxShadow=''; }, 900);
+  if(cerrar){ closeMo('mo-pc-punto'); toast('Punto actualizado. Recuerda "Guardar Configuración".','ok'); }
+}
+function pcPuntoNavegar(dir){
+  if(!_pcPuntoTr) return;
+  if(!(typeof pcTabPuede==='function' && !pcTabPuede('abiertos','create'))) pcPuntoAplicar(false);
+  const filas = [...document.querySelectorAll('#pc-abiertos-body tr')];
+  const sig = filas[filas.indexOf(_pcPuntoTr) + dir];
+  if(sig) pcPuntoAbrir(sig); else toast(dir<0?'Es el primer punto':'Es el último punto','if');
 }
 
 // ════════════════════════════════════════════════════════
