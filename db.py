@@ -463,6 +463,22 @@ class ProyectoDocumento(Base):
     __table_args__ = (Index("ux_proyecto_documentos_ptsv_tipo", "ptsv_key", "tipo", unique=True),)
 
 
+class PlanoSTP(Base):
+    """rev78: archivos STP/STEP (3D) de las piezas del BOM de Manufactura. Se relacionan
+    con su renglón por el nombre del archivo (= DETAIL# del plano, con "_revX" si es una
+    revisión). Se guardan en la base para que no se pierdan en un redeploy."""
+    __tablename__ = "requisicion_stp"
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    job         = Column(String, index=True)
+    part_id     = Column(String, index=True)
+    revision    = Column(String)
+    filename    = Column(String)
+    size        = Column(Integer)
+    content     = Column(LargeBinary)
+    uploaded_by = Column(String)
+    created_at  = Column(DateTime, default=datetime.datetime.utcnow)
+
+
 class PlanoPDF(Base):
     """Planos PDF del BOM de Manufactura (Requisición de Compra). Se guardan en la base
     de datos —no en el volumen— para que no se pierdan en un redeploy. Cada subida del

@@ -7593,6 +7593,7 @@ function purchWipInner(ctx='purch'){
 
 // Abre Compras → Requisición de Compra en el Job y el BOM elegidos
 function purchIrReq(job, tipo){
+  if(!reqManufConfirmarSalida()) return;      // rev78: cambios sin guardar en Manufactura
   reqCurrentJob = job; reqCurrentTipo = tipo;
   const idx = ['electrico','mecanico','componentes_mayores','manufactura'].indexOf(tipo);
   document.querySelectorAll('#req-job-content .cl-toggle button').forEach((b,i)=>b.classList.toggle('on', i===idx));
@@ -8639,6 +8640,7 @@ async function reqUploadFile(file){
 }
 
 async function reqLoadJob(){
+  if(!reqManufConfirmarSalida()){ document.getElementById('req-job-select').value = reqCurrentJob||''; return; }   // rev78
   const job = document.getElementById('req-job-select').value;
   reqCurrentJob = job || null;
   const content = document.getElementById('req-job-content');
@@ -8658,6 +8660,7 @@ function reqDescargarExcel(todos){
 }
 
 function reqSetTipo(tipo){
+  if(reqCurrentTipo==='manufactura' && tipo!=='manufactura' && !reqManufConfirmarSalida()) return;   // rev78
   reqCurrentTipo = tipo;
   // Manufactura trabaja con planos PDF: sus propios botones
   const m = tipo==='manufactura';
@@ -8697,6 +8700,8 @@ let REQ_THEAD_COMPRA = null;   // encabezado original (compras); se guarda en el
 async function reqSubirPlanos(files){
   if(!files || !files.length) return;
   if(!reqCurrentJob){ toast('Selecciona un Job','er'); return; }
+  if(reqManufPendientes() && !confirm('Hay cambios sin guardar; al terminar la carga se recargará la tabla y se perderán. ¿Continuar?')){ document.getElementById('req-planos-file').value=''; return; }
+  _manufCambios = {};
   const fd = new FormData(); fd.append('job', reqCurrentJob);
   [...files].forEach(f=>fd.append('files', f));
   toast(`Subiendo ${files.length} plano(s)…`,'ok',2500);
@@ -8707,12 +8712,14 @@ async function reqSubirPlanos(files){
     if(d.error){ toast(d.error,'er'); return; }
     const res = d.resultados||[];
     document.getElementById('req-planos-result').innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px">
-      <thead><tr style="font-size:10px;color:var(--muted);text-transform:uppercase"><th style="text-align:left">Archivo</th><th style="text-align:left">ID pieza</th><th>Rev.</th><th style="text-align:left">Tipo</th><th style="text-align:left">Material</th><th style="text-align:left">Acabado</th></tr></thead><tbody>${
-      res.map(x=>x.error ? `<tr style="border-bottom:1px solid var(--border)"><td>${esc(x.archivo)}</td><td colspan="5" style="color:var(--red)">⚠ ${esc(x.error)}</td></tr>`
-        : `<tr style="border-bottom:1px solid var(--border)"><td style="font-size:11px;color:var(--muted)">${esc(x.archivo)}</td><td style="font-family:'DM Mono',monospace;color:var(--gold)">${esc(x.id)}</td>
-           <td style="text-align:center"><b>${esc(x.revision)}</b>${x.nuevo?'':' <span style="font-size:9px;color:#6d28d9">nueva rev.</span>'}</td>
-           ${['tipo','material','acabado'].map(k=>`<td>${x[k]?esc(x[k]):'<span style="color:var(--amber)">no encontrado</span>'}</td>`).join('')}</tr>`).join('')}</tbody></table>
-      ${res.some(x=>(x.sin_dato||[]).length)?'<div style="font-size:11px;color:var(--amber);margin-top:8px">Los datos no encontrados en el cajetín se pueden capturar en la tabla (clic sobre el campo).</div>':''}`;
+      <thead><tr style="font-size:10px;color:var(--muted);text-transform:uppercase"><th style="text-align:left">Archivo</th><th style="text-align:left">DETAIL#</th><th>Origen</th><th>Rev.</th><th style="text-align:left">Descripción</th><th style="text-align:left">Material</th><th style="text-align:left">Acabado</th><th style="text-align:left">Peso</th></tr></thead><tbody>${
+      res.map(x=>x.error ? `<tr style="border-bottom:1px solid var(--border)"><td>${esc(x.archivo)}</td><td colspan="7" style="color:var(--red)">⚠ ${esc(x.error)}</td></tr>`
+        : `<tr style="border-top:1px solid var(--border)"><td style="font-size:11px;color:var(--muted)">${esc(x.archivo)}</td><td style="font-family:'DM Mono',monospace;color:var(--gold)">${esc(x.id)}</td>
+           <td style="text-align:center;font-size:11px;font-weight:700;color:${MANUF_ORIGEN_COLOR[x.origen]||'var(--amber)'}">${esc(x.origen||'?')}</td>
+           <td style="text-align:center"><b>${esc(x.revision)}</b>${x.reemplazo?' <span style="font-size:9px;color:#b45309">reemplazada</span>':x.nuevo?'':' <span style="font-size:9px;color:#6d28d9">nueva rev.</span>'}</td>
+           ${['tipo','material','acabado','peso'].map(k=>`<td>${x[k]?esc(x[k]):'<span style="color:var(--amber)">no encontrado</span>'}</td>`).join('')}</tr>
+           ${(x.avisos||[]).length?`<tr><td></td><td colspan="7" style="font-size:11px;color:var(--amber);padding-bottom:4px">${x.avisos.map(a=>'⚠ '+esc(a)).join('<br>')}</td></tr>`:''}`).join('')}</tbody></table>
+      ${res.some(x=>(x.sin_dato||[]).length)?'<div style="font-size:11px;color:var(--amber);margin-top:8px">Los datos no encontrados en el cajetín se pueden capturar en la tabla y guardar con "Guardar cambios".</div>':''}`;
     document.getElementById('mo-req-planos').classList.add('on');
     await reqRenderTab();
   }catch(e){ toast('Error: '+e.message,'er'); }
@@ -8947,36 +8954,174 @@ async function opEliminar(){
   closeMo('mo-op'); toast('Orden eliminada','ok'); loadOPs(); if(reqCurrentJob) reqRenderTab();
 }
 
+// ════════════════════════════════════════════════════════
+//  rev78 — BOM de Manufactura con el formato de la hoja DETAILS
+//  ITEM · RESPONSIBLE · DATE RELEASED · VENDOR · DETL # · REV · DESCRIPTION · MATERIAL ·
+//  FINISHING · PRODUCT GROUP · QTY (normal / mirror) + Fabricación, Estatus, STP, NOTAS.
+//  Los cambios NO se guardan al editar: se acumulan y se guardan con "Guardar cambios".
+//  Pegar desde Excel una columna (varias celdas) reparte los valores hacia abajo.
+// ════════════════════════════════════════════════════════
+let _manufCambios = {};                       // {item_id: {campo: valor}}
+const MANUF_ORIGEN_COLOR = {'MX':'#15803d','USA':'#1d4ed8','STD-MX':'#b45309','STD-USA':'#6d28d9'};
+const reqManufPendientes = () => Object.values(_manufCambios).reduce((a,c)=>a+Object.keys(c).length,0);
+function reqManufValor(it, campo){
+  const c = _manufCambios[it.id];
+  if(c && campo in c) return c[campo];
+  if(campo==='qty_normal') return it.qty_normal ?? (it.quantity||1);
+  if(campo==='qty_mirror') return it.qty_mirror ?? 0;
+  return it[campo] ?? '';
+}
+function reqManufStage(el){
+  const id = el.dataset.id, campo = el.dataset.campo, it = reqItems.find(x=>x.id===id); if(!it) return;
+  let v = el.value;
+  const orig = campo==='qty_normal' ? String(it.qty_normal ?? (it.quantity||1)) : campo==='qty_mirror' ? String(it.qty_mirror ?? 0) : String(it[campo] ?? '');
+  _manufCambios[id] = _manufCambios[id] || {};
+  if(String(v) === orig){ delete _manufCambios[id][campo]; if(!Object.keys(_manufCambios[id]).length) delete _manufCambios[id]; }
+  else _manufCambios[id][campo] = v;
+  el.classList.toggle('manuf-mod', !!(_manufCambios[id] && campo in _manufCambios[id]));
+  reqManufBarra();
+}
+function reqManufBarra(){
+  const n = reqManufPendientes(), b = document.getElementById('btn-manuf-save'), d = document.getElementById('btn-manuf-desc'), t = document.getElementById('manuf-pend-txt');
+  if(b){ b.disabled = !n; b.textContent = n ? `💾 Guardar cambios (${n})` : '💾 Guardar cambios'; }
+  if(d) d.style.display = n ? '' : 'none';
+  if(t) t.textContent = n ? `${n} cambio(s) sin guardar en ${Object.keys(_manufCambios).length} pieza(s)` : 'Sin cambios pendientes';
+}
+function reqManufToolbarHTML(){
+  return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;background:rgba(0,0,0,.015)">
+    <button id="btn-manuf-save" class="btn-reload" onclick="reqManufGuardar()" disabled style="border-color:#15803d;color:#15803d;font-weight:700">💾 Guardar cambios</button>
+    <button id="btn-manuf-desc" class="btn-reload" onclick="reqManufDescartar()" style="display:none">Descartar</button>
+    <span id="manuf-pend-txt" style="font-size:11px;color:var(--muted)">Sin cambios pendientes</span>
+    <span style="margin-left:auto;font-size:10.5px;color:var(--muted)">Tip: copia una columna en Excel, haz clic en la celda de la primera fila y pega (Ctrl+V); se reparte hacia abajo.</span>
+    <input type="file" id="req-stp-file" accept=".stp,.step,.STP,.STEP" multiple style="display:none" onchange="reqSubirSTP(this.files)">
+    <button class="btn-reload" onclick="document.getElementById('req-stp-file').click()" title="Sube varios STP a la vez; cada uno se liga a la pieza por su nombre (DETAIL#)">🧊 Subir STP (masivo)</button>
+  </div>`;
+}
+function reqManufDescartar(){
+  if(!reqManufPendientes()) return;
+  if(!confirm('¿Descartar los cambios sin guardar?')) return;
+  _manufCambios = {}; reqRenderManuf(); reqManufBarra();
+}
+async function reqManufGuardar(){
+  // toma lo último escrito aunque el evento "input" (que llega con retraso) no haya corrido
+  reqManufFlush();
+  const cambios = Object.entries(_manufCambios).map(([id, campos])=>({id, campos}));
+  if(!cambios.length) return;
+  const b = document.getElementById('btn-manuf-save'); if(b){ b.disabled = true; b.textContent = 'Guardando…'; }
+  try{
+    const r = await apiCall('POST','/requisiciones/lote',{cambios});
+    if(r.error){ toast(r.error,'er',8000); reqManufBarra(); return; }
+    const errores = r.errores||[];
+    // los que sí se guardaron se quitan de pendientes; los que fallaron se quedan marcados
+    const fallidos = new Set(errores.map(e=>e.id));
+    Object.keys(_manufCambios).forEach(id=>{ if(!fallidos.has(id)) delete _manufCambios[id]; });
+    if(errores.length) toast(`${r.guardados} pieza(s) guardadas; ${errores.length} con error: ` + errores.map(e=>`${e.part_number||e.id}: ${e.error}`).join(' · '), 'er', 12000);
+    else toast(`Cambios guardados ✓ (${r.guardados} pieza${r.guardados===1?'':'s'})`,'ok');
+    await reqRenderTab();
+  }catch(e){ toast('Error: '+e,'er'); reqManufBarra(); }
+}
+// Avisar antes de salir o cambiar de Job/BOM con cambios sin guardar
+window.addEventListener('beforeunload', e=>{ if(reqManufPendientes()){ e.preventDefault(); e.returnValue=''; } });
+function reqManufFlush(){ if(reqCurrentTipo==='manufactura') document.querySelectorAll('#req-tb [data-campo]').forEach(el=>{ if(!el.disabled && el.dataset.id) reqManufStage(el); }); }
+function reqManufConfirmarSalida(){
+  reqManufFlush();
+  if(!reqManufPendientes()) return true;
+  if(!confirm(`Hay ${reqManufPendientes()} cambio(s) sin guardar en el BOM de Manufactura. ¿Descartarlos?`)) return false;
+  _manufCambios = {}; return true;
+}
+// Pegar varias celdas (una columna de Excel) en un campo → se reparten hacia abajo
+function reqManufPaste(ev){
+  const el = ev.target;
+  if(!el || !el.dataset || !el.dataset.campo || !el.closest('#req-tb')) return;
+  const txt = (ev.clipboardData || window.clipboardData).getData('text');
+  if(!txt || !/[\r\n\t]/.test(txt.replace(/[\r\n]+$/,''))) return;           // una sola celda: pegado normal
+  ev.preventDefault();
+  const valores = txt.replace(/[\r\n]+$/,'').split(/\r?\n/).map(l=>l.split('\t')[0].trim());
+  const campo = el.dataset.campo;
+  const todos = [...document.querySelectorAll(`#req-tb [data-campo="${campo}"]`)];
+  let i = todos.indexOf(el), n = 0, saltados = 0;
+  for(const v of valores){
+    while(i < todos.length && todos[i].disabled){ i++; saltados++; }
+    if(i >= todos.length) break;
+    const t = todos[i];
+    if(t.tagName==='SELECT'){ const op=[...t.options].find(o=>o.value.toLowerCase()===v.toLowerCase()||o.text.toLowerCase()===v.toLowerCase()); if(op) t.value = op.value; else { i++; continue; } }
+    else t.value = v;
+    reqManufStage(t); n++; i++;
+  }
+  const sobran = valores.length - n;
+  toast(`Pegado en ${n} fila(s)${saltados?`, ${saltados} bloqueada(s) saltada(s)`:''}${sobran>0?` · ${sobran} valor(es) no cupieron (no hay más filas)`:''}. Recuerda guardar.`, sobran>0?'er':'ok', 5000);
+}
+
 function reqRenderManuf(){
   const tb = document.getElementById('req-tb');
-  document.getElementById('req-thead').innerHTML = `<tr><th>ID pieza</th><th style="text-align:center">Rev.</th><th>Tipo</th><th>Material</th><th>Acabado</th>
-    <th style="text-align:center">Normal</th><th style="text-align:center">Mirror</th>
-    <th>Fabricación</th><th>Estatus</th><th>Solicitante</th><th>Cambió Fabricación</th><th></th></tr>`;
+  document.getElementById('req-thead').innerHTML = `<tr><th style="text-align:center">Item</th><th>Responsible</th><th>Date released</th><th>Vendor</th><th>DETL #</th><th style="text-align:center">Rev</th>
+    <th>Description</th><th>Material</th><th>Finishing</th><th>Product group</th><th style="text-align:center">Qty</th><th style="text-align:center">Qty mirror</th>
+    <th>Fabricación</th><th>Estatus</th><th>STP</th><th>Solicitante</th><th></th><th style="min-width:170px">Notas</th></tr>`;
   const leg = document.getElementById('req-legend'); if(leg) leg.innerHTML = REQ_MANUF_STATUS.map(st=>`<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;color:${REQ_MANUF_COLOR[st][0]};background:${REQ_MANUF_COLOR[st][1]}">${st}</span>`).join('');
-  if(!reqItems.length){ tb.innerHTML = '<tr><td colspan="12"><div class="es">Sin planos. Usa "📄 Subir planos (PDF)" para agregar las piezas.</div></td></tr>'; return; }
+  if(!tb.dataset.pasteHook){ tb.addEventListener('paste', reqManufPaste); tb.dataset.pasteHook = '1'; }
+  if(!reqItems.length){ tb.innerHTML = '<tr><td colspan="18"><div class="es">Sin planos. Usa "📄 Subir planos (PDF)" para agregar las piezas.</div></td></tr>'; return; }
   const who = (u,f) => u ? `${esc(u)}<div style="font-size:9px;color:var(--muted)">${esc(String(f||'').slice(0,10))}</div>` : '<span style="color:var(--muted)">—</span>';
-  const edit = (it,campo) => `<span onclick="reqManufEditar('${esc(it.id)}','${campo}','${esc((it[campo]||'').replace(/'/g,''))}')" title="Clic para editar" style="cursor:pointer;${it[campo]?'':'color:var(--amber)'}">${it[campo]?esc(it[campo]):'capturar'}</span>`;
-  tb.innerHTML = reqItems.map(it=>{
+  const inp = (it, campo, w, tipo='text', extra='') => { const v = reqManufValor(it, campo), mod = _manufCambios[it.id] && campo in _manufCambios[it.id];
+    return `<input type="${tipo}" data-id="${esc(it.id)}" data-campo="${campo}" value="${esc(String(v))}" oninput="reqManufStage(this)" onchange="reqManufStage(this)" class="${mod?'manuf-mod':''}" ${extra}
+      style="width:${w};font-size:11px;padding:3px 5px;border:1px solid var(--border);border-radius:4px;background:transparent${tipo==='number'?';text-align:center':''}">`; };
+  tb.innerHTML = reqItems.map((it, idx)=>{
     const [fg,bg] = REQ_MANUF_COLOR[it.status] || ['var(--text)','transparent'];
     const revs = it.revisiones||[], ult = revs[revs.length-1];
     const hist = revs.slice(0,-1).reverse().map(r=>`<a href="/api/requisiciones/planos/${r.archivo_id}" target="_blank" title="${esc(r.filename)} · ${esc(String(r.fecha||'').slice(0,10))} · ${esc(r.usuario||'')}" style="font-size:10px;color:var(--muted);margin-left:4px">${esc(r.revision)}</a>`).join('');
+    const stps = it.stp||[], stp = stps[stps.length-1];
+    const op = !!it.orden_produccion, bloqFab = reqCubierto(it)||op;
+    const st = reqManufValor(it,'status'), fab = reqManufValor(it,'fabricacion');
+    const modSel = c => (_manufCambios[it.id] && c in _manufCambios[it.id]) ? 'manuf-mod' : '';
     return `<tr style="box-shadow:inset 4px 0 0 ${fg}">
-      <td style="font-family:'DM Mono',monospace;color:var(--gold)">${ult?`<a href="/api/requisiciones/planos/${ult.archivo_id}" target="_blank" title="Abrir plano (rev ${esc(ult.revision)})" style="color:var(--gold);text-decoration:none">📄 ${esc(it.part_number)}</a>`:esc(it.part_number)}</td>
+      <td style="text-align:center;color:var(--muted);font-family:'DM Mono',monospace">${idx+1}</td>
+      <td>${inp(it,'responsable','90px')}</td>
+      <td>${inp(it,'fecha_liberacion','118px','date')}</td>
+      <td>${inp(it,'vendor','100px')}</td>
+      <td style="font-family:'DM Mono',monospace;white-space:nowrap">${ult?`<a href="/api/requisiciones/planos/${ult.archivo_id}" target="_blank" title="Abrir plano (rev ${esc(ult.revision)})" style="color:var(--gold);text-decoration:none">📄 ${esc(it.part_number)}</a>`:`<span style="color:var(--gold)">${esc(it.part_number)}</span>`}
+        <div style="font-family:'DM Sans',sans-serif;font-size:9.5px;margin-top:2px">${it.origen?`<span style="font-weight:700;color:${MANUF_ORIGEN_COLOR[it.origen]||'var(--muted)'}">${esc(it.origen)}</span>`:'<span style="color:var(--amber)" title="El DETAIL# no cumple el formato estándar">formato ?</span>'}${it.espejo?' · <span style="color:#6d28d9">mirror</span>':''}${it.peso?` · ${esc(it.peso)}`:''}</div></td>
       <td style="text-align:center"><b>${esc(it.rev_plano||'—')}</b>${hist?`<div>${hist}</div>`:''}</td>
-      <td>${esc(it.description||'—')}</td>
-      <td>${edit(it,'material')}</td>
-      <td>${edit(it,'acabado')}</td>
-      ${['qty_normal','qty_mirror'].map(k=>`<td style="text-align:center"><input type="number" min="0" step="1" value="${it[k] ?? (k==='qty_normal'?(it.quantity||1):0)}"
-          onchange="reqManufSet('${esc(it.id)}','${k}',this.value)" style="width:56px;text-align:center;font-size:11px;padding:3px"></td>`).join('')}
-      <td><select onchange="reqManufSet('${esc(it.id)}','fabricacion',this.value)" ${(reqCubierto(it)||it.orden_produccion)?'disabled':''} style="font-size:11px;padding:4px 6px">
-        <option value="" ${!it.fabricacion?'selected':''}>—</option>${REQ_FABRICACION.map(f=>`<option ${it.fabricacion===f?'selected':''}>${f}</option>`).join('')}</select></td>
-      <td><select onchange="reqManufSet('${esc(it.id)}','status',this.value)" ${reqCubierto(it)?`disabled title="Comprada al 100%: para cambiarla elimina o cancela la orden"`:(it.orden_produccion?`disabled title="Lo controla la orden ${esc(it.orden_produccion)}"`:'')} style="font-size:11px;font-weight:600;padding:4px 6px;border:1px solid ${fg};border-radius:4px;background:${bg};color:${fg}">
-        ${REQ_MANUF_STATUS.map(s=>`<option ${it.status===s?'selected':''}>${s}</option>`).join('')}</select>${reqCubierto(it)?' 🔒':''}
+      <td>${inp(it,'description','150px')}</td>
+      <td>${inp(it,'material','120px')}</td>
+      <td>${inp(it,'acabado','110px')}</td>
+      <td>${inp(it,'grupo','90px')}</td>
+      <td style="text-align:center">${inp(it,'qty_normal','52px','number', `min="0" step="1" ${op?'disabled title="En orden de producción"':''}`)}</td>
+      <td style="text-align:center">${inp(it,'qty_mirror','52px','number', `min="0" step="1" ${op?'disabled title="En orden de producción"':''}`)}</td>
+      <td><select data-id="${esc(it.id)}" data-campo="fabricacion" onchange="reqManufStage(this)" class="${modSel('fabricacion')}" ${bloqFab?'disabled':''} style="font-size:11px;padding:4px 6px">
+        <option value="" ${!fab?'selected':''}>—</option>${REQ_FABRICACION.map(f=>`<option ${fab===f?'selected':''}>${f}</option>`).join('')}</select></td>
+      <td><select data-id="${esc(it.id)}" data-campo="status" onchange="reqManufStage(this)" class="${modSel('status')}" ${reqCubierto(it)?`disabled title="Comprada al 100%: para cambiarla elimina o cancela la orden"`:(op?`disabled title="Lo controla la orden ${esc(it.orden_produccion)}"`:'')} style="font-size:11px;font-weight:600;padding:4px 6px;border:1px solid ${fg};border-radius:4px;background:${bg};color:${fg}">
+        ${REQ_MANUF_STATUS.map(s=>`<option ${st===s?'selected':''}>${s}</option>`).join('')}</select>${reqCubierto(it)?' 🔒':''}
         ${(it.compras||[]).length?`<div style="font-size:9px;color:#15803d">${(it.compras||[]).map(c=>esc(c.po_number)+(c.cantidad>1?' ×'+c.cantidad:'')).join(', ')}</div>`:''}
         ${it.orden_produccion?`<div style="font-size:10px"><a href="#" onclick="opAbrir('${esc(it.orden_produccion)}');return false" style="color:#1d4ed8">🏗 ${esc(it.orden_produccion)}</a></div>`:''}</td>
+      <td style="white-space:nowrap;font-size:11px">${stp?`<a href="/api/requisiciones/stp/${stp.archivo_id}" title="${esc(stp.filename)} · ${esc(String(stp.fecha||'').slice(0,10))} · ${esc(stp.usuario||'')}" style="color:#1d4ed8">🧊 ${esc(stp.revision)}</a>${stps.length>1?` <span style="color:var(--muted);font-size:10px" title="${stps.map(x=>esc(x.revision)).join(', ')}">(${stps.length})</span>`:''}`:'<span style="color:var(--muted)">—</span>'}
+        <label style="cursor:pointer;color:var(--muted2);margin-left:4px" title="Subir STP de esta pieza"><input type="file" accept=".stp,.step,.STP,.STEP" style="display:none" onchange="reqSubirSTP(this.files,'${esc(it.id)}')">⬆</label></td>
       <td style="font-size:11px">${who(it.created_by, it.created_at)}</td>
-      <td style="font-size:11px">${who(it.fabricacion_por, it.fabricacion_fecha)}</td>
-      <td>${((parseFloat(it.cantidad_comprada)||0)>0||it.orden_produccion)?'<span style="color:var(--muted)" title="Tiene orden de compra o de producción: no se puede eliminar">—</span>':`<button class="fi-del" onclick="reqDeleteItem('${esc(it.id)}')">Eliminar</button>`}</td></tr>`;}).join('');
+      <td>${((parseFloat(it.cantidad_comprada)||0)>0||op)?'<span style="color:var(--muted)" title="Tiene orden de compra o de producción: no se puede eliminar">—</span>':`<button class="fi-del" onclick="reqDeleteItem('${esc(it.id)}')">Eliminar</button>`}</td>
+      <td>${inp(it,'notas','100%;min-width:160px','text','placeholder="Agregar nota"')}</td></tr>`;}).join('');
+  reqManufBarra();
+}
+
+async function reqSubirSTP(files, itemId){
+  if(!files || !files.length) return;
+  if(!reqCurrentJob){ toast('Selecciona un Job','er'); return; }
+  if(reqManufPendientes() && !confirm('Hay cambios sin guardar; al terminar la carga se recargará la tabla y se perderán. ¿Continuar?')) return;
+  const fd = new FormData(); fd.append('job', reqCurrentJob); if(itemId) fd.append('item_id', itemId);
+  [...files].forEach(f=>fd.append('files', f));
+  toast(`Subiendo ${files.length} archivo(s) STP…`,'ok',2500);
+  try{
+    const r = await fetch('/api/requisiciones/stp',{method:'POST',body:fd});
+    const d = (r.headers.get('content-type')||'').includes('json') ? await r.json() : {error:`Error ${r.status} del servidor`};
+    const fi = document.getElementById('req-stp-file'); if(fi) fi.value='';
+    if(d.error){ toast(d.error,'er'); return; }
+    const res = d.resultados||[], sin = d.sin_fila||[];
+    document.getElementById('req-planos-result').innerHTML = `<div style="font-size:12px;font-weight:700;margin-bottom:6px">Archivos STP</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="font-size:10px;color:var(--muted);text-transform:uppercase"><th style="text-align:left">Archivo</th><th style="text-align:left">Pieza</th><th>Rev.</th><th style="text-align:left">Avisos</th></tr></thead><tbody>
+      ${res.map(x=>x.error?`<tr style="border-bottom:1px solid var(--border)"><td>${esc(x.archivo)}</td><td colspan="3" style="color:var(--red)">⚠ ${esc(x.error)}</td></tr>`
+        :`<tr style="border-bottom:1px solid var(--border)"><td style="font-size:11px;color:var(--muted)">${esc(x.archivo)}</td><td style="font-family:'DM Mono',monospace;color:var(--gold)">${esc(x.id)}</td><td style="text-align:center"><b>${esc(x.revision)}</b></td><td style="font-size:11px;color:var(--amber)">${(x.avisos||[]).map(esc).join('<br>')}</td></tr>`).join('')}</tbody></table>
+      ${sin.length?`<div style="margin-top:10px;font-size:12px;color:var(--red)"><b>⚠ ${sin.length} archivo(s) sin pieza correspondiente</b> (el nombre no coincide con ningún DETAIL# del BOM; no se guardaron):<br>${sin.map(esc).join(', ')}</div>`:''}`;
+    document.getElementById('mo-req-planos').classList.add('on');
+    _manufCambios = {};
+    await reqRenderTab();
+  }catch(e){ toast('Error: '+e.message,'er'); }
 }
 
 // ════════════════════════════════════════════════════════
@@ -9011,7 +9156,7 @@ function reqCambiosItem(it, carga){
 const _reqFmtCambio = c => c.campo ? `${REQ_CAMPO[c.campo]||c.campo}: ${c.de===''||c.de==null?'(vacío)':c.de} → ${c.a}` : (c.accion==='nuevo' ? `Cantidad ${c.cantidad}` : c.accion==='ausente' ? `No viene en esta carga (estaba con ${c.cantidad} · ${c.status})` : c.accion==='reaparece' ? `Volvió a aparecer (no venía desde v${c.ausente_desde})` : '');
 
 function reqCambiosPanelHTML(){
-  if(reqCurrentTipo==='manufactura') return '';
+  if(reqCurrentTipo==='manufactura') return reqManufToolbarHTML();   // rev78
   if(!reqCargas.length) return `<div style="font-size:11px;color:var(--muted);margin:0 0 8px">El historial de cambios empieza con la siguiente carga del BOM.</div>`;
   const c = reqCargaSel(), r = c.resumen||{}, F = _reqCambios.filtro;
   const chip = (k, n) => { const m = REQ_CAMBIO[k]; return `<button type="button" onclick="_reqCambios.filtro='${F===k?'todos':k}';reqRenderTable()" style="border:1px solid ${F===k?m.fg:'transparent'};background:${m.bg};color:${m.fg};font-size:11px;font-weight:700;padding:4px 10px;border-radius:12px;cursor:pointer;${n?'':'opacity:.45'}" ${n?'':'disabled'}>${m.t} <span style="font-family:'DM Mono',monospace">${n||0}</span></button>`; };
@@ -9064,9 +9209,11 @@ function reqRenderTable(){
     const ch = reqCambiosItem(it, cargaSel);
     return F==='cambios' ? ch.length>0 : ch.some(c=>c.accion===F);
   });
-  if(!visibles.length){ tb.innerHTML = '<tr><td colspan="9"><div class="es">Ningún renglón con ese tipo de cambio en esta carga.</div></td></tr>'; return; }
+  if(!visibles.length){ tb.innerHTML = '<tr><td colspan="15"><div class="es">Ningún renglón con ese tipo de cambio en esta carga.</div></td></tr>'; return; }
+  const _fcorta = v => v ? new Date(String(v).slice(0,10)+'T12:00:00').toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'2-digit'}) : '<span style="color:var(--muted)">—</span>';
   tb.innerHTML = visibles.map(it=>{
     const [fg,bg] = REQ_STATUS_COLOR[it.status] || ['var(--text)','transparent'];
+    const nItem = it.item_no || (reqItems.indexOf(it)+1);
     const ch = reqCambiosItem(it, cargaSel);
     const chips = ch.map(c=>{ const m=REQ_CAMBIO[c.accion]||{t:c.accion,fg:'var(--text)',bg:'#eee'}; return `<span title="${esc((cargaSel?'v'+cargaSel.version+' · ':'')+_reqFmtCambio(c))}" style="display:inline-block;font-family:'DM Sans',sans-serif;font-size:9.5px;font-weight:700;padding:1px 7px;border-radius:9px;background:${m.bg};color:${m.fg};margin:2px 3px 0 0">${m.t}${c.campo?' · '+(REQ_CAMPO[c.campo]||c.campo):''}</span>`; }).join('');
     const tinte = ch.length ? (REQ_CAMBIO[ch[0].accion]||{}).bg : '';
@@ -9074,6 +9221,10 @@ function reqRenderTable(){
     const tip = [...(it.reasignaciones||[]).map(r=>`${r.order_number}: ${r.cantidad}`), ...(it.compras||[]).map(c=>`${c.po_number}: ${c.cantidad}`)].join(' · ');
     return `
     <tr style="box-shadow:inset 4px 0 0 ${fg};${tinte?`background:linear-gradient(90deg, ${tinte} 0, transparent 60%)`:''}">
+      <td style="text-align:center;color:var(--muted);font-family:'DM Mono',monospace">${esc(String(nItem))}</td>
+      <td style="font-size:11px">${esc(it.responsable||'')||'<span style="color:var(--muted)">—</span>'}</td>
+      <td style="font-size:11px;white-space:nowrap">${_fcorta(it.fecha_liberacion)}</td>
+      <td style="font-size:11px">${esc(it.vendor||'')||'<span style="color:var(--muted)">—</span>'}</td>
       <td>${esc(it.brand||'—')}</td>
       <td style="font-family:'DM Mono',monospace;color:var(--gold)">${esc(it.part_number||'')}${chips?`<div style="white-space:normal">${chips}</div>`:''}</td>
       <td style="color:var(--muted2)"><div title="${esc(it.description||'')}" style="max-width:min(420px,32vw);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(it.description||'')}</div></td>
@@ -9084,6 +9235,7 @@ function reqRenderTable(){
           <div style="margin-top:3px"><button onclick="reqRevision('${esc(it.id)}','aceptar')" class="btn-reload" style="font-size:10px;padding:2px 6px">Aceptar</button>
           <button onclick="reqRevision('${esc(it.id)}','descartar')" class="btn-reload" style="font-size:10px;padding:2px 6px">Descartar</button></div></div>`:''}
       </td>
+      <td style="font-size:11px">${esc(it.uom||'')}</td>
       <td>
         <select onchange="reqUpdateStatus('${it.id}',this.value)" ${reqCubierto(it)?`disabled title="${esc(it.status)} al 100%: no se puede cambiar. Para modificarlo, elimina o cancela la orden correspondiente."`:''}
           style="font-size:11px;font-weight:600;padding:4px 6px;border:1px solid ${fg};border-radius:4px;background:${bg};color:${fg};${reqCubierto(it)?'cursor:not-allowed;opacity:.9':''}">
@@ -9094,7 +9246,19 @@ function reqRenderTable(){
       <td style="font-size:11px">${['Comprado','Reasignado','Reas. Parcial'].includes(it.status) ? reqQuienFecha(it.comprador, it.comprador_fecha) : '<span style="color:var(--muted)">—</span>'}</td>
       <td id="req-stock-${esc(it.part_number)}" style="font-size:11px;color:var(--muted)">—</td>
       <td>${(reas>0||comp>0) ? '<span title="Tiene reasignaciones u órdenes de compra: no se puede eliminar" style="font-size:11px;color:var(--muted)">—</span>' : `<button class="fi-del" onclick="reqDeleteItem('${it.id}')">Eliminar</button>`}</td>
+      <td><input type="text" value="${esc(it.notas||'')}" placeholder="Agregar nota" title="${esc(it.notas||'')}" onchange="reqGuardarNota('${esc(it.id)}', this)"
+        style="width:100%;min-width:170px;font-size:11px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;background:transparent"></td>
     </tr>`;}).join('');
+}
+
+// rev78: NOTAS de los BOM de compra — se guarda al salir del campo
+async function reqGuardarNota(itemId, el){
+  try{
+    const r = await apiCall('PUT','/requisiciones/'+itemId,{notas: el.value});
+    if(r.error){ toast(r.error,'er'); return; }
+    const it = reqItems.find(x=>x.id===itemId); if(it) it.notas = el.value;
+    el.title = el.value; el.style.borderColor = '#16a34a'; setTimeout(()=>{ el.style.borderColor=''; }, 900);
+  }catch(e){ toast('Error: '+e,'er'); }
 }
 
 async function reqUpdateStatus(itemId, status){
