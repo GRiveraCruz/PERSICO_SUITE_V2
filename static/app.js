@@ -1011,6 +1011,8 @@ async function loadAreas(){
       areasLoadError=`HTTP ${resp.status} — ${(d&&d.error)?d.error:'respuesta inesperada del servidor'}`;
     }
   }catch(e){ areasList=[]; areasLoadError='Error de red/conexión al pedir /api/areas: '+e; }
+  // rev83: personas para el organigrama (si el usuario puede ver el Listado de Trabajadores)
+  try{ const r=await fetch('/api/personal'); const p=await r.json(); orgPersonal=Array.isArray(p)?p.filter(x=>(x.estado||'Activo')!=='Baja'):null; }catch(e){ orgPersonal=null; }
   areaRenderList();
   areaPopulateSelects();
   areaRenderOrgChart();
@@ -1081,10 +1083,40 @@ function areaPopulateSelects(){
   if(rs){ rs.innerHTML='<option value="">— Nivel superior (sin jefe directo) —</option>'+areasList.map(a=>`<option value="${esc(a.nombre)}">${esc(a.nombre)}</option>`).join(''); }
 }
 
-// ── Organigrama de Áreas (basado en "Reporta a") ──
+// ── Organigrama (rev83: con nombres de las personas) ──
+//  · Vista "Áreas y personas": jerarquía de áreas ("Reporta a"); en cada área, quién la
+//    encabeza (sus jefes directos son de otra área o no tiene) y el resto del personal.
+//  · Vista "Personas": árbol por Jefe Directo de Control de Personal.
+let orgPersonal = null, _orgVista = 'areas', _orgAbiertas = new Set();
+function orgSetVista(v){ _orgVista = v; areaRenderOrgChart(); }
+function orgToggleArea(n){ _orgAbiertas.has(n) ? _orgAbiertas.delete(n) : _orgAbiertas.add(n); areaRenderOrgChart(); }
 function areaRenderOrgChart(){
   const el=document.getElementById('areas-orgchart'); if(!el) return;
-  if(!areasList.length){ el.innerHTML='<div class="es"><div class="ei">🏢</div><p>Sin áreas registradas.</p></div>'; return; }
+  const P = orgPersonal || [];
+  const btn = (v,t) => `<button type="button" class="btn-reload" onclick="orgSetVista('${v}')" style="font-size:10.5px;padding:4px 10px;${_orgVista===v?'border-color:var(--red);color:var(--red)':''}">${t}</button>`;
+  const barra = `<div style="display:flex;gap:6px;justify-content:center;margin:-8px 0 14px;flex-wrap:wrap">${btn('areas','🏢 Áreas y personas')}${btn('personas','👤 Personas (jefe directo)')}${btn('solo','Solo áreas')}</div>`
+    + (orgPersonal===null ? '<div style="font-size:11px;color:var(--muted);text-align:center;margin-bottom:10px">Sin permiso para ver el Listado de Trabajadores: se muestran solo las áreas.</div>' : '');
+  const persona = p => `<div class="org-persona" title="${esc(p.puesto||'')}">${esc(p.nombre||'')}${p.puesto?`<span>${esc(p.puesto)}</span>`:''}</div>`;
+  if(_orgVista==='personas' && orgPersonal){
+    if(!P.length){ el.innerHTML = barra+'<div class="es"><p>Sin personal activo.</p></div>'; return; }
+    const tids = new Set(P.map(p=>p.tid)), hijos = {};
+    P.forEach(p=>{ const j = (p.jefe_directo && tids.has(p.jefe_directo) && p.jefe_directo!==p.tid) ? p.jefe_directo : null; (hijos[j]=hijos[j]||[]).push(p); });
+    const ord = arr => arr.slice().sort((a,b)=>(hijos[b.tid]||[]).length-(hijos[a.tid]||[]).length || (a.nombre||'').localeCompare(b.nombre||''));
+    const raices = ord(hijos[null]||[]);
+    // los que no tienen jefe ni subordinados se juntan en un solo grupo para no alargar el árbol
+    const sueltos = raices.filter(p=>!(hijos[p.tid]||[]).length), conEquipo = raices.filter(p=>(hijos[p.tid]||[]).length);
+    const nodo = (p, vis) => {
+      if(vis.has(p.tid)) return `<li><span class="org-node org-pnode">${esc(p.nombre)} ⚠</span></li>`;
+      const v2 = new Set(vis); v2.add(p.tid);
+      const ks = ord(hijos[p.tid]||[]);
+      return `<li><span class="org-node org-pnode${vis.size===0?' root':''}"><b>${esc(p.nombre||'')}</b><small>${esc(p.puesto||'')}${p.area?` · ${esc(p.area)}`:''}</small>${ks.length?`<em>${ks.length} subordinado${ks.length===1?'':'s'}</em>`:''}</span>
+        ${ks.length?`<ul>${ks.map(k=>nodo(k,v2)).join('')}</ul>`:''}</li>`;
+    };
+    el.innerHTML = barra + (conEquipo.length?`<div class="org-tree"><ul>${conEquipo.map(r=>nodo(r,new Set())).join('')}</ul></div>`:'')
+      + (sueltos.length?`<div style="margin-top:18px;border-top:1px dashed var(--border);padding-top:12px"><div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);text-align:center;margin-bottom:8px">Sin jefe directo asignado ni subordinados (${sueltos.length})</div><div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center">${sueltos.map(persona).join('')}</div></div>`:'');
+    return;
+  }
+  if(!areasList.length){ el.innerHTML=barra+'<div class="es"><div class="ei">🏢</div><p>Sin áreas registradas.</p></div>'; return; }
   const names=new Set(areasList.map(a=>a.nombre));
   const childrenOf={};
   areasList.forEach(a=>{
@@ -1093,8 +1125,23 @@ function areaRenderOrgChart(){
   });
   const roots=childrenOf[null]||[];
   if(!roots.length){
-    el.innerHTML='<div class="es"><p>No hay áreas de nivel superior — revisa que no exista un ciclo en "Reporta a".</p></div>';
+    el.innerHTML=barra+'<div class="es"><p>No hay áreas de nivel superior — revisa que no exista un ciclo en "Reporta a".</p></div>';
     return;
+  }
+  const conPersonas = _orgVista==='areas' && orgPersonal;
+  const porArea = {}; P.forEach(p=>{ (porArea[p.area||'']=porArea[p.area||'']||[]).push(p); });
+  const MAX = 4;
+  function personasDe(area){
+    const gente = (porArea[area]||[]).slice().sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
+    if(!gente.length) return '<div class="org-vacia">Sin personal</div>';
+    const enArea = new Set(gente.map(p=>p.tid));
+    const lideres = gente.filter(p=>!p.jefe_directo || !enArea.has(p.jefe_directo));        // su jefe está fuera del área (o no tiene)
+    const resto = gente.filter(p=>!lideres.includes(p));
+    const abierta = _orgAbiertas.has(area), vis = abierta ? resto : resto.slice(0, MAX);
+    return `<div class="org-lider">${lideres.map(p=>`<div>👤 ${esc(p.nombre)}${p.puesto?`<span>${esc(p.puesto)}</span>`:''}</div>`).join('')}</div>`
+      + (resto.length?`<div class="org-miembros">${vis.map(p=>`<div title="${esc(p.puesto||'')}">${esc(p.nombre)}</div>`).join('')}
+         ${resto.length>MAX?`<a href="#" onclick="orgToggleArea('${esc(area).replace(/'/g,"\\'")}');return false">${abierta?'ver menos':`+ ${resto.length-MAX} más`}</a>`:''}</div>`:'')
+      + `<div class="org-cuenta">${gente.length} persona${gente.length===1?'':'s'}</div>`;
   }
   function renderNode(name, visited){
     if(visited.has(name)) return `<li><span class="org-node">${esc(name)} ⚠</span></li>`;
@@ -1102,11 +1149,13 @@ function areaRenderOrgChart(){
     const kids=childrenOf[name]||[];
     const isRoot=visited.size===0;
     return `<li>
-      <span class="org-node${isRoot?' root':''}">${esc(name)}</span>
+      <span class="org-node${isRoot?' root':''}${conPersonas?' org-anode':''}">${conPersonas?`<b>${esc(name)}</b>${personasDe(name)}`:esc(name)}</span>
       ${kids.length?`<ul>${kids.map(k=>renderNode(k,v2)).join('')}</ul>`:''}
     </li>`;
   }
-  el.innerHTML=`<div class="org-tree"><ul>${roots.map(r=>renderNode(r,new Set())).join('')}</ul></div>`;
+  const sinArea = conPersonas ? P.filter(p=>!p.area || !names.has(p.area)) : [];
+  el.innerHTML=barra+`<div class="org-tree"><ul>${roots.map(r=>renderNode(r,new Set())).join('')}</ul></div>`
+    + (sinArea.length?`<div style="margin-top:18px;border-top:1px dashed var(--border);padding-top:12px"><div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);text-align:center;margin-bottom:8px">Personal sin área asignada (${sinArea.length})</div><div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center">${sinArea.map(persona).join('')}</div></div>`:'');
 }
 
 
