@@ -926,6 +926,10 @@ def require_login():
     # (validada dentro de cada handler, ej. _require_sync_key_permisos()).
     if request.path == "/api/permisos/externo" or request.path.startswith("/api/permisos/externo/"):
         return None
+    if request.path.startswith("/api/vacaciones/externo/"):         # rev80: saldo para el kiosco
+        return None
+    if request.path == "/api/kiosco/ping":                           # rev81: diagnóstico
+        return None
     if request.path.startswith("/api/ordenes-servicio/externo"):
         return None
     if request.path.startswith("/api/tareas/externo"):
@@ -2656,7 +2660,6 @@ def api_import_vacaciones():
         _save_vacaciones(vac)
     return jsonify({"ok": True, "added": added, "total": len(vac)})
 
-@app.route("/api/vacaciones/<tid>", methods=["PUT"])
 def _add_dias_gozados_nolock(tid, delta, nota=None):
     """Debe llamarse ya dentro de un bloque 'with lock:'."""
     vac = _load_vacaciones()
@@ -2670,8 +2673,11 @@ def _add_dias_gozados_nolock(tid, delta, nota=None):
     _save_vacaciones(vac)
     return rec["dias_gozados"]
 
+@app.route("/api/vacaciones/<tid>", methods=["PUT"])
 def api_add_dias_gozados(tid):
-    """Suma (o resta, si el valor es negativo) días gozados al acumulado del trabajador."""
+    """Suma (o resta, si el valor es negativo) días gozados al acumulado del trabajador.
+    rev80: el decorador de la ruta estaba sobre _add_dias_gozados_nolock (sin permiso y
+    con argumentos que la petición no trae → error 500); ahora está en esta función."""
     if not can("create", "rrhh-vacaciones"): return jsonify({"error":"Sin permiso"}), 403
     if not re.match(r"^T-\d{4,}$", tid):
         return jsonify({"error": "ID de trabajador inválido"}), 400
@@ -3985,8 +3991,19 @@ def api_delete_permiso_file(pid, filename):
 # por su selección de nombre; el kiosco reenvía la solicitud aquí server-to-server,
 # autenticada con la misma llave compartida que ya se usa para sincronizar trabajadores.
 def _require_sync_key_permisos():
-    key = request.headers.get("X-Sync-Key", "")
+    key = (request.headers.get("X-Sync-Key", "") or "").strip()
     return bool(ATTENDANCE_SYNC_KEY) and key == ATTENDANCE_SYNC_KEY
+
+@app.route("/api/kiosco/ping", methods=["GET"])
+def api_kiosco_ping():
+    """rev81: diagnóstico de la conexión kiosco → Suite (no revela la llave)."""
+    if not ATTENDANCE_SYNC_KEY:
+        return jsonify({"ok": False, "error": "La Suite no tiene configurada la variable ATTENDANCE_SYNC_KEY"}), 401
+    if not _require_sync_key_permisos():
+        k = (request.headers.get("X-Sync-Key", "") or "").strip()
+        return jsonify({"ok": False, "error": "La llave del kiosco no coincide con ATTENDANCE_SYNC_KEY de la Suite",
+                        "largo_kiosco": len(k), "largo_suite": len(ATTENDANCE_SYNC_KEY)}), 401
+    return jsonify({"ok": True})
 
 @app.route("/api/permisos/externo", methods=["POST"])
 def api_create_permiso_externo():
@@ -4042,6 +4059,25 @@ def api_list_permisos_externo(external_id):
     } for r in records]
     return jsonify(out)
 
+@app.route("/api/vacaciones/externo/<external_id>", methods=["GET"])
+def api_vacaciones_externo(external_id):
+    """rev80: saldo de vacaciones del trabajador para el kiosco (mismo cálculo que la
+    pantalla de Vacaciones: días ganados por antigüedad − días gozados)."""
+    if not _require_sync_key_permisos():
+        return jsonify({"error": "Clave de sincronización inválida"}), 401
+    p = next((x for x in read_personal_records() if x.get("tid") == external_id), None)
+    if not p: return jsonify({"error": "Trabajador no encontrado en Control de Personal"}), 404
+    if (p.get("estado") or "Activo") == "Baja": return jsonify({"error": "Este trabajador no está activo"}), 400
+    anios = _anios_completos_sueldo(p.get("fecha_ingreso")) if p.get("fecha_ingreso") else 0
+    ganados = sum(_dias_vacaciones_ley(a) for a in range(1, anios + 1))
+    gozados = float((_load_vacaciones().get(external_id) or {}).get("dias_gozados") or 0)
+    pendientes = sum(float(r.get("dias") or 0) for r in _load_permisos()
+                     if r.get("tid") == external_id and r.get("tipo") == "Vacaciones"
+                     and not r.get("vacaciones_descontado") and not str(r.get("estatus", "")).startswith("Rechazado"))
+    return jsonify({"tid": external_id, "nombre": p.get("nombre"), "fecha_ingreso": p.get("fecha_ingreso"), "anios": anios,
+                    "ganados": ganados, "gozados": round(gozados, 2), "saldo": round(ganados - gozados, 2),
+                    "pendientes": round(pendientes, 2), "proximo_periodo": _dias_vacaciones_ley(anios + 1)})
+
 # ══════════════════════════════════════════════════════════════════
 #  RECURSOS HUMANOS — ASISTENCIA  (integración con "registro-en-servicio")
 #  Persico Suite es la fuente de verdad de trabajadores; el kiosco de
@@ -4050,20 +4086,107 @@ def api_list_permisos_externo(external_id):
 #  trabajadores (Suite → kiosco) y se consultan los registros ya capturados
 #  (kiosco → Suite), sin duplicar el almacenamiento de registros.
 # ══════════════════════════════════════════════════════════════════
-ATTENDANCE_URL      = _os.environ.get("ATTENDANCE_URL", "").rstrip("/")
-ATTENDANCE_SYNC_KEY = _os.environ.get("ATTENDANCE_SYNC_KEY", "")
+# rev82: se acepta con o sin protocolo ("sko-permex.up.railway.app" → "https://sko-permex.up.railway.app")
+ATTENDANCE_URL      = _os.environ.get("ATTENDANCE_URL", "").strip().strip('"').strip("'").strip().rstrip("/")
+if ATTENDANCE_URL and not re.match(r"^https?://", ATTENDANCE_URL, re.I):
+    ATTENDANCE_URL = "https://" + ATTENDANCE_URL
+# rev81: sin espacios ni comillas que se cuelan al pegar el valor en Railway
+ATTENDANCE_SYNC_KEY = _os.environ.get("ATTENDANCE_SYNC_KEY", "").strip().strip('"').strip("'").strip()
+
+# ── rev80: kiosco sobre la MISMA base de datos ─────────────────────────────────
+# El kiosco v2 guarda sus registros en tablas kiosco_* de esta base y toma los
+# trabajadores directo de `personal`. Cuando arranca deja la marca kiosco_config
+# 'kiosco_bd'; si existe, la Suite lee todo de la base (sin HTTP ni sincronización).
+# Si no (kiosco anterior con JSON), se sigue usando ATTENDANCE_URL como antes.
+_kiosco_bd_cache = {"t": 0.0, "v": False}
+def _kiosco_bd():
+    if not (_orm and _orm.DB_ENABLED): return False
+    import time as _t
+    if _t.time() - _kiosco_bd_cache["t"] < 60: return _kiosco_bd_cache["v"]
+    v = False
+    try:
+        s = _orm.get_session()
+        try: v = s.query(_orm.KioscoConfig).filter(_orm.KioscoConfig.clave == "kiosco_bd").first() is not None
+        finally: s.close()
+    except Exception as e:
+        print(f"[kiosco] no se pudo revisar la marca kiosco_bd: {e}")
+    _kiosco_bd_cache.update(t=_t.time(), v=v)
+    return v
 
 def _attendance_configured():
-    return bool(ATTENDANCE_URL)
+    return _kiosco_bd() or bool(ATTENDANCE_URL)
+
+def _kiosco_workers():
+    """Trabajadores con la forma de la API del kiosco: los de Control de Personal (id =
+    externalId = tid) y, para poder vincularlos, los "sin vincular" que solo existen en
+    registros migrados de los JSON antiguos (worker_tid "KIOSCO-…")."""
+    s = _orm.get_session()
+    try:
+        cfg = {k.tid: (k.data or {}) for k in s.query(_orm.KioscoTrabajador).all()}
+        pins = {k.tid for k in s.query(_orm.KioscoTrabajador).filter(_orm.KioscoTrabajador.pin_hash.isnot(None)).all()}
+        out, tids = [], set()
+        for p in s.query(_orm.Personal).all():
+            d = p.data or {}
+            c = cfg.get(p.tid, {})
+            tids.add(p.tid)
+            out.append({"id": p.tid, "externalId": p.tid, "name": p.nombre or d.get("nombre", ""), "position": d.get("puesto", ""),
+                        "area": p.area or d.get("area", ""), "active": (d.get("estado") or "Activo") != "Baja",
+                        "shiftStart": c.get("shiftStart", "07:00"), "shiftEnd": c.get("shiftEnd", "17:00"),
+                        "allowedJobs": c.get("allowedJobs", []), "locationIds": c.get("locationIds", []), "pin": p.tid in pins})
+        from sqlalchemy import func as _f
+        for wt, wn in s.query(_orm.KioscoRegistro.worker_tid, _f.max(_orm.KioscoRegistro.worker_name)).group_by(_orm.KioscoRegistro.worker_tid).all():
+            if wt and wt not in tids:
+                out.append({"id": wt, "externalId": None, "name": wn or wt, "position": "", "area": "", "active": True, "sin_vincular": True})
+        return out
+    finally:
+        s.close()
+
+def _kiosco_records(params=None):
+    params = params or {}
+    s = _orm.get_session()
+    try:
+        R = _orm.KioscoRegistro
+        q = s.query(R)
+        if params.get("workerId"): q = q.filter(R.worker_tid == params["workerId"])
+        if params.get("from"): q = q.filter(R.ts >= params["from"])
+        if params.get("to"): q = q.filter(R.ts <= params["to"])
+        return [dict(r.data or {}, id=r.id, workerId=r.worker_tid, workerName=r.worker_name, type=r.tipo, timestamp=r.ts)
+                for r in q.order_by(R.ts).all()]
+    finally:
+        s.close()
+
+class _AttResp:
+    def __init__(self, data, status=200): self._d, self.status_code = data, status
+    def json(self): return self._d
+
+def _att_get(path, params=None, timeout=10):
+    """GET al kiosco: desde la base compartida (kiosco v2) o por HTTP (kiosco anterior)."""
+    if _kiosco_bd():
+        if path == "/api/workers": return _AttResp(_kiosco_workers())
+        if path == "/api/records": return _AttResp(_kiosco_records(params))
+        return _AttResp({"error": "Ruta no disponible"}, 404)
+    return _requests.get(ATTENDANCE_URL + path, params=params, timeout=timeout)
 
 @app.route("/api/asistencia/status", methods=["GET"])
 def api_asistencia_status():
     if not can("view", "rrhh-asistencia"): return jsonify({"error": "Sin permiso"}), 403
     if not _attendance_configured():
         return jsonify({"configured": False, "connected": False})
+    if _kiosco_bd():
+        return jsonify({"configured": True, "connected": True, "modo": "base_de_datos"})
     try:
         r = _requests.get(ATTENDANCE_URL + "/api/workers", timeout=6)
-        return jsonify({"configured": True, "connected": r.status_code == 200})
+        # rev82: si el kiosco es v2 pero no dejó su marca en ESTA base, casi siempre es que
+        # su DATABASE_URL apunta a otra base de datos
+        aviso = None
+        try:
+            e = _requests.get(ATTENDANCE_URL + "/api/estado", timeout=6)
+            if e.status_code == 200 and "base_de_datos" in (e.json() or {}):
+                aviso = ("El kiosco ya es la versión con base de datos, pero no está usando la misma base que la Suite: "
+                         "revisa que su variable DATABASE_URL sea la misma que la de la Suite.")
+        except Exception:
+            pass
+        return jsonify({"configured": True, "connected": r.status_code == 200, "modo": "http", "aviso": aviso})
     except Exception:
         return jsonify({"configured": True, "connected": False})
 
@@ -4072,6 +4195,10 @@ def api_asistencia_sync_workers():
     if not can("create", "rrhh-asistencia"): return jsonify({"error": "Sin permiso"}), 403
     if not _attendance_configured():
         return jsonify({"error": "ATTENDANCE_URL no está configurada en el servidor. Contacta al administrador."}), 500
+    if _kiosco_bd():
+        n = sum(1 for p in read_personal_records() if (p.get("estado") or "Activo") != "Baja")
+        return jsonify({"success": True, "created": 0, "updated": 0, "deactivated": 0, "total": n,
+                        "mensaje": "El kiosco lee Control de Personal directamente de la base de datos; no es necesario sincronizar."})
 
     personal = read_personal_records()
     payload = []
@@ -4113,8 +4240,8 @@ def api_asistencia_records():
     if request.args.get("to"):   params["to"]   = request.args.get("to") + "T23:59:59"
 
     try:
-        r_workers = _requests.get(ATTENDANCE_URL + "/api/workers", timeout=10)
-        r_records = _requests.get(ATTENDANCE_URL + "/api/records", params=params, timeout=15)
+        r_workers = _att_get("/api/workers", timeout=10)
+        r_records = _att_get("/api/records", params=params, timeout=15)
     except Exception as e:
         return jsonify({"error": f"No se pudo conectar con el servicio de asistencia: {e}"}), 502
 
@@ -4158,7 +4285,7 @@ def api_asistencia_workers():
     if not _attendance_configured():
         return jsonify({"error": "ATTENDANCE_URL no está configurada en el servidor."}), 500
     try:
-        r = _requests.get(ATTENDANCE_URL + "/api/workers", timeout=10)
+        r = _att_get("/api/workers", timeout=10)
     except Exception as e:
         return jsonify({"error": f"No se pudo conectar con el servicio de asistencia: {e}"}), 502
     if r.status_code != 200:
@@ -4183,9 +4310,19 @@ def api_asistencia_link_worker():
     p = next((x for x in personal if x.get("tid") == tid), None)
     if not p:
         return jsonify({"error": "No se encontró ese trabajador en Control de Personal"}), 404
+    if _kiosco_bd():
+        # rev80: los registros "sin vincular" (migrados de los JSON antiguos) pasan al trabajador
+        s = _orm.get_session()
+        try:
+            n = s.query(_orm.KioscoRegistro).filter(_orm.KioscoRegistro.worker_tid == kiosk_id).update(
+                {_orm.KioscoRegistro.worker_tid: tid, _orm.KioscoRegistro.worker_name: p.get("nombre")}, synchronize_session=False)
+            s.commit()
+        finally:
+            s.close()
+        return jsonify({"ok": True, "registros": n})
 
     try:
-        r_workers = _requests.get(ATTENDANCE_URL + "/api/workers", timeout=10)
+        r_workers = _att_get("/api/workers", timeout=10)
         kiosk_workers = r_workers.json() if r_workers.status_code == 200 else []
     except Exception as e:
         return jsonify({"error": f"No se pudo conectar con el servicio de asistencia: {e}"}), 502
@@ -4253,8 +4390,8 @@ def _save_ctrl_firmas(data):
 
 def _ctrl_horas_rows(from_date, to_date, worker_tid=None, job_filter=None):
     params = {"from": from_date, "to": to_date + "T23:59:59"}
-    r_workers = _requests.get(ATTENDANCE_URL + "/api/workers", timeout=10)
-    r_records = _requests.get(ATTENDANCE_URL + "/api/records", params=params, timeout=15)
+    r_workers = _att_get("/api/workers", timeout=10)
+    r_records = _att_get("/api/records", params=params, timeout=15)
     workers = r_workers.json() if r_workers.status_code == 200 else []
     records = r_records.json() if r_records.status_code == 200 else []
 
@@ -8231,8 +8368,8 @@ def api_dashboard_rh():
         presentes = {}
         if asis["configurado"]:
             try:
-                rw = _requests.get(ATTENDANCE_URL + "/api/workers", timeout=8)
-                rr = _requests.get(ATTENDANCE_URL + "/api/records", params={"from": hs, "to": hs + "T23:59:59"}, timeout=10)
+                rw = _att_get("/api/workers", timeout=8)
+                rr = _att_get("/api/records", params={"from": hs, "to": hs + "T23:59:59"}, timeout=10)
                 if rw.status_code == 200 and rr.status_code == 200:
                     asis["conectado"] = True
                     ext = {w.get("id"): w.get("externalId") for w in rw.json()}

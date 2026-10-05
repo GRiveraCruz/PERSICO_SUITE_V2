@@ -17,10 +17,11 @@ documentado y consultable de forma consistente con el resto.
 import os
 import datetime
 from sqlalchemy import (
-    LargeBinary,
+    LargeBinary, UniqueConstraint,
     create_engine, Column, Integer, String, Text, DateTime, ForeignKey, Index
 )
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import text, func
 from sqlalchemy.orm import declarative_base, sessionmaker, scoped_session
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
@@ -461,6 +462,65 @@ class ProyectoDocumento(Base):
     updated_at  = Column(DateTime, default=datetime.datetime.utcnow)
     historial   = Column(JSONB, default=list)
     __table_args__ = (Index("ux_proyecto_documentos_ptsv_tipo", "ptsv_key", "tipo", unique=True),)
+
+
+# ══════════════════════════════════════════════════════════════════
+#  KIOSCO DE ASISTENCIA (app Node "registro-en-servicio") — rev80
+#  El kiosco usa ESTA misma base de datos. Sus tablas se declaran aquí con las mismas
+#  columnas que crea el kiosco (CREATE TABLE IF NOT EXISTS en su db.js), así cualquiera
+#  de las dos aplicaciones puede arrancar primero. Los trabajadores del kiosco son la
+#  tabla `personal`; aquí solo vive su configuración propia (PIN, jornada, ubicaciones).
+# ══════════════════════════════════════════════════════════════════
+class KioscoRegistro(Base):
+    __tablename__ = "kiosco_registros"
+    id          = Column(String, primary_key=True)
+    worker_tid  = Column(String, index=True)
+    worker_name = Column(String)
+    tipo        = Column(String)
+    ts          = Column(String, index=True)      # ISO UTC, igual que el kiosco
+    data        = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
+    created_at  = Column(DateTime, default=datetime.datetime.utcnow, server_default=func.now())
+
+
+class KioscoTrabajador(Base):
+    __tablename__ = "kiosco_trabajadores"
+    tid        = Column(String, primary_key=True)
+    pin_hash   = Column(String, unique=True)
+    data       = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, server_default=func.now())
+
+
+class KioscoUbicacion(Base):
+    __tablename__ = "kiosco_ubicaciones"
+    id         = Column(String, primary_key=True)
+    data       = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, server_default=func.now())
+
+
+class KioscoUsuario(Base):
+    __tablename__ = "kiosco_usuarios"
+    id            = Column(String, primary_key=True)
+    username      = Column(String, unique=True, nullable=False)
+    password_hash = Column(String, nullable=False)
+    role          = Column(String)
+    name          = Column(String)
+    created_at    = Column(DateTime, default=datetime.datetime.utcnow, server_default=func.now())
+
+
+class KioscoFirma(Base):
+    __tablename__ = "kiosco_firmas"
+    id         = Column(String, primary_key=True)
+    report_key = Column(String)
+    tipo       = Column(String)
+    data       = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
+    __table_args__ = (UniqueConstraint("report_key", "tipo", name="uq_kiosco_firmas_key_tipo"),)
+
+
+class KioscoConfig(Base):
+    __tablename__ = "kiosco_config"
+    clave      = Column(String, primary_key=True)
+    data       = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, server_default=func.now())
 
 
 class PlanoSTP(Base):
