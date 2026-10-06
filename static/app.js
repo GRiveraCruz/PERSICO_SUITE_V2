@@ -119,6 +119,7 @@ function switchMenu(mod, groupId) {
   if(mod==='personal-areas') { setTimeout(loadAreas,100); }
   if(mod==='personal-perfiles') { setTimeout(loadPerfiles,100); }
   if(mod==='personal-tipos-puesto') { setTimeout(loadTiposPuesto,100); }
+  if(mod==='rrhh-kpis') { setTimeout(kpiCargar,100); }
   if(mod==='personal-listado') { setTimeout(loadPersonal,100); }
   if(mod==='consignacion') { setTimeout(loadCsg,50); }
   if(mod==='apartados') { setTimeout(loadApartados,50); }   // antes solo se cargaba al abrir la suite
@@ -5972,7 +5973,7 @@ let USER_PERMS = null;
 
 // rev77: módulos que heredan el nivel de otro mientras el administrador no les fije uno
 const MODULOS_HEREDAN = {'projconfig-dashboard':'projconfig','projconfig-presupuesto':'projconfig','projconfig-timing':'projconfig',
-  'projconfig-abiertos':'projconfig','projconfig-cambios':'projconfig','projconfig-documentos':'projconfig','personal-tipos-puesto':'personal-perfiles'};
+  'projconfig-abiertos':'projconfig','projconfig-cambios':'projconfig','projconfig-documentos':'projconfig','personal-tipos-puesto':'personal-perfiles','rrhh-kpis':'personal-listado'};
 const MODULE_LABELS = {
   // Proyectos
   'jobs':'Job Register', 'pt':'PT Numbers', 'sv':'SV Numbers',
@@ -6004,7 +6005,7 @@ const MODULE_LABELS = {
   'fin-cpp':'CPP (Cuentas por Pagar)', 'fin-pagos':'Pagos', 'fin-esquemas':'Esquemas Tributarios',
   // Recursos Humanos
   'rrhh-asistencia':'Asistencia', 'rrhh-vacaciones':'Vacaciones', 'rrhh-permisos':'Permisos (RH)',
-  'rrhh-salario':'Calcular Salario', 'rrhh-sueldos':'Sueldos y Salarios', 'rrhh-nomina':'Nómina',
+  'rrhh-salario':'Calcular Salario', 'rrhh-sueldos':'Sueldos y Salarios', 'rrhh-nomina':'Nómina', 'rrhh-kpis':'KPIs del Personal',
   'personal-areas':'Control de Personal — Áreas', 'personal-perfiles':'Control de Personal — Perfiles de Trabajo',
   'personal-tipos-puesto':'Control de Personal — Tipo de Puesto',
   'personal-listado':'Control de Personal — Listado de Trabajadores',
@@ -6030,7 +6031,7 @@ const MODULE_GROUPS = [
   { label: '✈ Servicio',             mods: ['viaticos','gastos-viaje','envios'] },
   { label: '📊 Reportes y Config',    mods: ['wh','report','multirpt','fx','projconfig','projconfig-dashboard','projconfig-presupuesto','projconfig-timing','projconfig-abiertos','projconfig-cambios','projconfig-documentos'] },
   { label: '💹 Finanzas',             mods: ['fin-recepciones','fin-procesarcompra','fin-cpp','fin-pagos','fin-esquemas'] },
-  { label: '🧑‍💼 Recursos Humanos',    mods: ['rrhh-asistencia','rrhh-vacaciones','rrhh-permisos','rrhh-salario','rrhh-sueldos','rrhh-nomina','personal-areas','personal-tipos-puesto','personal-perfiles','personal-listado'] },
+  { label: '🧑‍💼 Recursos Humanos',    mods: ['rrhh-asistencia','rrhh-vacaciones','rrhh-permisos','rrhh-salario','rrhh-sueldos','rrhh-nomina','rrhh-kpis','personal-areas','personal-tipos-puesto','personal-perfiles','personal-listado'] },
   { label: '🏭 Operaciones',           mods: ['ops-capacidad','ops-ot','ops-op','ops-os'] },
 ];
 
@@ -6253,6 +6254,7 @@ function applyPermsToDom(d) {
     'rrhh-salario':       ["switchMenu('rrhh-salario'"],
     'rrhh-sueldos':       ["switchMenu('rrhh-sueldos'"],
     'rrhh-nomina':        ["switchMenu('rrhh-nomina'"],
+    'rrhh-kpis':          ["switchMenu('rrhh-kpis'"],
     'personal-areas':     ["switchMenu('personal-areas'"],
     'personal-perfiles':  ["switchMenu('personal-perfiles'"],
     'personal-tipos-puesto': ["switchMenu('personal-tipos-puesto'"],
@@ -6390,6 +6392,8 @@ function applyPermsToDom(d) {
     { pat:'areaDelete(',         mod:'personal-areas',   need:'full' },
     { pat:'perfilCreate(',       mod:'personal-perfiles',need:'create' },
     { pat:'tpGuardar(',          mod:'personal-tipos-puesto',need:'create' },
+    { pat:'kpiAbrir(',           mod:'rrhh-kpis',need:'create' },
+    { pat:'whReasigAbrir(',      mod:'wh',need:'create' },
     { pat:'tpEliminar(',         mod:'personal-tipos-puesto',need:'full' },
     { pat:'perfilEditStart(',    mod:'personal-perfiles',need:'create' },
     { pat:'perfilDelete(',       mod:'personal-perfiles',need:'full' },
@@ -18670,3 +18674,224 @@ document.addEventListener('DOMContentLoaded', () => {
     };
   }
 });
+
+// ════════════════════════════════════════════════════════
+//  rev84 — KPIs DEL PERSONAL
+// ════════════════════════════════════════════════════════
+let _kpi = {cat:null, asign:[], res:null, ids:[]};
+const KPI_PER = {mensual:'Mensual', trimestral:'Trimestral', semanal:'Semanal', proyecto:'Por proyecto'};
+const KPI_COL = {verde:'#16a34a', ambar:'#f59e0b', rojo:'#c8102e'};
+const kpiFmt = (v,u) => v==null ? '—' : (u==='%' ? `${Number(v).toLocaleString('es-MX',{maximumFractionDigits:1})} %` : Number(v).toLocaleString('es-MX',{maximumFractionDigits:1}));
+async function kpiCargar(){
+  const sel = document.getElementById('kpi-anio');
+  if(sel && !sel.options.length){ const y=new Date().getFullYear(); sel.innerHTML=[y-1,y,y+1].map(a=>`<option ${a===y?'selected':''}>${a}</option>`).join(''); }
+  document.getElementById('kpi-body').innerHTML='<div style="text-align:center;padding:40px;color:var(--muted)">Cargando KPIs…</div>';
+  try{
+    const [c,a] = await Promise.all([fetch('/api/kpis/catalogo').then(r=>r.json()), fetch('/api/kpis/asignaciones').then(r=>r.json())]);
+    if(c.error) throw new Error(c.error);
+    _kpi.cat = c; _kpi.asign = Array.isArray(a)?a:[];
+    const f = document.getElementById('kpi-filtro'), cur = f.value;
+    const nombres = [...new Map(_kpi.asign.map(x=>[x.tid||'__global__', x.nombre])).entries()];
+    f.innerHTML = '<option value="">Todas las personas</option>' + nombres.map(([t,n])=>`<option value="${esc(t)}" ${t===cur?'selected':''}>${esc(n||t)}</option>`).join('');
+    await kpiCargarResultados();
+  }catch(e){ document.getElementById('kpi-body').innerHTML=`<div style="color:var(--red);padding:20px">⚠ ${esc(e.message)}</div>`; }
+}
+async function kpiCargarResultados(){
+  const anio = document.getElementById('kpi-anio').value;
+  try{
+    const r = await fetch('/api/kpis/resultados?anio='+anio).then(r=>r.json());
+    if(r.error) throw new Error(r.error);
+    _kpi.res = r; kpiRender();
+  }catch(e){ document.getElementById('kpi-body').innerHTML=`<div style="color:var(--red);padding:20px">⚠ No se pudieron calcular los KPIs: ${esc(e.message)}</div>`; }
+}
+function kpiRender(){
+  const body = document.getElementById('kpi-body'), res = _kpi.res; if(!body || !res) return;
+  const f = document.getElementById('kpi-filtro').value;
+  const lst = res.resultados.filter(x=>!f || (x.asignacion.tid||'__global__')===f);
+  if(!_kpi.asign.length){ body.innerHTML = `<div class="es"><div class="ei">🎯</div><p>Aún no hay KPIs asignados. Usa "+ Asignar KPI".</p></div>${kpiCatalogoHTML()}`; return; }
+  const grupos = {}; lst.forEach(x=>{ const k = x.asignacion.nombre || 'Global'; (grupos[k]=grupos[k]||[]).push(x); });
+  const puede = permCanCreate('rrhh-kpis');
+  const MES1 = ['E','F','M','A','M','J','J','A','S','O','N','D'];
+  const tarjeta = x => {
+    const a = x.asignacion, K = x.kpi, col = KPI_COL[x.estado] || 'var(--muted)';
+    const max = Math.max(1, ...x.periodos.map(p=>Math.abs(p.valor||0)), Math.abs(a.meta||0));
+    const fina = x.periodos.length > 20, H = 56, lblH = fina ? 0 : 14;
+    const barras = x.periodos.map(p=>`<div title="${esc(p.p)}: ${esc(kpiFmt(p.valor,K.unidad))}${p.extra?' · '+esc(p.extra):''}${p.en_curso?' (en curso, no se evalúa)':''}" style="flex:1;min-width:${fina?2:10}px;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:2px;height:100%">
+        <div style="width:100%;height:${p.valor==null?0:Math.max(2, Math.abs(p.valor)/max*H)}px;background:${p.en_curso?'repeating-linear-gradient(45deg,#cbd5e1 0 3px,#e2e8f0 3px 6px)':(KPI_COL[p.estado]||'#cbd5e1')};border-radius:2px 2px 0 0"></div>
+        ${fina?'':`<span style="font-size:8.5px;line-height:${lblH-2}px;height:${lblH-2}px;color:var(--muted);white-space:nowrap;overflow:hidden;max-width:100%">${esc(K.periodo==='mensual'?MES1[+p.p.slice(5)-1]:K.periodo==='proyecto'?'':p.p)}</span>`}</div>`).join('');
+    const metaY = Math.min(H, Math.abs(a.meta||0)/max*H);
+    const tablaProy = K.periodo==='proyecto' && x.periodos.length ? `<details style="margin-top:8px"><summary style="cursor:pointer;font-size:11px;color:var(--muted2)">Ver proyectos (${x.periodos.length})</summary>
+        <table style="width:100%;font-size:11px;border-collapse:collapse;margin-top:4px">${x.periodos.map(p=>`<tr style="border-top:1px solid var(--border)"><td style="padding:3px 4px;font-family:'DM Mono',monospace;color:var(--gold)">${esc(p.p)}</td><td style="padding:3px 4px;text-align:right;font-weight:700;color:${KPI_COL[p.estado]||'var(--text)'}">${esc(kpiFmt(p.valor,K.unidad))}</td><td style="padding:3px 4px;color:var(--muted)">${esc(p.extra||'')}</td></tr>`).join('')}</table></details>` : '';
+    return `<div style="background:var(--card,#fff);border:1px solid var(--border);border-left:4px solid ${col};border-radius:10px;padding:12px 14px;min-width:0">
+      <div style="display:flex;gap:8px;align-items:flex-start">
+        <div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:700">${esc(K.nombre)}</div>
+          <div style="font-size:10.5px;color:var(--muted)">${KPI_PER[K.periodo]} · meta ${K.sentido==='menor'?'≤':'≥'} <b>${esc(kpiFmt(a.meta,K.unidad))}</b>${a.alcance==='global'?' · global':''}</div></div>
+        ${puede?`<button class="fi-del" style="color:var(--muted2)" onclick="kpiAbrir('${esc(a.kid)}')">Editar</button><button class="fi-del" onclick="kpiEliminar('${esc(a.kid)}')">✕</button>`:''}
+      </div>
+      <div style="display:flex;align-items:baseline;gap:10px;margin:8px 0 4px;flex-wrap:wrap">
+        <span style="font-size:26px;font-weight:800;color:${col}">${esc(kpiFmt(x.promedio,K.unidad))}</span>
+        <span style="font-size:10.5px;color:var(--muted2)">${K.periodo==='proyecto'?'promedio de proyectos':'promedio del año'}${x.ultimo&&K.periodo!=='proyecto'?` · último (${esc(x.ultimo.p)}): <b>${esc(kpiFmt(x.ultimo.valor,K.unidad))}</b>`:''}${x.en_curso?` · en curso (${esc(x.en_curso.p)}): ${esc(kpiFmt(x.en_curso.valor,K.unidad))}`:''}</span>
+        <span style="margin-left:auto;font-size:10.5px;color:var(--muted2)">${x.evaluados?`cumplió ${x.cumplidos} de ${x.evaluados}`:'sin datos aún'}</span>
+      </div>
+      ${x.periodos.length?`<div style="position:relative;display:flex;gap:${fina?1:3}px;align-items:flex-end;height:${H+lblH+4}px;padding-top:4px">${barras}
+        ${a.meta?`<div title="Meta ${esc(kpiFmt(a.meta,K.unidad))}" style="position:absolute;left:0;right:0;bottom:${lblH+metaY}px;border-top:1px dashed var(--red);opacity:.7"></div>`:''}</div>`:''}
+      ${x.nota?`<div style="font-size:10px;color:var(--muted);margin-top:4px">${esc(x.nota)}</div>`:''}
+      ${tablaProy}
+      ${(x.excluidos||[]).length?`<details style="margin-top:6px"><summary style="cursor:pointer;font-size:11px;color:#b45309">⚠ ${x.excluidos.length} proyecto(s) cerrado(s) sin dato para calcular</summary>
+        <table style="width:100%;font-size:11px;border-collapse:collapse;margin-top:4px">${x.excluidos.map(e=>`<tr style="border-top:1px solid var(--border)"><td style="padding:3px 4px;font-family:'DM Mono',monospace;color:var(--gold)">${esc(e.job)}</td><td style="padding:3px 4px;color:var(--muted2)">${esc(e.motivo)}</td></tr>`).join('')}</table></details>`:''}
+      ${a.alcance!=='global'?`<div style="font-size:9.5px;color:var(--muted);margin-top:6px" title="Identificadores">🔎 ${esc((a.identificadores||[]).join(' · '))}</div>`:''}
+    </div>`;
+  };
+  body.innerHTML = Object.entries(grupos).map(([n, xs])=>{
+    const ver = xs.filter(x=>x.estado==='verde').length, rojo = xs.filter(x=>x.estado==='rojo').length;
+    return `<div style="margin-bottom:22px"><div style="display:flex;align-items:baseline;gap:10px;margin-bottom:8px"><div style="font-size:15px;font-weight:800">${esc(n)}</div>
+      <span style="font-size:11px;color:var(--muted2)">${xs.length} KPI${xs.length===1?'':'s'} · <span style="color:#16a34a">${ver} en meta</span>${rojo?` · <span style="color:#c8102e">${rojo} fuera de meta</span>`:''}</span></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px">${xs.map(tarjeta).join('')}</div></div>`;
+  }).join('') + kpiCatalogoHTML();
+}
+function kpiCatalogoHTML(){
+  if(!_kpi.cat) return '';
+  return `<details style="margin-top:10px"><summary style="cursor:pointer;font-size:12px;font-weight:700">Cómo se calcula cada KPI</summary>
+    <table style="width:100%;font-size:11.5px;border-collapse:collapse;margin-top:6px">${_kpi.cat.kpis.map(k=>`<tr style="border-top:1px solid var(--border)"><td style="padding:5px 6px;font-weight:700;white-space:nowrap">${esc(k.nombre)}</td><td style="padding:5px 6px;white-space:nowrap">${KPI_PER[k.periodo]}</td><td style="padding:5px 6px;color:var(--muted2)">${esc(k.formula)} <i>Fuente: ${esc(k.fuente)}.</i> ${k.sentido==='menor'?'Menor es mejor.':''}</td></tr>`).join('')}</table></details>`;
+}
+function kpiAbrir(kid){
+  if(!_kpi.cat) return;
+  const a = kid ? _kpi.asign.find(x=>x.kid===kid) : null;
+  document.getElementById('kpi-mo-titulo').textContent = a ? 'Editar KPI asignado' : 'Asignar KPI';
+  document.getElementById('kpi-kid').value = a ? a.kid : '';
+  document.getElementById('kpi-kpi').innerHTML = _kpi.cat.kpis.map(k=>`<option value="${k.k}" ${a&&a.kpi===k.k?'selected':''}>${esc(k.nombre)} (${KPI_PER[k.periodo]})</option>`).join('');
+  document.getElementById('kpi-tid').innerHTML = '<option value="">— Selecciona —</option>' + _kpi.cat.personal.map(p=>`<option value="${esc(p.tid)}" ${a&&a.tid===p.tid?'selected':''}>${esc(p.nombre)}${p.puesto?' · '+esc(p.puesto):''}</option>`).join('');
+  document.getElementById('kpi-alcance').value = a && a.alcance==='global' ? 'global' : 'persona';
+  document.getElementById('kpi-meta').value = a ? a.meta : '';
+  document.getElementById('kpi-tol').value = a && a.tolerancia!=null ? a.tolerancia : '';
+  document.getElementById('kpi-notas').value = a ? (a.notas||'') : '';
+  document.getElementById('kpi-activo').checked = a ? a.activo!==false : true;
+  _kpi.ids = a ? [...(a.identificadores||[])] : [];
+  kpiInfo(); kpiRenderIds();
+  document.getElementById('mo-kpi').classList.add('on');
+}
+function kpiInfo(){
+  const k = _kpi.cat.kpis.find(x=>x.k===document.getElementById('kpi-kpi').value); if(!k) return;
+  const glob = document.getElementById('kpi-alcance').value==='global';
+  document.getElementById('kpi-info').innerHTML = `<b>${KPI_PER[k.periodo]}</b> · ${esc(k.formula)}<br><i>Fuente: ${esc(k.fuente)}</i> · ${k.sentido==='menor'?'menor es mejor':'mayor es mejor'}`;
+  document.getElementById('kpi-meta-lbl').textContent = `Meta (${k.unidad}) — ${k.sentido==='menor'?'no mayor a':'al menos'}`;
+  document.getElementById('kpi-persona-box').style.display = glob ? 'none' : '';
+  document.getElementById('kpi-ids-box').style.display = glob ? 'none' : '';
+  const fuente = ['cotizaciones_creadas','aceptacion_cotizaciones'].includes(k.k) ? 'ventas' : k.k==='horas_extra' ? 'empleados' : 'pm';
+  const sug = (_kpi.cat.sugerencias||{})[fuente] || [];
+  document.getElementById('kpi-ids-dl').innerHTML = sug.map(n=>`<option value="${esc(n)}">`).join('');
+  document.getElementById('kpi-ids-ayuda').textContent = ({ventas:'Nombre como Key Account Manager o Technical Sales en Cotizaciones.', empleados:'Nombre como empleado en Work Hours.', pm:'Nombre como PM en Jobs y Customer POs (ej. "Luz Munoz - Persico").'})[fuente] + ' Puedes agregar varios.';
+}
+function kpiSugerirIds(){
+  const tid = document.getElementById('kpi-tid').value, p = _kpi.cat.personal.find(x=>x.tid===tid); if(!p) return;
+  // nombre de Control de Personal + nombres de los datos que comparten al menos dos palabras con él
+  const pal = s => new Set(String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/-\s*PERSICO.*$/,'').replace(/[^A-Z0-9 ]/g,' ').split(/\s+/).filter(Boolean));
+  const mias = pal(p.nombre), sug = new Set([p.nombre]);
+  Object.values(_kpi.cat.sugerencias||{}).flat().forEach(n=>{ const w = pal(n); let c=0; w.forEach(x=>{ if(mias.has(x)) c++; }); if(c>=2) sug.add(n); });
+  _kpi.ids = [...new Set([..._kpi.ids, ...sug])]; kpiRenderIds();
+}
+function kpiRenderIds(){
+  document.getElementById('kpi-ids-chips').innerHTML = _kpi.ids.map((n,i)=>`<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(37,105,160,.1);border-radius:12px;padding:3px 9px;font-size:11px">${esc(n)}<a href="#" onclick="_kpi.ids.splice(${i},1);kpiRenderIds();return false" style="color:var(--muted);text-decoration:none">✕</a></span>`).join('') || '<span style="font-size:11px;color:var(--muted)">Sin identificadores</span>';
+}
+function kpiAgregarId(){ const el=document.getElementById('kpi-id-nuevo'), v=el.value.trim(); if(v && !_kpi.ids.includes(v)) _kpi.ids.push(v); el.value=''; kpiRenderIds(); }
+async function kpiGuardar(){
+  if(document.getElementById('kpi-id-nuevo').value.trim()) kpiAgregarId();
+  const body = {kid: document.getElementById('kpi-kid').value || undefined, kpi: document.getElementById('kpi-kpi').value,
+    alcance: document.getElementById('kpi-alcance').value, tid: document.getElementById('kpi-tid').value,
+    meta: document.getElementById('kpi-meta').value, tolerancia: document.getElementById('kpi-tol').value,
+    identificadores: _kpi.ids, notas: document.getElementById('kpi-notas').value, activo: document.getElementById('kpi-activo').checked};
+  const r = await apiCall('POST','/kpis/asignaciones',body);
+  if(r.error){ toast(r.error,'er'); return; }
+  toast('KPI guardado ✓','ok'); closeMo('mo-kpi'); kpiCargar();
+}
+async function kpiEliminar(kid){
+  if(!confirm('¿Quitar este KPI asignado?')) return;
+  const r = await (await fetch('/api/kpis/asignaciones/'+encodeURIComponent(kid),{method:'DELETE'})).json();
+  if(r.error){ toast(r.error,'er'); return; }
+  toast('KPI eliminado','if'); kpiCargar();
+}
+
+
+// ════════════════════════════════════════════════════════
+//  rev86 — Mano de Obra: reasignar horas de un Job a otro
+// ════════════════════════════════════════════════════════
+let _whr = {origen:'', regs:[], jobs:null};
+async function whReasigAbrir(){
+  _whr = {origen:'', regs:[], jobs:_whr.jobs};
+  ['whr-origen','whr-destino'].forEach(id=>document.getElementById(id).value='');
+  ['whr-origen-info','whr-lista','whr-destino-info','whr-resumen'].forEach(id=>document.getElementById(id).innerHTML='');
+  document.getElementById('whr-destino-box').style.display='none';
+  document.getElementById('whr-btn').disabled = true;
+  document.getElementById('mo-wh-reasig').classList.add('on');
+  setTimeout(()=>document.getElementById('whr-origen').focus(), 50);
+  if(!_whr.jobs){
+    try{ const r = await fetch('/api/jobs'); const d = await r.json(); _whr.jobs = (Array.isArray(d)?d:(d.jobs||d.records||[])); }catch(e){ _whr.jobs = []; }
+    document.getElementById('whr-jobs').innerHTML = _whr.jobs.map(j=>`<option value="${esc(j.job_number)}">${esc(j.customer||'')} · ${esc(j.description||'')}</option>`).join('');
+  }
+}
+async function whReasigBuscar(){
+  const job = document.getElementById('whr-origen').value.trim();
+  if(!job){ toast('Escribe el Job actual','er'); return; }
+  document.getElementById('whr-lista').innerHTML = '<div style="padding:16px;color:var(--muted);text-align:center">Buscando…</div>';
+  try{
+    const r = await fetch('/api/wh/por-job?job='+encodeURIComponent(job)); const d = await r.json();
+    if(d.error) throw new Error(d.error);
+    _whr.origen = d.job; _whr.regs = d.registros.map(x=>({...x, sel:true}));
+    document.getElementById('whr-origen-info').innerHTML = d.job_existe
+      ? `<b>${esc(d.job)}</b> · ${esc(d.job_info.customer||'')} · ${esc(d.job_info.description||'')} · ${esc(d.job_info.status||'')}`
+      : `<span style="color:var(--amber)">${esc(d.job)} no existe en Jobs (puede ser un código capturado con error).</span>`;
+    whReasigRender();
+  }catch(e){ document.getElementById('whr-lista').innerHTML = `<div style="color:var(--red)">⚠ ${esc(e.message)}</div>`; }
+}
+function whReasigRender(){
+  const box = document.getElementById('whr-lista'), R = _whr.regs;
+  if(!R.length){ box.innerHTML = `<div style="padding:14px;text-align:center;color:var(--muted)">No hay registros de horas con el Job ${esc(_whr.origen)}.</div>`;
+    document.getElementById('whr-destino-box').style.display='none'; whReasigResumen(); return; }
+  const todos = R.every(x=>x.sel);
+  box.innerHTML = `<div class="sl" style="margin-top:0">2. Registros asociados (${R.length})</div>
+    <div style="max-height:300px;overflow:auto;border:1px solid var(--border);border-radius:8px">
+    <table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="position:sticky;top:0;background:var(--sb)">
+      <th style="padding:6px;cursor:default"><input type="checkbox" ${todos?'checked':''} onchange="_whr.regs.forEach(x=>x.sel=this.checked);whReasigRender()" title="Seleccionar todos"></th>
+      <th style="padding:6px;text-align:left;cursor:default">Fecha</th><th style="padding:6px;text-align:left;cursor:default">Empleado</th>
+      <th style="padding:6px;text-align:right;cursor:default">Horas</th><th style="padding:6px;text-align:left;cursor:default">Descripción</th></tr></thead>
+    <tbody>${R.map((x,i)=>`<tr style="border-top:1px solid var(--border);${x.sel?'':'opacity:.45'}">
+      <td style="padding:5px 6px;text-align:center"><input type="checkbox" ${x.sel?'checked':''} onchange="_whr.regs[${i}].sel=this.checked;whReasigRender()"></td>
+      <td style="padding:5px 6px;white-space:nowrap">${esc(String(x.date_worked||'').slice(0,10))}</td>
+      <td style="padding:5px 6px">${esc(x.employee||'')}</td>
+      <td style="padding:5px 6px;text-align:right;font-family:'DM Mono',monospace">${Number(x.hours||0).toLocaleString('es-MX',{maximumFractionDigits:2})}</td>
+      <td style="padding:5px 6px;color:var(--muted2)">${esc(x.description||'')}</td></tr>`).join('')}</tbody></table></div>
+    <div style="font-size:10.5px;color:var(--muted);margin-top:4px">Desmarca los registros que no deben moverse.</div>`;
+  document.getElementById('whr-destino-box').style.display='';
+  whReasigInfoDestino();
+}
+function whReasigInfoDestino(){
+  const v = document.getElementById('whr-destino').value.trim().toUpperCase().replace(/\s+/g,''), el = document.getElementById('whr-destino-info');
+  const j = (_whr.jobs||[]).find(x=>String(x.job_number||'').toUpperCase().replace(/\s+/g,'')===v);
+  if(!v) el.innerHTML = '';
+  else if(v===_whr.origen) el.innerHTML = '<span style="color:var(--red)">Es el mismo Job actual.</span>';
+  else if(j) el.innerHTML = `<span style="color:#15803d">✓ ${esc(j.job_number)} · ${esc(j.customer||'')} · ${esc(j.description||'')} · ${esc(j.status||'')}</span>`;
+  else el.innerHTML = '<span style="color:var(--red)">Ese Job no existe en Jobs.</span>';
+  whReasigResumen(!!j && v!==_whr.origen);
+}
+function whReasigResumen(destinoOk){
+  const sel = _whr.regs.filter(x=>x.sel), h = sel.reduce((a,x)=>a+Number(x.hours||0),0);
+  document.getElementById('whr-resumen').textContent = sel.length ? `${sel.length} registro(s) · ${h.toLocaleString('es-MX',{maximumFractionDigits:2})} h seleccionadas` : '';
+  document.getElementById('whr-btn').disabled = !(sel.length && destinoOk);
+}
+async function whReasigConfirmar(){
+  const sel = _whr.regs.filter(x=>x.sel), destino = document.getElementById('whr-destino').value.trim();
+  if(!sel.length || !destino) return;
+  const h = sel.reduce((a,x)=>a+Number(x.hours||0),0);
+  const emps = new Set(sel.map(x=>x.employee)).size;
+  // 4. alerta antes del cambio
+  if(!confirm(`⚠ ATENCIÓN\n\nSe cambiará el Job de ${sel.length} registro(s) de horas (${h.toLocaleString('es-MX',{maximumFractionDigits:2})} h de ${emps} empleado(s)):\n\n   ${_whr.origen}  →  ${destino.toUpperCase()}\n\nEl costo de mano de obra de esas horas dejará de contar en ${_whr.origen} y pasará a ${destino.toUpperCase()} (Job Report, dashboards, KPIs y capacidad).\n\nCada registro guarda la bitácora del cambio. ¿Continuar?`)) return;
+  const btn = document.getElementById('whr-btn'); btn.disabled = true; btn.textContent = 'Reasignando…';
+  try{
+    const r = await apiCall('POST','/wh/reasignar',{origen:_whr.origen, destino, registros: sel.map(x=>({year:x.year, id:x.id}))});
+    if(r.error) throw new Error(r.error);
+    toast(`✓ ${r.cambiados} registro(s) (${r.horas} h) reasignados de ${_whr.origen} a ${r.destino}${r.omitidos?` · ${r.omitidos} ya no tenían ese Job y no se tocaron`:''}`,'ok',7000);
+    closeMo('mo-wh-reasig');
+    if(typeof whLoad==='function') whLoad(); else if(typeof loadWH==='function') loadWH();
+  }catch(e){ toast('No se reasignó: '+e.message,'er',8000); }
+  finally{ btn.textContent = 'Reasignar'; }
+}

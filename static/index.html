@@ -539,6 +539,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
         <button onclick="switchMenu('rrhh-salario','ng-rrhh')">Calcular Salario</button>
         <button onclick="switchMenu('rrhh-sueldos','ng-rrhh')">Sueldos y Salarios</button>
         <button onclick="switchMenu('rrhh-nomina','ng-rrhh')">Nómina</button>
+        <button onclick="switchMenu('rrhh-kpis','ng-rrhh')">KPIs del Personal</button>
         <div class="nav-subgroup">
           <button class="nav-sub-btn">Control de Personal ▸</button>
           <div class="nav-submenu">
@@ -1825,6 +1826,30 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
   </div>
 </div>
 
+<!-- ── Modal: Reasignar horas (rev86) -->
+<div class="mo" id="mo-wh-reasig" style="z-index:150">
+  <div class="md" style="max-width:900px;width:calc(100% - 32px)">
+    <div class="mh"><h2>Reasignar horas a otro Job</h2><button class="px" onclick="closeMo('mo-wh-reasig')">Cerrar</button></div>
+    <div class="mb2">
+      <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+        <div class="fi" style="margin:0;flex:1;min-width:200px"><label>1. Job actual (el que se va a mudar)</label>
+          <input id="whr-origen" list="whr-jobs" placeholder="Ej. 665-01" onkeydown="if(event.key==='Enter')whReasigBuscar()"></div>
+        <button class="btn-reload" onclick="whReasigBuscar()" style="padding:9px 16px">Buscar registros</button>
+      </div>
+      <datalist id="whr-jobs"></datalist>
+      <div id="whr-origen-info" style="font-size:11px;color:var(--muted2);margin:6px 0 10px"></div>
+      <div id="whr-lista"></div>
+      <div id="whr-destino-box" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+        <div class="fi" style="margin:0"><label>3. Nuevo Job</label>
+          <input id="whr-destino" list="whr-jobs" placeholder="Ej. 665-02" oninput="whReasigInfoDestino()"></div>
+        <div id="whr-destino-info" style="font-size:11px;margin-top:6px"></div>
+      </div>
+    </div>
+    <div class="mf"><span id="whr-resumen" style="flex:1;font-size:11.5px;color:var(--muted2)"></span>
+      <button class="btn-new" id="whr-btn" onclick="whReasigConfirmar()" disabled style="width:auto;padding:9px 20px">Reasignar</button></div>
+  </div>
+</div>
+
 <!-- ── Modal: Punto abierto (rev79) -->
 <div class="mo" id="mo-pc-punto" style="z-index:150">
   <div class="md" style="max-width:920px;width:calc(100% - 32px)">
@@ -2116,6 +2141,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
     </div>
     <div class="sb-btns">
       <button class="btn-new" onclick="whOpenImport()">Cargar Excel</button>
+      <button class="btn-sec" onclick="whReasigAbrir()" style="margin-top:6px">↔ Reasignar horas</button>
       <button class="btn-sec btn-export" onclick="whExportCSV()">Exportar CSV</button>
     </div>
   </aside>
@@ -2704,6 +2730,48 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
       <button class="btn btn-s" onclick="closeMo('mo-isr-import')">Cerrar</button>
       <button class="btn btn-p" id="isr-imp-btn" onclick="isrImportSubmit()" disabled>Subir</button>
     </div>
+  </div>
+</div>
+
+<!-- ══ MODULE: KPIs del Personal (rev84) ══ -->
+<div class="module" id="mod-rrhh-kpis">
+  <div class="main-content" style="overflow-y:auto">
+    <div class="bar-top"><h1>🎯 KPIs del Personal</h1>
+      <select id="kpi-anio" onchange="kpiCargarResultados()" style="font-size:12px;padding:5px 8px"></select>
+      <select id="kpi-filtro" onchange="kpiRender()" style="font-size:12px;padding:5px 8px;max-width:260px"><option value="">Todas las personas</option></select>
+      <button class="btn-reload" onclick="kpiCargar()">Recargar</button>
+      <button class="btn-new" id="kpi-btn-nuevo" onclick="kpiAbrir()" style="width:auto;padding:8px 16px;margin-left:auto">+ Asignar KPI</button>
+    </div>
+    <div id="kpi-body" style="padding:20px 24px"></div>
+  </div>
+</div>
+
+<div class="mo" id="mo-kpi" style="z-index:150">
+  <div class="md" style="max-width:720px;width:calc(100% - 32px)">
+    <div class="mh"><h2 id="kpi-mo-titulo">Asignar KPI</h2><button class="px" onclick="closeMo('mo-kpi')">Cerrar</button></div>
+    <div class="mb2">
+      <input type="hidden" id="kpi-kid">
+      <div class="fi"><label>KPI</label><select id="kpi-kpi" onchange="kpiInfo()"></select></div>
+      <div id="kpi-info" style="font-size:11.5px;color:var(--muted2);margin:-4px 0 12px;padding:8px 10px;border-radius:8px;background:rgba(0,0,0,.03)"></div>
+      <div class="fr">
+        <div class="fi"><label>Alcance</label><select id="kpi-alcance" onchange="kpiInfo()"><option value="persona">Una persona</option><option value="global">Global (toda la empresa)</option></select></div>
+        <div class="fi" id="kpi-persona-box"><label>Persona</label><select id="kpi-tid" onchange="kpiSugerirIds()"></select></div>
+      </div>
+      <div class="fr">
+        <div class="fi"><label id="kpi-meta-lbl">Meta</label><input type="number" id="kpi-meta" step="any"></div>
+        <div class="fi"><label>Tolerancia (ámbar)</label><input type="number" id="kpi-tol" step="any" placeholder="10 % de la meta"></div>
+      </div>
+      <div class="fi" id="kpi-ids-box"><label>Identificadores (cómo aparece la persona en los datos)</label>
+        <div id="kpi-ids-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px"></div>
+        <div style="display:flex;gap:6px"><input id="kpi-id-nuevo" list="kpi-ids-dl" placeholder="Ej. Luz Munoz - Persico" style="flex:1" onkeydown="if(event.key==='Enter'){event.preventDefault();kpiAgregarId();}">
+          <button type="button" class="btn-reload" onclick="kpiAgregarId()">Agregar</button></div>
+        <datalist id="kpi-ids-dl"></datalist>
+        <div id="kpi-ids-ayuda" style="font-size:10.5px;color:var(--muted);margin-top:4px"></div>
+      </div>
+      <div class="fi"><label>Notas</label><input id="kpi-notas" placeholder="Opcional"></div>
+      <label style="font-size:12px;display:flex;gap:6px;align-items:center"><input type="checkbox" id="kpi-activo" checked> Activo</label>
+    </div>
+    <div class="mf"><button class="btn-new" onclick="kpiGuardar()" style="width:auto;padding:9px 20px">Guardar</button></div>
   </div>
 </div>
 

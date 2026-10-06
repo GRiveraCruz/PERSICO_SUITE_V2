@@ -206,6 +206,13 @@ class Perfil(Base, JSONBMixin):
     pid = Column(String, unique=True, index=True)
 
 
+class KpiAsignacion(Base, JSONBMixin):
+    """rev84: KPI asignado a una persona (o global), con su meta y los nombres con que la
+    persona aparece en Jobs, cotizaciones, Customer POs y Work Hours."""
+    __tablename__ = "kpi_asignaciones"
+    kid = Column(String, unique=True, index=True)
+
+
 class TipoPuesto(Base, JSONBMixin):
     """rev77: tipo de puesto con su jornada semanal (hora de entrada y salida por día).
     Cada perfil de puesto elige un tipo; las personas lo heredan por su perfil."""
