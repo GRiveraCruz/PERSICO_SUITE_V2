@@ -8538,6 +8538,15 @@ def api_kpis_resultados():
             if ult_wh.get(jm): return ult_wh[jm], "último registro de horas (el Job no tiene Closing Date)"
             u = fd(j.get("updated_at"))
             return (u, "última actualización del Job (no tiene Closing Date)") if u else (None, "")
+        def alcance_job(j):
+            """rev90: ("cerrado", fecha, origen) | ("wip", hoy, "WIP") | ("sin_fecha", None, "") | None.
+            Los Jobs en WIP se muestran con su valor al día de hoy (en curso: no se evalúan)."""
+            st = str(j.get("status") or "").strip().upper()
+            if st in JOB_ESTATUS_CERRADO:
+                fc, origen = cierre(j)
+                return ("cerrado", fc, origen) if fc else ("sin_fecha", None, "")
+            if st == "WIP" and anio == hoy.year: return ("wip", hoy, "WIP")
+            return None
         cache_job = {}
         def info_job(j):
             jn = j["job_number"]
@@ -8607,12 +8616,13 @@ def api_kpis_resultados():
                 vals = []
                 for j in jobs:
                     if not es(j.get("pm")): continue
-                    fc, origen_c = cierre(j)
-                    if not fc:
-                        if str(j.get("status") or "").strip().upper() in JOB_ESTATUS_CERRADO:
-                            excluidos.append({"job": j["job_number"], "motivo": f"estatus {j.get('status')} sin Closing Date ni registros de horas: captura la fecha de cierre en el Job"})
-                        continue
+                    al = alcance_job(j)
+                    if not al: continue
+                    tipo_al, fc, origen_c = al
+                    if tipo_al == "sin_fecha":
+                        excluidos.append({"job": j["job_number"], "motivo": f"estatus {j.get('status')} sin Closing Date ni registros de horas: captura la fecha de cierre en el Job"}); continue
                     if fc.year != anio: continue
+                    wip = tipo_al == "wip"
                     r = info_job(j)["ro"]
                     if r.get("error"):
                         excluidos.append({"job": j["job_number"], "motivo": f"no se pudo calcular: {r['error']}"}); continue
@@ -8622,13 +8632,17 @@ def api_kpis_resultados():
                     elif r.get("revenue"):   # sin target: margen vs revenue
                         pct = round((r["revenue"] - costo) / r["revenue"] * 100, 1); ref = f"revenue ${r['revenue']:,.0f}"
                     else:
-                        excluidos.append({"job": j["job_number"], "motivo": "sin Internal Target ni revenue"}); continue
+                        excluidos.append({"job": j["job_number"], "motivo": ("(WIP) " if wip else "") + "sin Internal Target ni revenue"}); continue
+                    if wip:
+                        extra = f"WIP · al día de hoy · {ref} · costo ${costo:,.0f}"
+                        detalle.append({"job": j["job_number"], "p": "~" + j["job_number"], "valor": pct, "extra": extra, "en_curso": True})
+                        continue
                     extra = f"{ref} · costo ${costo:,.0f} · cierre {fc.isoformat()}"
                     if not origen_c.startswith("Closing Date"): extra += f" ({origen_c})"
                     vals.append(pct); detalle.append({"job": j["job_number"], "p": fc.isoformat(), "valor": pct, "extra": extra})
                 detalle.sort(key=lambda x: x["p"])
-                periodos = [{"p": x["job"], "valor": x["valor"], "extra": x.get("extra", "")} for x in detalle]
-                nota = f"{len(vals)} proyecto(s) cerrados en {anio}" + (f" · {len(excluidos)} sin dato" if excluidos else "")
+                periodos = [{"p": x["job"], "valor": x["valor"], "extra": x.get("extra", ""), "en_curso": x.get("en_curso", False)} for x in detalle]
+                nota = f"{len(vals)} proyecto(s) cerrados en {anio}" + (f" · {sum(1 for x in detalle if x.get('en_curso'))} en WIP" if any(x.get('en_curso') for x in detalle) else "") + (f" · {len(excluidos)} sin dato" if excluidos else "")
                 val_anual = round(sum(vals) / len(vals), 1) if vals else None
             elif a["kpi"] in ("entrega_tiempo", "ahorro_compras", "eficiencia_horas"):
                 js = [j for j in jobs if es(j.get("pm"))]
@@ -8652,30 +8666,37 @@ def api_kpis_resultados():
                         detalle.append({"job": jn, "p": real.isoformat(), "valor": 100 if ok else 0,
                                         "extra": f"comprometido {comp.isoformat()} · real {real.isoformat()} · {'a tiempo' if ok else f'{(real - comp).days} día(s) tarde'}"})
                     else:
-                        if not cerrado:
+                        al = alcance_job(j)
+                        if not al: continue
+                        tipo_al, cerrado, origen_c = al
+                        if tipo_al == "sin_fecha":
                             # cerrado (Done) pero sin ninguna fecha: se avisa para que capturen la Closing Date
-                            if str(j.get("status") or "").strip().upper() in JOB_ESTATUS_CERRADO:
-                                excluidos.append({"job": jn, "motivo": f"estatus {j.get('status')} sin Closing Date ni registros de horas: captura la fecha de cierre en el Job"})
-                            continue
+                            excluidos.append({"job": jn, "motivo": f"estatus {j.get('status')} sin Closing Date ni registros de horas: captura la fecha de cierre en el Job"}); continue
                         if cerrado.year != anio: continue
+                        wip = tipo_al == "wip"
+                        pre = "(WIP) " if wip else ""
                         ij = info_job(j)
                         if a["kpi"] == "ahorro_compras":
-                            if not ij["en_config"]: excluidos.append({"job": jn, "motivo": "no está en ninguna Configuración de Proyecto"}); continue
-                            if not ij["target_compras"]: excluidos.append({"job": jn, "motivo": "sin Target Compras"}); continue
+                            if not ij["en_config"]: excluidos.append({"job": jn, "motivo": pre + "no está en ninguna Configuración de Proyecto"}); continue
+                            if not ij["target_compras"]: excluidos.append({"job": jn, "motivo": pre + "sin Target Compras"}); continue
                             v = round((ij["target_compras"] - ij["adquirido"]) / ij["target_compras"] * 100, 1)
                             extra = f"target ${ij['target_compras']:,.0f} · adquirido ${ij['adquirido']:,.0f}"
                         else:
-                            if not ij["en_config"]: excluidos.append({"job": jn, "motivo": "no está en ninguna Configuración de Proyecto (no hay horas planeadas)"}); continue
-                            if not ij["horas_plan"]: excluidos.append({"job": jn, "motivo": "sin horas planeadas en Configurar Proyecto"}); continue
-                            if not ij["horas_usadas"]: excluidos.append({"job": jn, "motivo": "sin horas registradas en Work Hours"}); continue
+                            if not ij["en_config"]: excluidos.append({"job": jn, "motivo": pre + "no está en ninguna Configuración de Proyecto (no hay horas planeadas)"}); continue
+                            if not ij["horas_plan"]: excluidos.append({"job": jn, "motivo": pre + "sin horas planeadas en Configurar Proyecto"}); continue
+                            if not ij["horas_usadas"]: excluidos.append({"job": jn, "motivo": pre + "sin horas registradas en Work Hours"}); continue
                             v = round(ij["horas_usadas"] / ij["horas_plan"] * 100, 1)      # rev88: usadas ÷ planeadas
                             extra = f"{ij['horas_plan']:,.0f} h planeadas · {ij['horas_usadas']:,.0f} h usadas"
+                        if wip:
+                            detalle.append({"job": jn, "p": "~" + jn, "valor": v, "extra": "WIP · al día de hoy · " + extra, "en_curso": True})
+                            continue
                         if not origen_c.startswith("Closing Date ") and origen_c != "Closing Date":
                             extra += f" · cierre: {origen_c}"
                         vals.append(v); detalle.append({"job": jn, "p": cerrado.isoformat(), "valor": v, "extra": extra})
                 detalle.sort(key=lambda x: x["p"])
-                periodos = [{"p": x["job"], "valor": x["valor"], "extra": x.get("extra", "")} for x in detalle]
-                nota = f"{len(vals)} proyecto(s) en {anio}" + (f" · {len(excluidos)} cerrado(s) sin dato" if excluidos else "")
+                periodos = [{"p": x["job"], "valor": x["valor"], "extra": x.get("extra", ""), "en_curso": x.get("en_curso", False)} for x in detalle]
+                n_wip = sum(1 for x in detalle if x.get("en_curso"))
+                nota = (f"{len(vals)} proyecto(s) cerrados en {anio}" if a["kpi"] != "entrega_tiempo" else f"{len(vals)} proyecto(s) en {anio}") + (f" · {n_wip} en WIP" if n_wip else "") + (f" · {len(excluidos)} sin dato" if excluidos else "")
                 val_anual = round(sum(vals) / len(vals), 1) if vals else None
             elif a["kpi"] == "horas_extra":
                 p = personas_tp.get(a.get("tid")) if not glob else None
@@ -8706,6 +8727,8 @@ def api_kpis_resultados():
             out.append({"asignacion": a, "kpi": K, "periodos": periodos, "nota": nota,
                         "excluidos": excluidos if a["kpi"] in ("margen_proyectos", "entrega_tiempo", "ahorro_compras", "eficiencia_horas") else [],
                         "ultimo": ultimo, "en_curso": en_curso, "promedio": val_anual,
+                        "wip": (lambda w: {"n": len(w), "promedio": round(sum(w) / len(w), 1) if w else None})(
+                            [x["valor"] for x in periodos if x.get("en_curso") and x.get("valor") is not None]) if K["periodo"] == "proyecto" else None,
                         "estado": _kpi_estado(val_anual, a.get("meta"), K["sentido"], a.get("tolerancia")),
                         "cumplidos": sum(1 for x in periodos if x.get("estado") == "verde"), "evaluados": len(con)})
         return jsonify({"anio": anio, "resultados": out})
