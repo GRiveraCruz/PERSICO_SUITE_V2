@@ -8377,21 +8377,21 @@ KPI_CATALOGO = [
     {"k": "pos_recibidas", "nombre": "Índice de POs recibidas", "periodo": "mensual", "unidad": "POs",
      "sentido": "mayor", "fuente": "Customer POs (PM)",
      "formula": "Customer POs de revenue recibidas en el mes (fecha de la PO). También se informa el monto."},
-    {"k": "margen_proyectos", "nombre": "Margen de ganancia promedio de proyectos asignados", "periodo": "trimestral", "unidad": "%",
+    {"k": "margen_proyectos", "nombre": "Margen de ganancia promedio de proyectos asignados", "periodo": "proyecto", "unidad": "%",
      "sentido": "mayor", "fuente": "Jobs donde es PM",
-     "formula": "Promedio del margen de sus Jobs cerrados en el trimestre (fecha de cierre): resultado operativo ÷ Internal Target; si el Job no tiene Internal Target, (revenue − costo) ÷ revenue."},
+     "formula": "Margen de cada Job cerrado en el año: resultado operativo ÷ Internal Target; si el Job no tiene Internal Target, (revenue − costo) ÷ revenue. El valor del KPI es el promedio de sus Jobs."},
     {"k": "entrega_tiempo", "nombre": "Entrega en tiempo de proyectos asignados", "periodo": "proyecto", "unidad": "%",
      "sentido": "mayor", "fuente": "Jobs donde es PM",
      "formula": "Proyectos entregados en o antes de la fecha de envío comprometida ÷ proyectos entregados × 100. Entrega real: fecha real de la actividad de Envío del Timing, o fecha de cierre del Job."},
     {"k": "ahorro_compras", "nombre": "Porcentaje promedio de ahorro por compra de componentes", "periodo": "proyecto", "unidad": "%",
      "sentido": "mayor", "fuente": "Jobs donde es PM (o global para Compras)",
-     "formula": "Promedio de (Target Compras − adquirido) ÷ Target Compras × 100 de los proyectos cerrados."},
+     "formula": "Promedio de (Target Compras − adquirido) ÷ Target Compras × 100 de los proyectos cerrados (estatus Done). Target Compras = el de Configurar Proyecto; adquirido = órdenes de compra del Job (todos sus años)."},
     {"k": "horas_extra", "nombre": "Índice de horas extras", "periodo": "semanal", "unidad": "%",
      "sentido": "menor", "fuente": "Work Hours (empleado)",
      "formula": "Horas que pasan de su jornada semanal (Tipo de Puesto, o 48 h) ÷ horas ordinarias × 100."},
-    {"k": "eficiencia_horas", "nombre": "Eficiencia horas planeadas vs horas usadas por proyecto", "periodo": "proyecto", "unidad": "%",
-     "sentido": "mayor", "fuente": "Jobs donde es PM",
-     "formula": "Horas planeadas (Configurar Proyecto) ÷ horas usadas (Work Hours) × 100, al cierre del proyecto. 100 % = se usó exactamente lo planeado."},
+    {"k": "eficiencia_horas", "nombre": "Eficiencia horas usadas vs horas planeadas por proyecto", "periodo": "proyecto", "unidad": "%",
+     "sentido": "menor", "fuente": "Jobs donde es PM",
+     "formula": "Horas usadas (Work Hours) ÷ horas planeadas (Configurar Proyecto) × 100, de sus Jobs cerrados. La meta es el máximo permitido: 100 % = se usó exactamente lo planeado; más de 100 % = se usaron más horas de las planeadas."},
 ]
 KPI_POR_CLAVE = {k["k"]: k for k in KPI_CATALOGO}
 
@@ -8529,10 +8529,11 @@ def api_kpis_resultados():
                     f = fd(r.get("date_worked"))
                     if m and f and (m.group(1) not in ult_wh or f > ult_wh[m.group(1)]): ult_wh[m.group(1)] = f
         def cierre(j):
-            if str(j.get("status") or "").strip().upper() in ("CANCELLED", "CANCELED", "CANCELADO"): return None, ""
-            c = fd(j.get("closing_date"))
-            if c: return c, "Closing Date" + (" (automática)" if j.get("closing_date_auto") else "")
+            # rev89: un Job cuenta como cerrado SOLO por su estatus (Done / Closed). La Closing
+            # Date sola no basta: en Jobs abiertos suele estar capturada como fecha estimada.
             if str(j.get("status") or "").strip().upper() not in JOB_ESTATUS_CERRADO: return None, ""
+            c = fd(j.get("closing_date"))
+            if c and c <= hoy: return c, "Closing Date" + (" (automática)" if j.get("closing_date_auto") else "")
             jm = "-".join(str(j.get("job_number") or "").split("-")[:2])
             if ult_wh.get(jm): return ult_wh[jm], "último registro de horas (el Job no tiene Closing Date)"
             u = fd(j.get("updated_at"))
@@ -8602,19 +8603,33 @@ def api_kpis_resultados():
                     periodos.append({"p": f"{anio}-{m:02d}", "valor": None if futuro else len(sel),
                                      "extra": f"${sum(float(c.get('value') or 0) for c in sel):,.0f}" if sel else ""})
             elif a["kpi"] == "margen_proyectos":
-                for t in range(1, 5):
-                    js = [j for j in jobs if cierre(j)[0] and cierre(j)[0].year == anio and trimestre(cierre(j)[0]) == t and es(j.get("pm"))]
-                    vals = []
-                    for j in js:
-                        r = info_job(j)["ro"]
-                        # margen operativo (vs Internal Target); si el Job no tiene target, margen vs revenue
-                        pct = r.get("resultado_pct") if r.get("base") else None
-                        if pct is None and r.get("revenue"):
-                            costo = (r.get("amount_wh") or 0) + (r.get("purchasing_total") or 0) + (r.get("svc_total") or 0) + (r.get("reassign_total") or 0) - (r.get("recovery_total") or 0)
-                            pct = round((r["revenue"] - costo) / r["revenue"] * 100, 1)
-                        if pct is not None:
-                            vals.append(pct); detalle.append({"job": j["job_number"], "p": f"T{t}", "valor": pct})
-                    periodos.append({"p": f"T{t}", "valor": round(sum(vals) / len(vals), 1) if vals else None, "extra": f"{len(vals)} Job(s)" if vals else ""})
+                # rev87: un valor por Job (cerrado en el año), en lugar de un promedio por trimestre
+                vals = []
+                for j in jobs:
+                    if not es(j.get("pm")): continue
+                    fc, origen_c = cierre(j)
+                    if not fc:
+                        if str(j.get("status") or "").strip().upper() in JOB_ESTATUS_CERRADO:
+                            excluidos.append({"job": j["job_number"], "motivo": f"estatus {j.get('status')} sin Closing Date ni registros de horas: captura la fecha de cierre en el Job"})
+                        continue
+                    if fc.year != anio: continue
+                    r = info_job(j)["ro"]
+                    if r.get("error"):
+                        excluidos.append({"job": j["job_number"], "motivo": f"no se pudo calcular: {r['error']}"}); continue
+                    costo = (r.get("amount_wh") or 0) + (r.get("purchasing_total") or 0) + (r.get("svc_total") or 0) + (r.get("reassign_total") or 0) - (r.get("recovery_total") or 0)
+                    if r.get("base"):        # margen operativo vs Internal Target
+                        pct = r.get("resultado_pct"); ref = f"Internal Target ${r['base']:,.0f}"
+                    elif r.get("revenue"):   # sin target: margen vs revenue
+                        pct = round((r["revenue"] - costo) / r["revenue"] * 100, 1); ref = f"revenue ${r['revenue']:,.0f}"
+                    else:
+                        excluidos.append({"job": j["job_number"], "motivo": "sin Internal Target ni revenue"}); continue
+                    extra = f"{ref} · costo ${costo:,.0f} · cierre {fc.isoformat()}"
+                    if not origen_c.startswith("Closing Date"): extra += f" ({origen_c})"
+                    vals.append(pct); detalle.append({"job": j["job_number"], "p": fc.isoformat(), "valor": pct, "extra": extra})
+                detalle.sort(key=lambda x: x["p"])
+                periodos = [{"p": x["job"], "valor": x["valor"], "extra": x.get("extra", "")} for x in detalle]
+                nota = f"{len(vals)} proyecto(s) cerrados en {anio}" + (f" · {len(excluidos)} sin dato" if excluidos else "")
+                val_anual = round(sum(vals) / len(vals), 1) if vals else None
             elif a["kpi"] in ("entrega_tiempo", "ahorro_compras", "eficiencia_horas"):
                 js = [j for j in jobs if es(j.get("pm"))]
                 vals, excluidos = [], []
@@ -8653,7 +8668,7 @@ def api_kpis_resultados():
                             if not ij["en_config"]: excluidos.append({"job": jn, "motivo": "no está en ninguna Configuración de Proyecto (no hay horas planeadas)"}); continue
                             if not ij["horas_plan"]: excluidos.append({"job": jn, "motivo": "sin horas planeadas en Configurar Proyecto"}); continue
                             if not ij["horas_usadas"]: excluidos.append({"job": jn, "motivo": "sin horas registradas en Work Hours"}); continue
-                            v = round(ij["horas_plan"] / ij["horas_usadas"] * 100, 1)
+                            v = round(ij["horas_usadas"] / ij["horas_plan"] * 100, 1)      # rev88: usadas ÷ planeadas
                             extra = f"{ij['horas_plan']:,.0f} h planeadas · {ij['horas_usadas']:,.0f} h usadas"
                         if not origen_c.startswith("Closing Date ") and origen_c != "Closing Date":
                             extra += f" · cierre: {origen_c}"
@@ -8683,13 +8698,13 @@ def api_kpis_resultados():
                     if x["p"] == actual and x.get("valor") is not None: x["en_curso"] = True
             # resumen
             con = [x["valor"] for x in periodos if x.get("valor") is not None and not x.get("en_curso")]
-            if a["kpi"] not in ("entrega_tiempo", "ahorro_compras", "eficiencia_horas"):
+            if a["kpi"] not in ("margen_proyectos", "entrega_tiempo", "ahorro_compras", "eficiencia_horas"):
                 val_anual = round(sum(con) / len(con), 1) if con else None
             ultimo = next((x for x in reversed(periodos) if x.get("valor") is not None and not x.get("en_curso")), None)
             en_curso = next((x for x in periodos if x.get("en_curso")), None)
             for x in periodos: x["estado"] = None if x.get("en_curso") else _kpi_estado(x.get("valor"), a.get("meta"), K["sentido"], a.get("tolerancia"))
             out.append({"asignacion": a, "kpi": K, "periodos": periodos, "nota": nota,
-                        "excluidos": excluidos if a["kpi"] in ("entrega_tiempo", "ahorro_compras", "eficiencia_horas") else [],
+                        "excluidos": excluidos if a["kpi"] in ("margen_proyectos", "entrega_tiempo", "ahorro_compras", "eficiencia_horas") else [],
                         "ultimo": ultimo, "en_curso": en_curso, "promedio": val_anual,
                         "estado": _kpi_estado(val_anual, a.get("meta"), K["sentido"], a.get("tolerancia")),
                         "cumplidos": sum(1 for x in periodos if x.get("estado") == "verde"), "evaluados": len(con)})
