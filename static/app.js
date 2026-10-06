@@ -12326,7 +12326,48 @@ async function loadApartados() {
       + [...allJobs].sort().map(j=>`<option value="${esc(j)}">${esc(j)}</option>`).join('');
 
     apartadosRender();
+    aptCargarHistoricas();                                 // rev91
   } catch(e) { toast('Error cargando apartados','er'); }
+}
+
+// ── rev91: reasignaciones anteriores reflejadas en Apartados, para revisión del almacén
+let _aptHist = [];
+async function aptCargarHistoricas(){
+  const box = document.getElementById('apt-hist'); if(!box) return;
+  try{
+    const d = await fetch('/api/apartados/reasignaciones-historicas').then(r=>r.json());
+    _aptHist = d.registros || [];
+  }catch(e){ _aptHist = []; }
+  if(!_aptHist.length){ box.style.display='none'; return; }
+  box.style.display='';
+  const puede = permCanCreate('apartados') || USER_PERMS?.is_admin;
+  box.innerHTML = `<details style="border:1px solid rgba(245,158,11,.5);background:rgba(245,158,11,.07);border-radius:10px;padding:10px 14px">
+    <summary style="cursor:pointer;font-size:12px;font-weight:700">⚠ ${_aptHist.length} reasignación(es) anterior(es) a revisar</summary>
+    <div style="font-size:11px;color:var(--muted2);margin:6px 0 8px">Estas reasignaciones se hicieron antes de que generaran apartado; ahora aparecen como material disponible del Job. Confirma si el material <b>sigue en el almacén</b> o si <b>ya se entregó</b> (sin salida registrada) para darlo de baja del apartado.</div>
+    <div style="max-height:320px;overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:11.5px">
+      <thead><tr>${['Orden','Fecha','Job','No. Parte','Descripción','Cantidad','Disponible del Job',''].map(h=>`<th style="text-align:left;padding:4px 6px;cursor:default">${h}</th>`).join('')}</tr></thead>
+      <tbody>${_aptHist.map((x,i)=>`<tr style="border-top:1px solid var(--border)">
+        <td style="padding:4px 6px;font-family:'DM Mono',monospace">${esc(x.order_number)}${x.fuente==='consignacion'?' <span style="font-size:9px;color:#6d28d9">consig.</span>':''}</td>
+        <td style="padding:4px 6px">${esc(x.fecha)}</td><td style="padding:4px 6px;font-family:'DM Mono',monospace;color:var(--gold)">${esc(x.job)}</td>
+        <td style="padding:4px 6px;font-family:'DM Mono',monospace">${esc(x.part_number)}</td><td style="padding:4px 6px;color:var(--muted2)">${esc(x.description||'')}</td>
+        <td style="padding:4px 6px;text-align:right;font-weight:700">${x.cantidad}</td><td style="padding:4px 6px;text-align:right">${x.disponible_job}</td>
+        <td style="padding:4px 6px;white-space:nowrap">${puede?`<button class="btn-reload" style="font-size:10px;padding:2px 8px" onclick="aptHistRevisar(${i},'en_almacen')">Sigue en almacén</button>
+          <button class="fi-del" style="font-size:10px" onclick="aptHistRevisar(${i},'entregado')">Ya se entregó</button>`:''}</td></tr>`).join('')}</tbody></table></div>
+  </details>`;
+}
+async function aptHistRevisar(i, accion){
+  const x = _aptHist[i]; if(!x) return;
+  let cantidad = null;
+  if(accion==='entregado'){
+    const v = prompt(`¿Cuántas piezas de ${x.part_number} (Job ${x.job}) ya se habían entregado sin salida registrada?\nSe darán de baja del apartado. Máximo ${x.cantidad}.`, x.cantidad);
+    if(v===null) return;
+    cantidad = Number(v);
+    if(!(cantidad>0)){ toast('Cantidad inválida','er'); return; }
+  }
+  const r = await apiCall('POST','/apartados/reasignaciones-historicas',{fuente:x.fuente, order_number:x.order_number, idx:x.idx, accion, cantidad});
+  if(r.error){ toast(r.error,'er'); return; }
+  toast(accion==='entregado'?'Baja aplicada al apartado':'Marcado como revisado','ok');
+  loadApartados();
 }
 
 function apartadosRender() {
@@ -12390,7 +12431,7 @@ function apartadosRender() {
               <td style="padding:7px 16px;text-align:right;font-weight:700;color:var(--green)">${j.quantity||0}</td>
               <td style="padding:7px 16px;text-align:right;font-family:'DM Mono',monospace;color:var(--text)">$${Number(j.unit_cost||0).toFixed(2)}</td>
               <td style="padding:7px 16px;text-align:right;font-family:'DM Mono',monospace;color:var(--gold)">$${Number((j.quantity||0)*(j.unit_cost||0)).toLocaleString('en-US',{minimumFractionDigits:2})}</td>
-              <td style="padding:7px 16px;font-size:10px;color:var(--muted)">${(j.ingresos||[]).length} ingreso(s)</td>
+              <td style="padding:7px 16px;font-size:10px;color:var(--muted)">${(j.ingresos||[]).length} ingreso(s)${(j.reasignaciones||[]).length?` · <span title="${esc((j.reasignaciones||[]).join(', '))}" style="color:#1d4ed8">${(j.reasignaciones||[]).length} reasignación(es)${j.consignacion?' (consig.)':''}</span>`:''}</td>
               ${isAdm?`<td style="padding:7px 16px;text-align:right;white-space:nowrap">
                 <button onclick="aptEditQty('${esc(r.part_number)}','${esc(j.job||'')}',${j.quantity||0},${j.unit_cost||0})"
                   class="btn-reload" style="font-size:10px;padding:2px 8px;margin-right:4px" title="Corregir cantidad">Editar Qty</button>

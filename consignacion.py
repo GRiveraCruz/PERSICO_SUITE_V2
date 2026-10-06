@@ -103,6 +103,9 @@ def _json_write(path, data):
     tmp.replace(path)          # reemplazo atómico: nunca queda un archivo a medias
 
 
+# rev91: ganchos que registra app.py (apartados de las reasignaciones)
+HOOKS = {}
+
 def load(kind):
     """Lectura sin candado (para GET y para reportes)."""
     if db_enabled():
@@ -582,6 +585,9 @@ def api_create_order():
             order["updated_at"] = now
             t.save("orders", orders)
             t.save("items", records)
+        if HOOKS.get("despues_crear"):
+            try: HOOKS["despues_crear"]()
+            except Exception as e: print(f"[CONSIGNACIÓN] apartados: {e}")
         return jsonify({"ok": True, "order_number": order_number, "order": order})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -602,6 +608,11 @@ def api_delete_order(order_number):
     if not _is_admin():
         return jsonify({"error": "Sin permiso"}), 403
     try:
+        if HOOKS.get("validar_eliminar"):
+            previa = next((o for o in load("orders") if o.get("order_number") == order_number.upper()), None)
+            if previa:
+                err = HOOKS["validar_eliminar"](previa)
+                if err: return jsonify({"error": err}), 400
         # Borrar la orden y regresar su material a Consignación en la MISMA transacción.
         with tx() as t:
             orders = t.load("orders")
@@ -627,6 +638,9 @@ def api_delete_order(order_number):
                 devuelto.append({"part_number": pnum, "manufacturer": mfr, "quantity": qty, "accion": accion})
             t.save("items", records)
             t.save("orders", [o for o in orders if o is not order])
+        if HOOKS.get("despues_eliminar"):
+            try: HOOKS["despues_eliminar"](order)
+            except Exception as e: print(f"[CONSIGNACIÓN] apartados al eliminar: {e}")
         return jsonify({"ok": True, "devuelto": devuelto})
     except Exception as e:
         return jsonify({"error": str(e)}), 500

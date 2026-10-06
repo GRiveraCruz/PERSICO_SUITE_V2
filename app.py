@@ -11734,6 +11734,9 @@ def api_create_reassign():
         if not items: return jsonify({"error":"Sin items"}), 400
         body, code = _reassign_create_order(str(data.get("order_number","")).strip().upper(),
                                             data.get("is_new", True), items)
+        if code == 200:                                   # rev91: el material reasignado queda apartado para el Job
+            try: _sincronizar_apartados_reasignaciones()
+            except Exception as e: print(f"[REASIG→APARTADOS] {e}")
         return jsonify(body), code
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -11875,10 +11878,18 @@ def api_delete_reassign_order(order_number):
             orders = reassign_load()
             order = next((o for o in orders if o.get("order_number") == num), None)
             if not order: return jsonify({"error":"Orden no encontrada"}), 404
+        err = _reasig_validar_eliminar(order, "stock")           # rev91
+        if err: return jsonify({"error": err}), 400
+        with lock:
+            orders = reassign_load()
+            order = next((o for o in orders if o.get("order_number") == num), None)
+            if not order: return jsonify({"error":"Orden no encontrada"}), 404
             records = stock_load()
             devuelto = _return_items_to_inventory(records, order.get("items") or [], "STK-dev")
             stock_save(records)                       # primero Stock: si algo falla después,
             reassign_save([o for o in orders if o is not order])   # la orden sigue existiendo y no se pierde material
+        try: _reasig_quitar_apartados(order)
+        except Exception as e: print(f"[REASIG→APARTADOS] al eliminar {num}: {e}")
         jobs = {str(i.get("job") or "").upper() for i in order.get("items") or []} - {""}
         try:
             req_ajustados = _req_revert_order(num, jobs, order.get("items") or [])
@@ -11897,6 +11908,13 @@ try:
 except Exception as _e_consig:
     _consig = None
     print(f"[CONSIGNACIÓN] ⚠ No se pudo cargar el módulo: {_e_consig}")
+
+# rev91: las reasignaciones de consignación también generan apartados
+if _consig is not None:
+    _consig.HOOKS.update(
+        despues_crear=lambda: _sincronizar_apartados_reasignaciones(),
+        validar_eliminar=lambda order: _reasig_validar_eliminar(order, "consignacion"),
+        despues_eliminar=lambda order: _reasig_quitar_apartados(order))
 
 # Si False, las reasignaciones/recuperaciones de consignación NO afectan el
 # costo del Job en los reportes (solo quedan registradas en su propia base).
@@ -13738,6 +13756,8 @@ def api_requisiciones_reasignar_stock():
         body, code = _reassign_create_order("", True, ra_items, origen=f"Requisición de Compra ({job})")
         if code != 200:
             return jsonify(body), code
+        try: _sincronizar_apartados_reasignaciones()          # rev91: queda apartado para el Job
+        except Exception as e: print(f"[REASIG→APARTADOS] {e}")
         # Descontar de la requisición lo reasignado (antes no se hacía y el renglón seguía
         # pidiendo la cantidad completa → riesgo de comprar dos veces).
         if rows_by_id and _orm and _orm.DB_ENABLED:
@@ -17640,6 +17660,227 @@ def api_pago_pdf(pago_number):
 
 
 
+# ══════════════════════════════════════════════════════════════════
+#  rev91 — Reasignaciones → Apartados
+#  El material reasignado (de Stock o de Consignación) a un Job sigue físicamente en el
+#  almacén pero ya es de ese Job: queda como APARTADO y se le da salida igual que al
+#  material comprado. Cada renglón de una orden RA guarda "apartado": True cuando ya se
+#  reflejó (la sincronización es idempotente: también repara lo que haya quedado sin
+#  reflejar), y "baja_almacen" con lo que el almacén confirmó que ya se había entregado
+#  sin salida registrada (reasignaciones anteriores a esta versión).
+# ══════════════════════════════════════════════════════════════════
+def _reasig_qty_vigente(it):
+    try: return max(0.0, float(it.get("quantity") or 0) - float(it.get("baja_almacen") or 0))
+    except (TypeError, ValueError): return 0.0
+
+def _apt_sumar(apartados, it, qty, ref, origen):
+    """Suma `qty` del renglón reasignado `it` al apartado de su Job."""
+    pnum, job = str(it.get("part_number") or "").strip().upper(), str(it.get("job") or "").strip().upper()
+    if not pnum or not job or qty <= 0: return
+    now = datetime.datetime.now().isoformat()
+    rec = next((x for x in apartados if str(x.get("part_number", "")).upper() == pnum), None)
+    if rec is None:
+        rec = {"part_number": pnum, "brand": str(it.get("manufacturer") or "").strip().upper(), "description": it.get("description") or "",
+               "cat_code": "", "label_code": str(it.get("label_code") or "").upper(), "total_quantity": 0, "jobs": [], "created_at": now}
+        apartados.append(rec)
+    je = next((j for j in rec.setdefault("jobs", []) if str(j.get("job", "")).upper() == job), None)
+    if je is None:
+        je = {"job": job, "quantity": 0, "unit_cost": float(it.get("unit_cost") or 0), "ingresos": []}
+        rec["jobs"].append(je)
+    je["quantity"] = float(je.get("quantity") or 0) + qty
+    if not je.get("unit_cost"): je["unit_cost"] = float(it.get("unit_cost") or 0)
+    je.setdefault("reasignaciones", [])
+    if ref not in je["reasignaciones"]: je["reasignaciones"].append(ref)
+    if origen == "consignacion": je["consignacion"] = True
+    if not rec.get("brand") and it.get("manufacturer"): rec["brand"] = str(it["manufacturer"]).upper()
+    if not rec.get("description") and it.get("description"): rec["description"] = it["description"]
+    if not rec.get("label_code") and it.get("label_code"): rec["label_code"] = str(it["label_code"]).upper()
+    rec["total_quantity"] = sum(float(j.get("quantity") or 0) for j in rec["jobs"])
+    rec["updated_at"] = now
+
+def _apt_restar(apartados, pnum, job, qty, ref=None):
+    pnum, job = str(pnum or "").strip().upper(), str(job or "").strip().upper()
+    rec = next((x for x in apartados if str(x.get("part_number", "")).upper() == pnum), None)
+    if not rec or qty <= 0: return
+    je = next((j for j in rec.get("jobs", []) if str(j.get("job", "")).upper() == job), None)
+    if not je: return
+    je["quantity"] = max(0.0, float(je.get("quantity") or 0) - qty)
+    if ref and ref in (je.get("reasignaciones") or []) and je["quantity"] <= 0: je["reasignaciones"].remove(ref)
+    if je["quantity"] <= 0: rec["jobs"] = [j for j in rec["jobs"] if j is not je]
+    rec["total_quantity"] = sum(float(j.get("quantity") or 0) for j in rec.get("jobs", []))
+    rec["updated_at"] = datetime.datetime.now().isoformat()
+
+def _reasig_ordenes_todas():
+    """[(fuente, orden)] de Stock y de Consignación."""
+    out = [("stock", o) for o in reassign_load()]
+    if _consig:
+        try: out += [("consignacion", o) for o in _consig.load("orders")]
+        except Exception as e: print(f"[REASIG→APARTADOS] consignación: {e}")
+    return out
+
+def _sincronizar_apartados_reasignaciones(historico=False):
+    """Refleja en Apartados todo renglón reasignado que aún no lo esté. Regresa cuántos."""
+    s_l = _sesion_propia() if (_orm and _orm.DB_ENABLED) else None
+    try:
+        if s_l is not None: _pg_lock(s_l, "reasig-apartados")     # entre workers de gunicorn
+        with lock:
+            ahora = datetime.datetime.now().isoformat()
+            apartados = apartado_load()
+            n, cambia_stock = 0, False
+            orders = reassign_load()
+            for o in orders:
+                for it in o.get("items") or []:
+                    if it.get("apartado") or not str(it.get("job") or "").strip(): continue
+                    _apt_sumar(apartados, it, _reasig_qty_vigente(it), o.get("order_number"), "stock")
+                    it["apartado"], it["apartado_at"] = True, ahora
+                    if historico: it["apartado_historico"] = True
+                    n += 1; cambia_stock = True
+            consig_tx = None
+            if _consig:
+                try:
+                    consig_tx = _consig.tx(); t = consig_tx.__enter__()
+                    corders = t.load("orders"); cambia_c = False
+                    for o in corders:
+                        for it in o.get("items") or []:
+                            if it.get("apartado") or not str(it.get("job") or "").strip(): continue
+                            _apt_sumar(apartados, it, _reasig_qty_vigente(it), o.get("order_number"), "consignacion")
+                            it["apartado"], it["apartado_at"] = True, ahora
+                            if historico: it["apartado_historico"] = True
+                            n += 1; cambia_c = True
+                except Exception as e:
+                    print(f"[REASIG→APARTADOS] consignación: {e}")
+                    if consig_tx: consig_tx.__exit__(type(e), e, None); consig_tx = None
+            if n:
+                apartado_save(apartados)                 # primero el apartado; luego la marca en la orden
+                if cambia_stock: reassign_save(orders)
+                if consig_tx is not None and cambia_c: t.save("orders", corders)
+            if consig_tx is not None: consig_tx.__exit__(None, None, None)
+        if s_l is not None: s_l.commit()
+        if n: print(f"[REASIG→APARTADOS] {n} renglón(es) reasignado(s) reflejado(s) en Apartados{' (históricos)' if historico else ''}")
+        return n
+    finally:
+        if s_l is not None: s_l.close()
+
+def _disponibilidad_mapas(job_filter=""):
+    """{(pnum, job): qty} de entradas (ingresos de compra + material reasignado) y de
+    salidas (pendientes y surtidas)."""
+    ingresos_map, salidas_map = {}, {}
+    for ing in ingreso_load():
+        for it in ing.get("items", []):
+            pnum = str(it.get("part_number","")).strip().upper()
+            job  = str(it.get("job","")).strip().upper()
+            if job_filter and job != job_filter: continue
+            qty  = float(it.get("quantity_delivered", it.get("quantity_ordered", 0)) or 0)
+            ingresos_map[(pnum, job)] = ingresos_map.get((pnum, job), 0) + qty
+    for _f, o in _reasig_ordenes_todas():               # rev91: lo reasignado también entra
+        for it in o.get("items") or []:
+            if not it.get("apartado"): continue
+            pnum = str(it.get("part_number","")).strip().upper(); job = str(it.get("job","")).strip().upper()
+            if job_filter and job != job_filter: continue
+            ingresos_map[(pnum, job)] = ingresos_map.get((pnum, job), 0) + _reasig_qty_vigente(it)
+    for sal in salida_load():
+        job = str(sal.get("job","")).strip().upper()
+        if job_filter and job != job_filter: continue
+        for it in sal.get("items", []):
+            if it.get("origen") == "manufactura": continue
+            pnum = str(it.get("part_number","")).strip().upper()
+            salidas_map[(pnum, job)] = salidas_map.get((pnum, job), 0) + float(it.get("quantity", 0) or 0)
+    return ingresos_map, salidas_map
+
+def _reasig_validar_eliminar(order, fuente):
+    """Error (str) si parte del material de la orden ya salió del almacén; None si se puede eliminar."""
+    aporta = {}
+    for it in order.get("items") or []:
+        if not it.get("apartado"): continue
+        k = (str(it.get("part_number","")).upper(), str(it.get("job","")).upper())
+        aporta[k] = aporta.get(k, 0) + _reasig_qty_vigente(it)
+    if not aporta: return None
+    ing, sal = _disponibilidad_mapas()
+    malos = []
+    for (p, j), q in aporta.items():
+        disp = ing.get((p, j), 0) - sal.get((p, j), 0)
+        if disp + 1e-9 < q: malos.append(f"{p} (Job {j}): la orden aportó {q:g}, disponible {max(0, disp):g}")
+    if malos:
+        return ("No se puede eliminar: ya se le dio salida de almacén (o hay salidas pendientes) a material de esta orden — "
+                + "; ".join(malos) + ". Cancela o ajusta esas salidas primero.")
+    return None
+
+def _reasig_quitar_apartados(order):
+    with lock:
+        apartados = apartado_load()
+        for it in order.get("items") or []:
+            if it.get("apartado"): _apt_restar(apartados, it.get("part_number"), it.get("job"), _reasig_qty_vigente(it), order.get("order_number"))
+        apartado_save(apartados)
+
+@app.route("/api/apartados/reasignaciones-historicas", methods=["GET"])
+def api_apartados_reasig_historicas():
+    """Renglones reasignados antes de rev91 que se reflejaron en Apartados y que el
+    almacén aún no ha revisado (puede que parte ya se haya entregado sin salida)."""
+    if not (can("view", "apartados") or is_admin()): return jsonify({"error": "Sin permiso"}), 403
+    ing, sal = _disponibilidad_mapas()
+    out = []
+    for fuente, o in _reasig_ordenes_todas():
+        for idx, it in enumerate(o.get("items") or []):
+            if not it.get("apartado_historico") or it.get("historico_revisado"): continue
+            q = _reasig_qty_vigente(it)
+            if q <= 0: continue
+            k = (str(it.get("part_number","")).upper(), str(it.get("job","")).upper())
+            out.append({"fuente": fuente, "order_number": o.get("order_number"), "idx": idx, "fecha": str(o.get("created_at") or "")[:10],
+                        "part_number": k[0], "manufacturer": it.get("manufacturer"), "description": it.get("description"), "job": k[1],
+                        "cantidad": q, "unit_cost": it.get("unit_cost"), "disponible_job": max(0, ing.get(k, 0) - sal.get(k, 0))})
+    out.sort(key=lambda x: (x["job"], x["fecha"]))
+    return jsonify({"registros": out})
+
+@app.route("/api/apartados/reasignaciones-historicas", methods=["POST"])
+def api_apartados_reasig_historicas_revisar():
+    """{fuente, order_number, idx, accion: 'entregado'|'en_almacen', cantidad?}
+    entregado: esa cantidad ya se había entregado sin salida → se da de baja del apartado.
+    en_almacen: el material sigue en el almacén → se marca como revisado."""
+    if not (can("create", "apartados") or is_admin()): return jsonify({"error": "Sin permiso"}), 403
+    d = request.json or {}
+    fuente, num, accion = d.get("fuente"), str(d.get("order_number") or "").upper(), d.get("accion")
+    try: idx = int(d.get("idx"))
+    except (TypeError, ValueError): return jsonify({"error": "Renglón inválido"}), 400
+    user, ahora = session.get("user", ""), datetime.datetime.now().isoformat()
+    def aplicar(it):
+        if not it.get("apartado_historico"): return "El renglón no es una reasignación histórica"
+        q = _reasig_qty_vigente(it)
+        if accion == "entregado":
+            try: c = float(d.get("cantidad") if d.get("cantidad") not in (None, "") else q)
+            except (TypeError, ValueError): return "Cantidad inválida"
+            if c <= 0 or c > q + 1e-9: return f"La cantidad debe ser entre 1 y {q:g}"
+            ing, sal = _disponibilidad_mapas()
+            k = (str(it.get("part_number","")).upper(), str(it.get("job","")).upper())
+            if ing.get(k, 0) - sal.get(k, 0) + 1e-9 < c:
+                return f"Solo hay {max(0, ing.get(k,0)-sal.get(k,0)):g} disponible(s) de {k[0]} para el Job {k[1]}"
+            it["baja_almacen"] = float(it.get("baja_almacen") or 0) + c
+            it.setdefault("bajas_almacen", []).append({"cantidad": c, "fecha": ahora, "usuario": user})
+            with lock:
+                apartados = apartado_load(); _apt_restar(apartados, k[0], k[1], c, num); apartado_save(apartados)
+            if _reasig_qty_vigente(it) <= 0: it["historico_revisado"] = True
+        elif accion == "en_almacen":
+            it["historico_revisado"] = True; it["historico_revisado_por"] = user; it["historico_revisado_at"] = ahora
+        else:
+            return "Acción inválida"
+        return None
+    if fuente == "consignacion" and _consig:
+        with _consig.tx() as t:
+            orders = t.load("orders"); o = next((x for x in orders if x.get("order_number") == num), None)
+            if not o or idx >= len(o.get("items") or []): return jsonify({"error": "Renglón no encontrado"}), 404
+            err = aplicar(o["items"][idx])
+            if err: return jsonify({"error": err}), 400
+            t.save("orders", orders)
+    else:
+        with lock:
+            orders = reassign_load()
+        o = next((x for x in orders if x.get("order_number") == num), None)
+        if not o or idx >= len(o.get("items") or []): return jsonify({"error": "Renglón no encontrado"}), 404
+        err = aplicar(o["items"][idx])
+        if err: return jsonify({"error": err}), 400
+        with lock:
+            reassign_save(orders)
+    return jsonify({"ok": True})
+
 @app.route("/api/apartados", methods=["GET"])
 def api_get_apartados():
     try:
@@ -17672,28 +17913,7 @@ def api_disponibilidad():
     try:
         job_filter = str(request.args.get("job","")).strip().upper()
 
-        # ── 1. Sumar ingresos por (part_number, job)
-        ingresos_map = {}   # (pnum, job) → qty
-        for ing in ingreso_load():
-            for it in ing.get("items", []):
-                pnum = str(it.get("part_number","")).strip().upper()
-                job  = str(it.get("job","")).strip().upper()
-                if job_filter and job != job_filter: continue
-                qty  = float(it.get("quantity_delivered", it.get("quantity_ordered", 0)) or 0)
-                key  = (pnum, job)
-                ingresos_map[key] = ingresos_map.get(key, 0) + qty
-
-        # ── 2. Sumar salidas (pendientes + surtidas) por (part_number, job)
-        salidas_map = {}    # (pnum, job) → qty total solicitada
-        for sal in salida_load():
-            job = str(sal.get("job","")).strip().upper()
-            if job_filter and job != job_filter: continue
-            for it in sal.get("items", []):
-                pnum = str(it.get("part_number","")).strip().upper()
-                qty  = float(it.get("quantity", 0) or 0)
-                key  = (pnum, job)
-                salidas_map[key] = salidas_map.get(key, 0) + qty
-
+        ingresos_map, salidas_map = _disponibilidad_mapas(job_filter)
         # ── 3. Disponible = ingresos - salidas
         # Enrich with meta from apartados for description / cost
         apt_meta = {}
@@ -19606,6 +19826,13 @@ except FileExistsError:
     pass  # otro worker ya lo inició
 except Exception as _e:
     print(f"[FX AUTO] No se pudo iniciar el hilo de actualización automática: {_e}")
+
+# rev91: al arrancar, las reasignaciones que aún no estén en Apartados se reflejan (las
+# anteriores a esta versión quedan marcadas como "históricas" para que el almacén las revise)
+try:
+    _n_hist = _sincronizar_apartados_reasignaciones(historico=True)
+except Exception as _e:
+    print(f"[REASIG→APARTADOS] No se pudo sincronizar al arrancar: {_e}")
 
 if __name__ == "__main__":
     print("=" * 60)
