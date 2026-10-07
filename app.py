@@ -3396,9 +3396,7 @@ def _dias_vacaciones_en_periodo(tid, fecha_inicio, fecha_fin):
         fin = min(pf, fecha_fin)
         if ini > fin:
             continue
-        d1 = datetime.date.fromisoformat(ini)
-        d2 = datetime.date.fromisoformat(fin)
-        total += (d2 - d1).days + 1
+        total += _dias_habiles(ini, fin)          # rev98: solo días hábiles
     return total
 
 @app.route("/api/nomina/periodos", methods=["GET"])
@@ -3749,11 +3747,25 @@ def _gen_permiso_id(records):
             return pid
         seq += 1
 
+def _dias_habiles(d1, d2):
+    """rev98: días hábiles entre d1 y d2 (incluidos): sin sábados, domingos ni días de
+    descanso obligatorio de la LFT."""
+    if isinstance(d1, str): d1 = datetime.date.fromisoformat(d1[:10])
+    if isinstance(d2, str): d2 = datetime.date.fromisoformat(d2[:10])
+    if d2 < d1: return 0
+    fest = set()
+    for y in range(d1.year, d2.year + 1):
+        fest |= {f for f, _n in _festivos_lft(y)}
+    n, d = 0, d1
+    while d <= d2:
+        if d.weekday() < 5 and d not in fest: n += 1
+        d += datetime.timedelta(days=1)
+    return n
+
 def _dias_permiso(fecha_inicio, fecha_fin):
+    """Días que cuenta un permiso por días: solo hábiles (rev98)."""
     try:
-        d1 = datetime.date.fromisoformat(fecha_inicio)
-        d2 = datetime.date.fromisoformat(fecha_fin)
-        return max(1, (d2 - d1).days + 1)
+        return _dias_habiles(fecha_inicio, fecha_fin)
     except Exception:
         return 0
 
@@ -3786,6 +3798,8 @@ def _build_permiso_payload(data):
         if fecha_fin < fecha_inicio:
             return None, "La fecha de fin no puede ser anterior a la de inicio"
         dias = _dias_permiso(fecha_inicio, fecha_fin)
+        if dias <= 0:
+            return None, "El periodo elegido no tiene días hábiles (solo fines de semana o días festivos)"
         return {
             "tipo": tipo, "modalidad": "dias",
             "fecha_inicio": fecha_inicio, "fecha_fin": fecha_fin, "dias": dias,
@@ -3811,7 +3825,9 @@ def _build_permiso_payload(data):
 def _vacaciones_cantidad(rec):
     """Cuántos días se descuentan del balance de Vacaciones para este permiso."""
     if rec["modalidad"] == "dias":
-        return rec["dias"]
+        # rev98: se recalcula en días hábiles (los permisos capturados antes contaban naturales)
+        try: return _dias_habiles(rec["fecha_inicio"], rec["fecha_fin"])
+        except Exception: return rec["dias"]
     return round((rec.get("horas") or 0) / 8, 2)  # jornada de 8h como referencia
 
 @app.route("/api/permisos", methods=["GET"])
@@ -6339,6 +6355,145 @@ def api_wh_por_job():
     info = jobs.get(job)
     return jsonify({"job": job, "registros": out, "total_horas": round(sum(float(x.get("hours") or 0) for x in out), 2),
                     "job_existe": bool(info), "job_info": {k: (info or {}).get(k) for k in ("customer", "description", "status", "pm")} if info else None})
+
+# ══════════════════════════════════════════════════════════════════
+#  rev97 — Excel de horas de uno o varios Jobs (Mano de Obra)
+# ══════════════════════════════════════════════════════════════════
+def _wh_registros_jobs(jobs):
+    """Registros de Work Hours (todos los años) cuyo Work Code es alguno de `jobs`."""
+    jobs = {_wh_job_norm(j) for j in jobs if _wh_job_norm(j)}
+    out = []
+    if _orm and _orm.DB_ENABLED:
+        s = _orm.get_session()
+        try:
+            from sqlalchemy import func as _f
+            for r in s.query(_orm.WorkHour).filter(_f.upper(_f.replace(_orm.WorkHour.job, " ", "")).in_(list(jobs))).all():
+                out.append(dict(r.data or {}, _year=r.year))
+        finally:
+            s.close()
+    else:
+        for y in _wh_anios_existentes():
+            for r in wh_load(y):
+                if _wh_job_norm(r.get("work_code")) in jobs: out.append(dict(r, _year=y))
+    return out
+
+@app.route("/api/wh/excel-jobs", methods=["GET"])
+def api_wh_excel_jobs():
+    if not can("view", "wh"): return jsonify({"error": "Sin permiso"}), 403
+    from openpyxl.utils import get_column_letter
+    jobs = [j for j in re.split(r"[,\s;]+", request.args.get("jobs") or "") if j.strip()]
+    if not jobs: return jsonify({"error": "Indica al menos un Job"}), 400
+    if len(jobs) > 60: return jsonify({"error": "Máximo 60 Jobs por archivo"}), 400
+    def fd(v):
+        try: return datetime.date.fromisoformat(str(v or "")[:10])
+        except ValueError: return None
+    desde, hasta = fd(request.args.get("desde")), fd(request.args.get("hasta"))
+    regs = []
+    for r in _wh_registros_jobs(jobs):
+        f = fd(r.get("date_worked"))
+        if desde and (not f or f < desde): continue
+        if hasta and (not f or f > hasta): continue
+        regs.append(r)
+    info_jobs = {_wh_job_norm(j.get("job_number")): j for j in scan_jobs()}
+    rates_cache = {}
+    def tarifa(emp, y):
+        if y not in rates_cache:
+            rates_cache[y] = {normalize_name(x.get("employee", "")): float(x.get("rate") or 0) for x in load_rates(y)}
+        return rates_cache[y].get(normalize_name(emp or ""))
+    clasif = _wh_clasificador([]).clasificar
+    nombre_linea = {k: n for k, n, _p in LINEAS_MO}
+    filas = []
+    for r in regs:
+        y = r.get("_year") or (fd(r.get("date_worked")) or datetime.date.today()).year
+        try: h = float(r.get("hours") or 0)
+        except (TypeError, ValueError): h = 0.0
+        c = None
+        try: c = clasif(r, y)
+        except Exception: pass
+        linea = nombre_linea.get(c[1], "") if c and c[1] else ""
+        depto = (c[2] if c else "") or ""
+        t = tarifa(r.get("employee"), y)
+        filas.append({"job": _wh_job_norm(r.get("work_code")), "fecha": fd(r.get("date_worked")), "empleado": r.get("employee") or "",
+                      "horas": h, "tarifa": t, "costo": round(h * t, 2) if t else None, "linea": linea, "depto": depto,
+                      "descripcion": r.get("description") or "", "id": r.get("id")})
+    filas.sort(key=lambda x: (x["job"], x["fecha"] or datetime.date.min, x["empleado"]))
+    pedidos = [_wh_job_norm(j) for j in jobs]
+
+    azul = PatternFill("solid", fgColor="1F3864"); gris = PatternFill("solid", fgColor="F2F2F2")
+    def encabezado(ws, cols, widths, fila=1):
+        for i, (c, w) in enumerate(zip(cols, widths), start=1):
+            cell = ws.cell(row=fila, column=i, value=c)
+            cell.font = Font(bold=True, color="FFFFFF"); cell.fill = azul
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            ws.column_dimensions[get_column_letter(i)].width = w
+    wb = openpyxl.Workbook()
+    # ── Resumen por Job
+    ws = wb.active; ws.title = "Resumen"
+    ws["A1"] = "Horas de mano de obra por Job"; ws["A1"].font = Font(bold=True, size=14, color="C8102E")
+    rango = f"{desde.isoformat() if desde else 'inicio'} a {hasta.isoformat() if hasta else 'hoy'}"
+    ws["A2"] = f"Jobs: {', '.join(pedidos)} · Periodo: {rango} · Generado {datetime.datetime.now():%d/%m/%Y %H:%M} por {session.get('user', '')}"
+    ws["A2"].font = Font(italic=True, color="777777")
+    encabezado(ws, ["JOB", "CLIENTE", "DESCRIPCIÓN", "ESTATUS", "PM", "HORAS", "COSTO MO (USD)", "EMPLEADOS", "REGISTROS", "PRIMER REGISTRO", "ÚLTIMO REGISTRO"],
+               [12, 22, 40, 10, 22, 11, 15, 11, 11, 15, 15], fila=4)
+    tot_h = tot_c = 0.0
+    for jn in pedidos:
+        fs = [x for x in filas if x["job"] == jn]
+        j = info_jobs.get(jn, {})
+        h = sum(x["horas"] for x in fs); cst = sum(x["costo"] or 0 for x in fs)
+        fechas = [x["fecha"] for x in fs if x["fecha"]]
+        ws.append([jn, j.get("customer", "") or ("(no existe en Jobs)" if not j else ""), j.get("description", ""), j.get("status", ""), j.get("pm", ""),
+                   round(h, 2), round(cst, 2), len({x["empleado"] for x in fs}), len(fs), min(fechas) if fechas else None, max(fechas) if fechas else None])
+        tot_h += h; tot_c += cst
+    ws.append(["TOTAL", "", "", "", "", round(tot_h, 2), round(tot_c, 2), len({x["empleado"] for x in filas}), len(filas), None, None])
+    for c in ws[ws.max_row]: c.font = Font(bold=True); c.fill = gris
+    for row in ws.iter_rows(min_row=5, max_row=ws.max_row):
+        row[5].number_format = "#,##0.00"; row[6].number_format = "$#,##0.00"
+        for k in (9, 10): row[k].number_format = "DD/MM/YYYY"
+    ws.freeze_panes = "A5"
+    # ── Por empleado (filas) × Job (columnas)
+    we = wb.create_sheet("Por empleado")
+    encabezado(we, ["EMPLEADO"] + pedidos + ["TOTAL"], [34] + [12] * len(pedidos) + [12])
+    for emp in sorted({x["empleado"] for x in filas}):
+        vals = [round(sum(x["horas"] for x in filas if x["empleado"] == emp and x["job"] == jn), 2) for jn in pedidos]
+        we.append([emp] + [v or None for v in vals] + [round(sum(vals), 2)])
+    we.append(["TOTAL"] + [round(sum(x["horas"] for x in filas if x["job"] == jn), 2) for jn in pedidos] + [round(tot_h, 2)])
+    for c in we[we.max_row]: c.font = Font(bold=True); c.fill = gris
+    for row in we.iter_rows(min_row=2, max_row=we.max_row):
+        for c in row[1:]: c.number_format = "#,##0.00"
+    we.freeze_panes = "B2"
+    # ── Por línea de mano de obra × Job
+    wl = wb.create_sheet("Por línea")
+    encabezado(wl, ["LÍNEA DE MANO DE OBRA"] + pedidos + ["TOTAL"], [30] + [12] * len(pedidos) + [12])
+    for ln in sorted({x["linea"] or "(sin línea)" for x in filas}):
+        vals = [round(sum(x["horas"] for x in filas if (x["linea"] or "(sin línea)") == ln and x["job"] == jn), 2) for jn in pedidos]
+        wl.append([ln] + [v or None for v in vals] + [round(sum(vals), 2)])
+    for row in wl.iter_rows(min_row=2, max_row=wl.max_row):
+        for c in row[1:]: c.number_format = "#,##0.00"
+    # ── Por mes × Job
+    wm = wb.create_sheet("Por mes")
+    encabezado(wm, ["MES"] + pedidos + ["TOTAL"], [12] + [12] * len(pedidos) + [12])
+    for ym in sorted({x["fecha"].strftime("%Y-%m") for x in filas if x["fecha"]}):
+        vals = [round(sum(x["horas"] for x in filas if x["fecha"] and x["fecha"].strftime("%Y-%m") == ym and x["job"] == jn), 2) for jn in pedidos]
+        wm.append([ym] + [v or None for v in vals] + [round(sum(vals), 2)])
+    for row in wm.iter_rows(min_row=2, max_row=wm.max_row):
+        for c in row[1:]: c.number_format = "#,##0.00"
+    # ── Detalle
+    wd = wb.create_sheet("Detalle")
+    encabezado(wd, ["JOB", "FECHA", "EMPLEADO", "HORAS", "TARIFA (USD/h)", "COSTO (USD)", "LÍNEA MO", "DEPARTAMENTO", "DESCRIPCIÓN", "ID"],
+               [12, 12, 34, 9, 13, 13, 24, 18, 50, 12])
+    for x in filas:
+        wd.append([x["job"], x["fecha"], x["empleado"], x["horas"], x["tarifa"], x["costo"], x["linea"], x["depto"], x["descripcion"], x["id"]])
+    for row in wd.iter_rows(min_row=2, max_row=wd.max_row):
+        row[1].number_format = "DD/MM/YYYY"; row[3].number_format = "#,##0.00"; row[4].number_format = "$#,##0.00"; row[5].number_format = "$#,##0.00"
+    wd.freeze_panes = "A2"
+    wd.auto_filter.ref = f"A1:J{max(wd.max_row, 1)}"
+    sin_tarifa = sorted({x["empleado"] for x in filas if x["tarifa"] is None})
+    if sin_tarifa:
+        ws.cell(row=ws.max_row + 2, column=1, value=f"⚠ {len(sin_tarifa)} empleado(s) sin tarifa en Hourly Rate (su costo no se calcula): " + ", ".join(sin_tarifa[:20])).font = Font(color="B45309")
+    buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+    nombre = "Horas_" + ("_".join(pedidos[:4]) + (f"_y{len(pedidos)-4}mas" if len(pedidos) > 4 else "")) + f"_{datetime.date.today():%Y-%m-%d}.xlsx"
+    return send_file(buf, as_attachment=True, download_name=re.sub(r"[^A-Za-z0-9_.-]", "", nombre),
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 @app.route("/api/wh/reasignar", methods=["POST"])
 def api_wh_reasignar():
@@ -20303,6 +20458,23 @@ try:
     _n_hist = _sincronizar_apartados_reasignaciones(historico=True)
 except Exception as _e:
     print(f"[REASIG→APARTADOS] No se pudo sincronizar al arrancar: {_e}")
+# rev98: los permisos por días aún no descontados se recalculan en días hábiles
+def _permisos_recalcular_habiles():
+    try:
+        recs = _load_permisos() or []
+        n = 0
+        for r in recs:
+            if r.get("modalidad") != "dias" or r.get("vacaciones_descontado") or str(r.get("estatus", "")).startswith("Rechazado"): continue
+            if r.get("dias_habiles_v") == 1 or not r.get("fecha_inicio") or not r.get("fecha_fin"): continue
+            nuevo = _dias_habiles(r["fecha_inicio"], r["fecha_fin"])
+            if nuevo != r.get("dias"):
+                r["dias_naturales_antes"] = r.get("dias"); r["dias"] = nuevo; n += 1
+            r["dias_habiles_v"] = 1
+        if n: _save_permisos(recs); print(f"[PERMISOS] {n} permiso(s) recalculado(s) en días hábiles")
+    except Exception as e:
+        print(f"[PERMISOS] recálculo en días hábiles: {e}")
+_permisos_recalcular_habiles()
+
 # rev92: KPIs por default para toda la empresa + foto del valor de inventarios del día
 try:
     _kpi_sembrar_globales(); _kpi_sembrar_areas(); _kpi_foto_inventarios()

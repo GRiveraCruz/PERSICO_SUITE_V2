@@ -1836,6 +1836,27 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
   </div>
 </div>
 
+<!-- ── Modal: Excel de horas por Job (rev97) -->
+<div class="mo" id="mo-wh-excel" style="z-index:150">
+  <div class="md" style="max-width:620px;width:calc(100% - 32px)">
+    <div class="mh"><h2>Excel de horas por Job</h2><button class="px" onclick="closeMo('mo-wh-excel')">Cerrar</button></div>
+    <div class="mb2">
+      <div class="fi"><label>Jobs</label>
+        <div id="whx-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px"></div>
+        <div style="display:flex;gap:6px"><input id="whx-job" list="whr-jobs" placeholder="Escribe un Job y Enter (puedes pegar varios separados por coma)" style="flex:1"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();whExcelAgregar();}" onchange="if(this.value.includes(',')||this.value.includes(' '))whExcelAgregar()">
+          <button type="button" class="btn-reload" onclick="whExcelAgregar()">Agregar</button></div>
+      </div>
+      <div class="fr">
+        <div class="fi"><label>Desde (opcional)</label><input type="date" id="whx-desde"></div>
+        <div class="fi"><label>Hasta (opcional)</label><input type="date" id="whx-hasta"></div>
+      </div>
+      <div style="font-size:11px;color:var(--muted2)">Incluye todos los años. Hojas: Resumen (horas, costo, empleados y fechas por Job), Por empleado, Por línea de mano de obra, Por mes y Detalle de registros.</div>
+    </div>
+    <div class="mf"><button class="btn-new" onclick="whExcelGenerar()" style="width:auto;padding:9px 20px">⬇ Generar Excel</button></div>
+  </div>
+</div>
+
 <!-- ── Modal: Reasignar horas (rev86) -->
 <div class="mo" id="mo-wh-reasig" style="z-index:150">
   <div class="md" style="max-width:900px;width:calc(100% - 32px)">
@@ -2152,6 +2173,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
     <div class="sb-btns">
       <button class="btn-new" onclick="whOpenImport()">Cargar Excel</button>
       <button class="btn-sec" onclick="whReasigAbrir()" style="margin-top:6px">↔ Reasignar horas</button>
+      <button class="btn-sec" onclick="whExcelJobsAbrir()" style="margin-top:6px">⬇ Excel por Job</button>
       <button class="btn-sec btn-export" onclick="whExportCSV()">Exportar CSV</button>
     </div>
   </aside>
@@ -2526,9 +2548,10 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
         <button id="pmn-mod-horas" onclick="pmnSetModalidad('horas')">Por horas</button>
       </div>
       <div class="fr" id="pmn-fields-dias">
-        <div class="fi"><label>Fecha Inicio *</label><input type="date" id="pmn-inicio"></div>
-        <div class="fi"><label>Fecha Fin *</label><input type="date" id="pmn-fin"></div>
+        <div class="fi"><label>Fecha Inicio *</label><input type="date" id="pmn-inicio" onchange="pmDiasHabilesUI('pmn')"></div>
+        <div class="fi"><label>Fecha Fin *</label><input type="date" id="pmn-fin" onchange="pmDiasHabilesUI('pmn')"></div>
       </div>
+      <div id="pmn-dias-hab" style="font-size:11.5px;color:var(--muted2);margin:-6px 0 10px"></div>
       <div class="fr" id="pmn-fields-horas" style="display:none">
         <div class="fi"><label>Fecha *</label><input type="date" id="pmn-fecha-h"></div>
         <div class="fi"><label>Hora Inicio *</label><input type="time" id="pmn-hora-inicio"></div>
@@ -3134,9 +3157,10 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
         </select>
       </div></div>
       <div class="fr" id="pme-fields-dias">
-        <div class="fi"><label>Fecha Inicio</label><input type="date" id="pme-inicio"></div>
-        <div class="fi"><label>Fecha Fin</label><input type="date" id="pme-fin"></div>
+        <div class="fi"><label>Fecha Inicio</label><input type="date" id="pme-inicio" onchange="pmDiasHabilesUI('pme')"></div>
+        <div class="fi"><label>Fecha Fin</label><input type="date" id="pme-fin" onchange="pmDiasHabilesUI('pme')"></div>
       </div>
+      <div id="pme-dias-hab" style="font-size:11.5px;color:var(--muted2);margin:-6px 0 10px"></div>
       <div class="fr" id="pme-fields-horas" style="display:none">
         <div class="fi"><label>Fecha</label><input type="date" id="pme-fecha-h"></div>
         <div class="fi"><label>Hora Inicio</label><input type="time" id="pme-hora-inicio"></div>

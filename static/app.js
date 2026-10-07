@@ -2461,7 +2461,7 @@ function pmOpen(id){
     document.getElementById('pme-hora-fin').value=pm.hora_fin||'';
   }else{
     document.getElementById('pme-inicio').value=pm.fecha_inicio||'';
-    document.getElementById('pme-fin').value=pm.fecha_fin||'';
+    document.getElementById('pme-fin').value=pm.fecha_fin||''; pmDiasHabilesUI('pme');
   }
   document.getElementById('pme-dias-label').textContent=esHoras?'Horas':'Días';
   document.getElementById('pme-dias').textContent=pmCantidadTxt(pm);
@@ -19051,4 +19051,69 @@ function kpiPieHTML(p){
     <div style="flex:1;font-size:12px">${seg.map(([n,v,c])=>`<div style="display:flex;align-items:center;gap:7px;margin:4px 0">
       <span style="width:11px;height:11px;border-radius:3px;background:${c}"></span><span style="flex:1">${n}</span>
       <b>${v}</b><span style="color:var(--muted);width:48px;text-align:right">${(v/tot*100).toFixed(1)} %</span></div>`).join('')}</div></div>`;
+}
+
+
+// ════════════════════════════════════════════════════════
+//  rev97 — Mano de Obra: Excel de horas de uno o varios Jobs
+// ════════════════════════════════════════════════════════
+let _whx = [];
+async function whExcelJobsAbrir(){
+  document.getElementById('mo-wh-excel').classList.add('on');
+  whExcelRender();
+  if(!_whr.jobs){
+    try{ const d = await fetch('/api/jobs').then(r=>r.json()); _whr.jobs = Array.isArray(d)?d:(d.jobs||d.records||[]); }catch(e){ _whr.jobs = []; }
+    document.getElementById('whr-jobs').innerHTML = _whr.jobs.map(j=>`<option value="${esc(j.job_number)}">${esc(j.customer||'')} · ${esc(j.description||'')}</option>`).join('');
+  }
+  setTimeout(()=>document.getElementById('whx-job').focus(), 50);
+}
+function whExcelAgregar(){
+  const el = document.getElementById('whx-job');
+  el.value.split(/[,;\s]+/).map(x=>x.trim().toUpperCase()).filter(Boolean).forEach(j=>{ if(!_whx.includes(j)) _whx.push(j); });
+  el.value = ''; whExcelRender();
+}
+function whExcelRender(){
+  const box = document.getElementById('whx-chips'); if(!box) return;
+  const existe = j => !_whr.jobs || _whr.jobs.some(x=>String(x.job_number||'').toUpperCase()===j);
+  box.innerHTML = _whx.map((j,i)=>`<span style="display:inline-flex;align-items:center;gap:5px;background:${existe(j)?'rgba(37,105,160,.1)':'rgba(245,158,11,.15)'};border-radius:12px;padding:3px 10px;font-size:12px;font-family:'DM Mono',monospace" title="${existe(j)?'':'No existe en Jobs (se buscará igual en Work Hours)'}">${esc(j)}<a href="#" onclick="_whx.splice(${i},1);whExcelRender();return false" style="color:var(--muted);text-decoration:none">✕</a></span>`).join('')
+    || '<span style="font-size:11px;color:var(--muted)">Ningún Job agregado</span>';
+}
+function whExcelGenerar(){
+  if(document.getElementById('whx-job').value.trim()) whExcelAgregar();
+  if(!_whx.length){ toast('Agrega al menos un Job','er'); return; }
+  const q = new URLSearchParams({jobs: _whx.join(',')});
+  const d = document.getElementById('whx-desde').value, h = document.getElementById('whx-hasta').value;
+  if(d) q.set('desde', d); if(h) q.set('hasta', h);
+  const a = document.createElement('a'); a.href = '/api/wh/excel-jobs?' + q.toString();
+  document.body.appendChild(a); a.click(); a.remove();
+  toast('Generando Excel…','ok',2500);
+}
+
+
+// rev98: días hábiles de un permiso (sin sábados, domingos ni festivos de ley), igual que el servidor
+function diasFestivosLFT(y){
+  const iso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const nLunes = (mes, n) => { const d = new Date(y, mes, 1); const off = (8 - d.getDay()) % 7; return iso(new Date(y, mes, 1 + off + (n-1)*7)); };
+  const f = new Set([`${y}-01-01`, nLunes(1,1), nLunes(2,3), `${y}-05-01`, `${y}-09-16`, nLunes(10,3), `${y}-12-25`]);
+  if((y - 2024) % 6 === 0) f.add(`${y}-10-01`);
+  return f;
+}
+function diasHabiles(a, b){
+  if(!a || !b || b < a) return 0;
+  const [y1,m1,d1] = a.split('-').map(Number), [y2,m2,d2] = b.split('-').map(Number);
+  const fest = new Set(); for(let y=y1; y<=y2; y++) diasFestivosLFT(y).forEach(x=>fest.add(x));
+  let n = 0;
+  for(let d = new Date(y1, m1-1, d1); d <= new Date(y2, m2-1, d2); d.setDate(d.getDate()+1)){
+    const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    if(d.getDay()!==0 && d.getDay()!==6 && !fest.has(iso)) n++;
+  }
+  return n;
+}
+function pmDiasHabilesUI(pre){
+  const a = document.getElementById(pre+'-inicio')?.value, b = document.getElementById(pre+'-fin')?.value, el = document.getElementById(pre+'-dias-hab');
+  if(!el) return;
+  if(!a || !b){ el.textContent=''; return; }
+  if(b < a){ el.innerHTML = '<span style="color:var(--red)">La fecha de fin es anterior a la de inicio</span>'; return; }
+  const n = diasHabiles(a, b);
+  el.innerHTML = n ? `Cuenta como <b>${n} día${n===1?'':'s'} hábil${n===1?'':'es'}</b> (no se cuentan sábados, domingos ni días festivos)` : '<span style="color:var(--red)">El periodo no tiene días hábiles</span>';
 }
