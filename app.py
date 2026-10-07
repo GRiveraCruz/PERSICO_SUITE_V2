@@ -8376,7 +8376,7 @@ KPI_CATALOGO = [
     {"k": "aceptacion_cotizaciones", "nombre": "Quote success rate", "nombre_es": "Tasa de aceptación de cotizaciones",
      "periodo": "trimestral", "unidad": "%", "sentido": "mayor", "alcances": ["global", "persona"],
      "fuente": "Cotizaciones (Key Account Manager / Technical Sales)",
-     "formula": "Cotizaciones ganadas (Awarded) ÷ cotizaciones enviadas al cliente en el trimestre × 100."},
+     "formula": "Cotizaciones aceptadas (Awarded, sin rechazo) ÷ cotizaciones emitidas (enviadas al cliente) × 100. La tarjeta muestra el pastel del año: aceptadas, rechazadas y pendientes; el cumplimiento de la meta se evalúa por trimestre."},
     {"k": "pos_recibidas", "nombre": "POs received by month", "nombre_es": "Índice de POs recibidas",
      "periodo": "mensual", "unidad": "POs", "sentido": "mayor", "alcances": ["global", "persona"], "fuente": "Customer POs (PM)",
      "formula": "Customer POs de revenue recibidas en el mes (fecha de la PO). También se informa el monto."},
@@ -8393,8 +8393,8 @@ KPI_CATALOGO = [
      "periodo": "semanal", "unidad": "%", "sentido": "menor", "alcances": ["global", "persona", "area"], "fuente": "Work Hours (empleado)",
      "formula": "Horas que pasan de su jornada semanal (Tipo de Puesto, o 48 h) ÷ horas ordinarias × 100."},
     {"k": "eficiencia_horas", "nombre": "Hours efficiency: used vs planned", "nombre_es": "Eficiencia horas usadas vs horas planeadas por proyecto",
-     "periodo": "proyecto", "unidad": "%", "sentido": "menor", "alcances": ["global", "persona"], "fuente": "Jobs donde es PM",
-     "formula": "Horas usadas (Work Hours) ÷ horas planeadas (Configurar Proyecto) × 100, de sus Jobs cerrados. La meta es el máximo permitido: 100 % = se usó exactamente lo planeado; más de 100 % = se usaron más horas de las planeadas."},
+     "periodo": "proyecto", "unidad": "%", "sentido": "menor", "alcances": ["global", "persona", "area"], "fuente": "Jobs donde es PM (por área: todos los Jobs)",
+     "formula": "Horas usadas (Work Hours) ÷ horas planeadas (Configurar Proyecto) × 100, de sus Jobs cerrados. Por área operativa: solo las líneas de mano de obra de esa área (relación línea → área de Capacidad). La meta es el máximo permitido: 100 % = se usó exactamente lo planeado; más de 100 % = se usaron más horas de las planeadas."},
     # ── rev92: nuevos
     {"k": "asistencia", "nombre": "Weekly attendance index", "nombre_es": "Índice de asistencia semanal",
      "periodo": "semanal", "unidad": "%", "sentido": "mayor", "alcances": ["global", "persona", "area"], "fuente": "Kiosco de asistencia + Control de Personal",
@@ -8489,6 +8489,31 @@ def _kpi_sembrar_globales():
         _save_catalog("kpi_asignaciones", recs)
     _kpi_snap_set("config:sembrado", {"kpis": sorted(set(hechos) | set(faltan))})
 
+def _kpi_sembrar_areas():
+    """rev94: el costo por hora se configura por default también para cada área operativa
+    (una vez; si se eliminan, no se vuelven a crear)."""
+    if not (_orm and _orm.DB_ENABLED): return
+    hechos = (_kpi_snap_get("config:sembrado_areas").get("config:sembrado_areas") or {})
+    kpis_sembrar = [k for k in ("costo_hora_area", "eficiencia_horas") if k not in (hechos.get("kpis") or (["costo_hora_area"] if hechos else []))]
+    if not kpis_sembrar: return
+    _na = lambda v: " ".join(_sin_acentos(v).split())
+    areas4 = [x.get("nombre") for x in (_load_catalog("areas") or []) if _na(x.get("nombre")) in CAP_AREAS_INDICES]
+    if not areas4: return
+    with lock:
+        recs = _load_catalog("kpi_asignaciones")
+        ya = {(r.get("kpi"), r.get("area")) for r in recs if r.get("alcance") == "area"}
+        usados = {r.get("kid") for r in recs}; n = len(recs) + 1
+        for kk, ar in [(kk, ar) for kk in kpis_sembrar for ar in areas4]:
+            if (kk, ar) in ya: continue
+            while f"KPI-{n:04d}" in usados: n += 1
+            usados.add(f"KPI-{n:04d}")
+            recs.append({"kid": f"KPI-{n:04d}", "kpi": kk, "alcance": "area", "area": ar, "tid": None,
+                         "nombre": f"Área: {ar}", "meta": None, "tolerancia": None, "identificadores": [], "activo": True,
+                         "dashboard_perfiles": [], "notas": "Configurado por default — define la meta",
+                         "creado": datetime.datetime.now().isoformat(timespec="minutes"), "creado_por": "sistema"})
+        _save_catalog("kpi_asignaciones", recs)
+    _kpi_snap_set("config:sembrado_areas", {"areas": areas4, "kpis": sorted(set(hechos.get("kpis") or (["costo_hora_area"] if hechos else [])) | set(kpis_sembrar))})
+
 def _kpi_norm(v):
     """Nombre comparable: sin acentos, sin " - Persico", sin signos, palabras ordenadas."""
     t = re.sub(r"\s*-\s*persico.*$", "", str(v or ""), flags=re.I)
@@ -8528,12 +8553,13 @@ def api_kpis_catalogo():
                 for p in _load_personal() if (p.get("estado") or "Activo") != "Baja"]
     areas = sorted({a.get("nombre") for a in (_load_catalog("areas") or []) if a.get("nombre")})
     return jsonify({"kpis": KPI_CATALOGO, "personal": sorted(personal, key=lambda x: x["nombre"] or ""), "areas": areas,
+                    "perfiles": list(DASH_PERFILES),
                     "sugerencias": {k: sorted(v) for k, v in nombres.items()}})
 
 @app.route("/api/kpis/asignaciones", methods=["GET"])
 def api_kpis_asignaciones():
     if not _can_kpis("view"): return jsonify({"error": "Sin permiso"}), 403
-    try: _kpi_sembrar_globales()                         # rev92: todos los KPIs para toda la empresa
+    try: _kpi_sembrar_globales(); _kpi_sembrar_areas()    # rev92/94: toda la empresa + cada área operativa
     except Exception as e: print(f"[KPI] sembrado: {e}")
     return jsonify(_load_catalog("kpi_asignaciones"))
 
@@ -8574,6 +8600,7 @@ def api_kpis_asignar():
                    nombre=(personal.get(tid) or {}).get("nombre") if alcance == "persona" else (f"Área: {area}" if alcance == "area" else "Global (toda la empresa)"),
                    meta=meta, tolerancia=tol, identificadores=ids, activo=bool(d.get("activo", True)),
                    notas=(d.get("notas") or "").strip()[:500], actualizado=datetime.datetime.now().isoformat(timespec="minutes"),
+                   dashboard_perfiles=[p for p in (d.get("dashboard_perfiles") or []) if p in DASH_PERFILES] if alcance != "persona" else [],
                    actualizado_por=session.get("user", ""))
         _save_catalog("kpi_asignaciones", recs)
     return jsonify({"ok": True, "record": rec})
@@ -8658,36 +8685,51 @@ def _kpi_asistencia(anio, hoy, a, personal_all):
     return out, f"{len(gente)} persona(s) · desde el primer registro del kiosco ({inicio.isoformat()}) · días esperados según su jornada, sin festivos ni permisos/vacaciones aprobados"
 
 def _kpi_costo_hora(anio, hoy, a):
-    """Por mes: costo de mano de obra ÷ horas, de las áreas operativas (o de una)."""
+    """Por mes: costo de mano de obra ÷ horas, de las áreas operativas (o de una). En el
+    alcance global se regresa también el desglose de cada área (rev94)."""
     _na = lambda v: " ".join(_sin_acentos(v).split())
     areas4 = [x for x in (_load_catalog("areas") or []) if _na(x.get("nombre")) in CAP_AREAS_INDICES]
     mapeo, _sug = _cap_mapeo(areas4)
-    if a.get("alcance") == "area":
-        objetivo = {_na(a.get("area"))}
-    else:
-        objetivo = {_na(x.get("nombre")) for x in areas4}
+    nombre_de = {_na(x.get("nombre")): x.get("nombre") for x in areas4}
+    objetivo = {_na(a.get("area"))} if a.get("alcance") == "area" else set(nombre_de)
     rates = {normalize_name(r.get("employee", "")): float(r.get("rate") or 0) for r in load_rates(anio)}
     clasif = _wh_clasificador([]).clasificar
-    hrs, cost, sin_tarifa = [0.0] * 12, [0.0] * 12, set()
+    por_area = {k: ([0.0] * 12, [0.0] * 12) for k in nombre_de}
+    sin_tarifa = set()
     for r in wh_load(anio):
         f = _kpi_fd(r.get("date_worked"))
         if not f or f.year != anio: continue
         c = clasif(r, anio)
         if not c: continue
         _f, k, _dep, h, _c, _t = c
-        ar = mapeo.get(k) if k else None
-        if not ar or _na(ar) not in objetivo: continue
+        ar = _na(mapeo.get(k)) if k and mapeo.get(k) else None
+        if not ar or ar not in por_area: continue
         e = normalize_name(r.get("employee", ""))
         rt = rates.get(e)
-        if not rt: sin_tarifa.add(e); continue
-        hrs[f.month - 1] += h; cost[f.month - 1] += h * rt
-    out = []
-    for m in range(12):
-        if datetime.date(anio, m + 1, 1) > hoy or not hrs[m]: out.append({"p": f"{anio}-{m + 1:02d}", "valor": None}); continue
-        out.append({"p": f"{anio}-{m + 1:02d}", "valor": round(cost[m] / hrs[m], 2), "extra": f"${cost[m]:,.0f} ÷ {hrs[m]:,.1f} h"})
+        if not rt:
+            if ar in objetivo: sin_tarifa.add(e)
+            continue
+        por_area[ar][0][f.month - 1] += h; por_area[ar][1][f.month - 1] += h * rt
+    def serie(claves):
+        out = []
+        for m in range(12):
+            hh = sum(por_area[k][0][m] for k in claves); cc = sum(por_area[k][1][m] for k in claves)
+            if datetime.date(anio, m + 1, 1) > hoy or not hh: out.append({"p": f"{anio}-{m + 1:02d}", "valor": None}); continue
+            out.append({"p": f"{anio}-{m + 1:02d}", "valor": round(cc / hh, 2), "extra": f"${cc:,.0f} ÷ {hh:,.1f} h"})
+        return out
+    out = serie([k for k in objetivo if k in por_area])
     nota = ("Área: " + a.get("area")) if a.get("alcance") == "area" else "Áreas operativas: " + ", ".join(x.get("nombre") for x in areas4)
     if sin_tarifa: nota += f" · {len(sin_tarifa)} empleado(s) sin tarifa en Hourly Rate {anio} no se cuentan"
-    return out, nota
+    desglose = []
+    if a.get("alcance") != "area":
+        cur_m = hoy.month if hoy.year == anio else 13
+        for k, nom in nombre_de.items():
+            sr = serie([k]); vals = [x["valor"] for x in sr if x["valor"] is not None and x["p"] != f"{anio}-{cur_m:02d}"]
+            ult = next((x for x in reversed(sr) if x["valor"] is not None and x["p"] != f"{anio}-{cur_m:02d}"), None)
+            desglose.append({"area": nom, "promedio": round(sum(vals) / len(vals), 2) if vals else None,
+                             "ultimo": ult["valor"] if ult else None, "ultimo_p": ult["p"] if ult else None,
+                             "serie": [x["valor"] for x in sr]})
+    return out, nota, desglose
 
 def _kpi_cpp(anio, hoy):
     """Por mes: días promedio entre el registro de la CPP y su pago (CPP pagadas en el mes)."""
@@ -8738,14 +8780,20 @@ def _kpi_cpc(anio, hoy):
     return out, "Cartera vencida al cierre de cada mes (fecha de vencimiento de la factura)"
 
 @app.route("/api/kpis/resultados", methods=["GET"])
-def api_kpis_resultados():
-    """Valores de cada KPI asignado en el año: por mes, trimestre, semana o proyecto."""
-    if not _can_kpis("view"): return jsonify({"error": "Sin permiso"}), 403
+def api_kpis_resultados(_asign=None, _anio=None):
+    """Valores de cada KPI asignado en el año: por mes, trimestre, semana o proyecto.
+    rev94: también se llama desde el Dashboard de inicio con (_asign, _anio): entonces
+    regresa la lista de resultados en vez de la respuesta HTTP."""
+    interno = _asign is not None
+    if not interno and not _can_kpis("view"): return jsonify({"error": "Sin permiso"}), 403
     try:
-        anio = int(request.args.get("anio") or datetime.date.today().year)
+        anio = int(_anio or request.args.get("anio") or datetime.date.today().year)
         hoy = datetime.date.today()
-        asign = [a for a in _load_catalog("kpi_asignaciones") if a.get("activo", True)]
-        if request.args.get("tid"): asign = [a for a in asign if a.get("tid") == request.args["tid"] or a.get("alcance") == "global"]
+        if interno:
+            asign = list(_asign)
+        else:
+            asign = [a for a in _load_catalog("kpi_asignaciones") if a.get("activo", True)]
+            if request.args.get("tid"): asign = [a for a in asign if a.get("tid") == request.args["tid"] or a.get("alcance") == "global"]
         def fd(v):
             try: return datetime.date.fromisoformat(str(v or "")[:10])
             except ValueError: return None
@@ -8842,7 +8890,8 @@ def api_kpis_resultados():
                 ids = [_kpi_norm(p.get("nombre")) for p in (personal_all or _load_personal() or [])
                        if (p.get("area") or "").strip().lower() == (a.get("area") or "").strip().lower() and _kpi_norm(p.get("nombre"))]
             es = (lambda v: True) if glob else (lambda v: _kpi_es(ids, v))
-            periodos, detalle, nota, excluidos = [], [], "", []
+            periodos, detalle, nota, excluidos, desglose = [], [], "", [], []
+            pie = None
             if a["kpi"] == "cotizaciones_creadas":
                 for m in range(1, 13):
                     n = sum(1 for q in quotes if (fd(q.get("received")) or fd(q.get("created_at"))) and
@@ -8855,10 +8904,16 @@ def api_kpis_resultados():
                 for t in range(1, 5):
                     env = [q for q in quotes if fd(q.get("sentClient")) and fd(q["sentClient"]).year == anio and trimestre(fd(q["sentClient"])) == t
                            and (es(q.get("keyAccountManager")) or es(q.get("technicalSales")))]
-                    gan = sum(1 for q in env if q.get("awarded"))
+                    gan = sum(1 for q in env if q.get("awarded") and not q.get("refused"))
                     futuro = datetime.date(anio, 3 * t - 2, 1) > hoy
                     periodos.append({"p": f"T{t}", "valor": None if futuro or not env else round(gan / len(env) * 100, 1),
                                      "extra": f"{gan} de {len(env)}" if env else ""})
+                # rev96: gráfica de pastel del año — emitidas = enviadas al cliente en el año
+                env_y = [q for q in quotes if fd(q.get("sentClient")) and fd(q["sentClient"]).year == anio
+                         and (es(q.get("keyAccountManager")) or es(q.get("technicalSales")))]
+                acc = sum(1 for q in env_y if q.get("awarded") and not q.get("refused"))
+                rech = sum(1 for q in env_y if q.get("refused"))
+                pie = {"emitidas": len(env_y), "aceptadas": acc, "rechazadas": rech, "pendientes": len(env_y) - acc - rech}
             elif a["kpi"] == "pos_recibidas":
                 for m in range(1, 13):
                     sel = [c for c in cpos if fd(c.get("date")) and fd(c["date"]).year == anio and fd(c["date"]).month == m
@@ -8900,8 +8955,29 @@ def api_kpis_resultados():
                 nota = f"{len(vals)} proyecto(s) cerrados en {anio}" + (f" · {sum(1 for x in detalle if x.get('en_curso'))} en WIP" if any(x.get('en_curso') for x in detalle) else "") + (f" · {len(excluidos)} sin dato" if excluidos else "")
                 val_anual = round(sum(vals) / len(vals), 1) if vals else None
             elif a["kpi"] in ("entrega_tiempo", "ahorro_compras", "eficiencia_horas"):
-                js = [j for j in jobs if es(j.get("pm"))]
+                # rev95: eficiencia por área operativa → todos los Jobs, solo las líneas de esa área
+                ef_area = a["kpi"] == "eficiencia_horas" and por_area
+                js = [j for j in jobs if (ef_area or es(j.get("pm")))]
                 vals, excluidos = [], []
+                ef_por_area = {}                              # área -> [valores] (desglose de la tarjeta global)
+                if a["kpi"] == "eficiencia_horas":
+                    _na = lambda v: " ".join(_sin_acentos(v).split())
+                    _areas4 = [x for x in (_load_catalog("areas") or []) if _na(x.get("nombre")) in CAP_AREAS_INDICES]
+                    _mapeo, _s = _cap_mapeo(_areas4)
+                    _nom = {_na(x.get("nombre")): x.get("nombre") for x in _areas4}
+                    _area_obj = _na(a.get("area")) if ef_area else None
+                    _reg = _wh_clasificador([j["job_number"] for j in js] or ["__NINGUNO__"])
+                    def _horas_area(jn, jc):
+                        plan, uso = {}, {}
+                        for k, _n, _p in LINEAS_MO:
+                            ar = _na(_mapeo.get(k)) if _mapeo.get(k) else None
+                            if not ar: continue
+                            try: plan[ar] = plan.get(ar, 0.0) + float(jc.get("mo_horas_" + k) or 0)
+                            except (TypeError, ValueError): pass
+                        for _f, k, _dep, h, _c, _t in _reg(jn):
+                            ar = _na(_mapeo.get(k)) if k and _mapeo.get(k) else None
+                            if ar: uso[ar] = uso.get(ar, 0.0) + h
+                        return plan, uso
                 for j in js:
                     jn = j["job_number"]
                     cerrado, origen_c = cierre(j)
@@ -8938,10 +9014,21 @@ def api_kpis_resultados():
                             extra = f"target ${ij['target_compras']:,.0f} · adquirido ${ij['adquirido']:,.0f}"
                         else:
                             if not ij["en_config"]: excluidos.append({"job": jn, "motivo": pre + "no está en ninguna Configuración de Proyecto (no hay horas planeadas)"}); continue
-                            if not ij["horas_plan"]: excluidos.append({"job": jn, "motivo": pre + "sin horas planeadas en Configurar Proyecto"}); continue
-                            if not ij["horas_usadas"]: excluidos.append({"job": jn, "motivo": pre + "sin horas registradas en Work Hours"}); continue
-                            v = round(ij["horas_usadas"] / ij["horas_plan"] * 100, 1)      # rev88: usadas ÷ planeadas
-                            extra = f"{ij['horas_plan']:,.0f} h planeadas · {ij['horas_usadas']:,.0f} h usadas"
+                            plan_a, uso_a = _horas_area(jn, ij["jc"])
+                            if ef_area:
+                                pa, ua = plan_a.get(_area_obj, 0.0), uso_a.get(_area_obj, 0.0)
+                                if not pa and not ua: continue                # el Job no tiene nada de esta área
+                                if not pa: excluidos.append({"job": jn, "motivo": pre + f"{ua:,.0f} h usadas sin horas planeadas para el área"}); continue
+                                v = round(ua / pa * 100, 1)
+                                extra = f"{pa:,.0f} h planeadas · {ua:,.0f} h usadas (solo {_nom.get(_area_obj, a.get('area'))})"
+                            else:
+                                if not ij["horas_plan"]: excluidos.append({"job": jn, "motivo": pre + "sin horas planeadas en Configurar Proyecto"}); continue
+                                if not ij["horas_usadas"]: excluidos.append({"job": jn, "motivo": pre + "sin horas registradas en Work Hours"}); continue
+                                v = round(ij["horas_usadas"] / ij["horas_plan"] * 100, 1)      # rev88: usadas ÷ planeadas
+                                extra = f"{ij['horas_plan']:,.0f} h planeadas · {ij['horas_usadas']:,.0f} h usadas"
+                                if not wip:
+                                    for ar in _nom:
+                                        if plan_a.get(ar): ef_por_area.setdefault(ar, []).append((cerrado, round(uso_a.get(ar, 0.0) / plan_a[ar] * 100, 1)))
                         if wip:
                             detalle.append({"job": jn, "p": "~" + jn, "valor": v, "extra": "WIP · al día de hoy · " + extra, "en_curso": True})
                             continue
@@ -8951,6 +9038,13 @@ def api_kpis_resultados():
                 detalle.sort(key=lambda x: x["p"])
                 periodos = [{"p": x["job"], "valor": x["valor"], "extra": x.get("extra", ""), "en_curso": x.get("en_curso", False)} for x in detalle]
                 n_wip = sum(1 for x in detalle if x.get("en_curso"))
+                if a["kpi"] == "eficiencia_horas" and not ef_area and not por_area:
+                    # rev95: desglose por área operativa en la tarjeta global / de persona
+                    for ar, nom in _nom.items():
+                        xs = sorted(ef_por_area.get(ar, []), key=lambda t: t[0])
+                        desglose.append({"area": nom, "promedio": round(sum(v for _d, v in xs) / len(xs), 1) if xs else None,
+                                         "ultimo": xs[-1][1] if xs else None, "ultimo_p": xs[-1][0].isoformat() if xs else None,
+                                         "n": len(xs)})
                 nota = (f"{len(vals)} proyecto(s) cerrados en {anio}" if a["kpi"] != "entrega_tiempo" else f"{len(vals)} proyecto(s) en {anio}") + (f" · {n_wip} en WIP" if n_wip else "") + (f" · {len(excluidos)} sin dato" if excluidos else "")
                 val_anual = round(sum(vals) / len(vals), 1) if vals else None
             elif a["kpi"] == "horas_extra":
@@ -8993,7 +9087,7 @@ def api_kpis_resultados():
                 if not fotos: nota = "Aún no hay fotos del valor: se toma una cada día que se guarda el inventario o se consultan los KPIs."
                 else: nota = f"Desde {min(fotos).split(':', 1)[1]} · el valor del mes es el de su última foto"
             elif a["kpi"] == "costo_hora_area":
-                periodos, nota = _kpi_costo_hora(anio, hoy, a)
+                periodos, nota, desglose = _kpi_costo_hora(anio, hoy, a)
             elif a["kpi"] == "rotacion":
                 grupo = personal_all if glob else [p for p in personal_all if (p.get("area") or "").strip().lower() == (a.get("area") or "").strip().lower()]
                 activo_p = lambda p: (p.get("estado") or "Activo") != "Baja"
@@ -9027,6 +9121,8 @@ def api_kpis_resultados():
             if a["kpi"] in ("valor_stock", "valor_consignacion"):
                 ult_v = next((x for x in reversed(periodos) if x.get("valor") is not None), None)
                 val_anual = ult_v["valor"] if ult_v else None      # valor más reciente, no promedio
+            elif a["kpi"] == "aceptacion_cotizaciones":            # rev96: tasa del año (aceptadas ÷ emitidas)
+                val_anual = round(pie["aceptadas"] / pie["emitidas"] * 100, 1) if pie and pie["emitidas"] else None
             elif a["kpi"] not in ("margen_proyectos", "entrega_tiempo", "ahorro_compras", "eficiencia_horas"):
                 val_anual = round(sum(con) / len(con), 1) if con else None
             ultimo = next((x for x in reversed(periodos) if x.get("valor") is not None and not x.get("en_curso")), None)
@@ -9041,15 +9137,53 @@ def api_kpis_resultados():
                 estado_g = _kpi_estado(val_anual, a.get("meta"), K["sentido"], a.get("tolerancia"))
             out.append({"asignacion": a, "kpi": K, "periodos": periodos, "nota": nota,
                         "excluidos": excluidos if a["kpi"] in ("margen_proyectos", "entrega_tiempo", "ahorro_compras", "eficiencia_horas") else [],
-                        "ultimo": ultimo, "en_curso": en_curso, "promedio": val_anual,
+                        "ultimo": ultimo, "en_curso": en_curso, "promedio": val_anual, "desglose": desglose, "pie": pie,
                         "wip": (lambda w: {"n": len(w), "promedio": round(sum(w) / len(w), 1) if w else None})(
                             [x["valor"] for x in periodos if x.get("en_curso") and x.get("valor") is not None]) if K["periodo"] == "proyecto" else None,
                         "estado": estado_g,
                         "cumplidos": sum(1 for x in periodos if x.get("estado") == "verde"),
                         "evaluados": len([x for x in periodos if x.get("estado")]) if K["sentido"] == "reduccion" else len(con)})
+        if interno: return out
         return jsonify({"anio": anio, "resultados": out})
     except Exception as e:
         import traceback; traceback.print_exc()
+        if interno: raise
+        return jsonify({"error": str(e)}), 500
+
+# ── rev94: KPIs en el Dashboard de inicio de cada usuario ───────────────────────
+#  · KPIs asignados a una persona → en el Dashboard del usuario ligado a esa persona
+#    (Administrador ▸ usuario ▸ "Persona en Control de Personal"; si no está ligado, se
+#    usan sus nombres de PM contra los identificadores del KPI).
+#  · KPIs globales o de área → en el Dashboard de los perfiles elegidos en la asignación.
+DASH_PERFILES = ("GENERAL MANAGEMENT", "OPERATION MANAGER", "FINANCE MANAGER", "HUMAN RESOURCES", "PROJECT MANAGER",
+                 "PURCHASING", "ENGINEERING", "MANUFACTURING", "OPERATIVE LEADING", "admin")
+
+def _kpis_de_usuario(user):
+    info = get_user_perms(user) if user else {}
+    rol = "admin" if is_admin() else info.get("role")
+    tid = info.get("tid")
+    pm_ids = {_kpi_norm(n) for n in (info.get("pm_names") or []) if _kpi_norm(n)}
+    out = []
+    for a in _load_catalog("kpi_asignaciones"):
+        if not a.get("activo", True): continue
+        if a.get("alcance") == "persona":
+            ids = {_kpi_norm(x) for x in a.get("identificadores") or []}
+            if (tid and a.get("tid") == tid) or (not tid and pm_ids & ids): out.append(dict(a, _motivo="persona"))
+        elif rol in (a.get("dashboard_perfiles") or []):
+            out.append(dict(a, _motivo="perfil"))
+    return out
+
+@app.route("/api/kpis/mi-dashboard", methods=["GET"])
+def api_kpis_mi_dashboard():
+    user = session.get("user")
+    if not user: return jsonify({"error": "No autenticado"}), 401
+    asign = _kpis_de_usuario(user)
+    if not asign: return jsonify({"anio": datetime.date.today().year, "resultados": []})
+    try:
+        anio = int(request.args.get("anio") or datetime.date.today().year)
+        res = api_kpis_resultados(_asign=asign, _anio=anio)
+        return jsonify({"anio": anio, "resultados": res})
+    except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 # ══════════════════════════════════════════════════════════════════
@@ -10506,7 +10640,12 @@ def api_admin_get_users():
         _pm_names = sorted({(j.get("pm") or "").strip() for j in scan_jobs()} - {""}, key=str.lower)
     except Exception:
         _pm_names = []
-    return jsonify({"users": users, "modules": MODULES, "pm_names": _pm_names,
+    try:   # rev94: para ligar cada usuario con su persona de Control de Personal
+        _personal = sorted([{"tid": p.get("tid"), "nombre": p.get("nombre")} for p in _load_personal()
+                            if (p.get("estado") or "Activo") != "Baja"], key=lambda x: x["nombre"] or "")
+    except Exception:
+        _personal = []
+    return jsonify({"users": users, "modules": MODULES, "pm_names": _pm_names, "personal": _personal,
                     "current_user": session.get("user"), "admin_user": ADMIN_USER})
 
 @app.route("/api/admin/users/<username>", methods=["PUT"])
@@ -10523,6 +10662,8 @@ def api_admin_update_user(username):
     users[username]["role"] = new_role
     if "puede_ver_salarios" in data:
         users[username]["puede_ver_salarios"] = bool(data["puede_ver_salarios"])
+    if "tid" in data:   # rev94: persona de Control de Personal ligada al usuario (KPIs personales)
+        users[username]["tid"] = (str(data.get("tid") or "").strip() or None)
     if "pm_names" in data:
         # Nombres de PM (tal como aparecen en el campo "pm" de los Jobs) ligados a
         # este usuario — alimentan su Dashboard de Project Manager.
@@ -20164,7 +20305,7 @@ except Exception as _e:
     print(f"[REASIG→APARTADOS] No se pudo sincronizar al arrancar: {_e}")
 # rev92: KPIs por default para toda la empresa + foto del valor de inventarios del día
 try:
-    _kpi_sembrar_globales(); _kpi_foto_inventarios()
+    _kpi_sembrar_globales(); _kpi_sembrar_areas(); _kpi_foto_inventarios()
 except Exception as _e:
     print(f"[KPI] arranque: {_e}")
 

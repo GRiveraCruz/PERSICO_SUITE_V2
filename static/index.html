@@ -33,6 +33,8 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;dis
 .nav-tab.on{color:var(--red);font-weight:700;border-bottom-color:var(--red)}
 .nav-group{position:relative;display:flex;align-items:stretch}
 .nav-group-btn{gap:5px}
+.nav-tabs>.nav-group{flex-shrink:0}
+@media (max-width:1600px){.nav-tab{padding:0 14px;letter-spacing:.6px}}   /* rev93: cabe el menú Management */
 .nav-group-btn.on{color:var(--red);font-weight:700;border-bottom-color:var(--red)}
 .nav-dropdown{display:none;position:absolute;top:48px;left:0;background:var(--panel);border:1px solid var(--border);border-radius:0 0 8px 8px;min-width:220px;z-index:999;box-shadow:0 8px 24px rgba(0,0,0,.15);flex-direction:column;padding:4px 0}
 .nav-dropdown::before{content:'';position:absolute;top:-8px;left:0;right:0;height:8px;background:transparent}
@@ -539,7 +541,6 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
         <button onclick="switchMenu('rrhh-salario','ng-rrhh')">Calcular Salario</button>
         <button onclick="switchMenu('rrhh-sueldos','ng-rrhh')">Sueldos y Salarios</button>
         <button onclick="switchMenu('rrhh-nomina','ng-rrhh')">Nómina</button>
-        <button onclick="switchMenu('rrhh-kpis','ng-rrhh')">KPIs del Personal</button>
         <div class="nav-subgroup">
           <button class="nav-sub-btn">Control de Personal ▸</button>
           <div class="nav-submenu">
@@ -559,6 +560,14 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
         <button onclick="switchMenu('ops-ot','ng-ops')">Tareas Asignadas</button>
         <button onclick="switchMenu('ops-op','ng-ops')">Órdenes de Producción</button>
         <button onclick="switchMenu('ops-os','ng-ops')">Órdenes de Servicio</button>
+      </div>
+    </div>
+
+    <!-- rev93: menú MANAGEMENT -->
+    <div class="nav-group" onmouseenter="showMenu(this)" onmouseleave="hideMenu(this)">
+      <button class="nav-tab nav-group-btn" id="ng-mgmt">Management ▾</button>
+      <div class="nav-dropdown">
+        <button onclick="switchMenu('rrhh-kpis','ng-mgmt')">KPIs</button>
       </div>
     </div>
   </div>
@@ -2734,10 +2743,10 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
   </div>
 </div>
 
-<!-- ══ MODULE: KPIs del Personal (rev84) ══ -->
+<!-- ══ MODULE: KPIs (rev84; menú Management desde rev93) ══ -->
 <div class="module" id="mod-rrhh-kpis">
   <div class="main-content" style="overflow-y:auto">
-    <div class="bar-top"><h1>🎯 KPIs del Personal</h1>
+    <div class="bar-top"><h1>🎯 KPIs</h1>
       <select id="kpi-anio" onchange="kpiCargarResultados()" style="font-size:12px;padding:5px 8px"></select>
       <select id="kpi-filtro" onchange="kpiRender()" style="font-size:12px;padding:5px 8px;max-width:260px"><option value="">Todas las personas</option></select>
       <button class="btn-reload" onclick="kpiCargar()">Recargar</button>
@@ -2770,6 +2779,8 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
         <datalist id="kpi-ids-dl"></datalist>
         <div id="kpi-ids-ayuda" style="font-size:10.5px;color:var(--muted);margin-top:4px"></div>
       </div>
+      <div class="fi" id="kpi-perf-box"><label>Mostrar en el Dashboard de inicio de los perfiles</label><div id="kpi-perfiles"></div></div>
+      <div id="kpi-pers-dash" style="display:none;font-size:11px;color:var(--muted2);margin:-4px 0 10px">🏠 Se muestra en el Dashboard de inicio del usuario ligado a esta persona (Administrador ▸ usuario ▸ Persona en Control de Personal).</div>
       <div class="fi"><label>Notas</label><input id="kpi-notas" placeholder="Opcional"></div>
       <label style="font-size:12px;display:flex;gap:6px;align-items:center"><input type="checkbox" id="kpi-activo" checked> Activo</label>
     </div>

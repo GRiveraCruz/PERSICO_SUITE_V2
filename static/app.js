@@ -6005,7 +6005,7 @@ const MODULE_LABELS = {
   'fin-cpp':'CPP (Cuentas por Pagar)', 'fin-pagos':'Pagos', 'fin-esquemas':'Esquemas Tributarios',
   // Recursos Humanos
   'rrhh-asistencia':'Asistencia', 'rrhh-vacaciones':'Vacaciones', 'rrhh-permisos':'Permisos (RH)',
-  'rrhh-salario':'Calcular Salario', 'rrhh-sueldos':'Sueldos y Salarios', 'rrhh-nomina':'Nómina', 'rrhh-kpis':'KPIs del Personal',
+  'rrhh-salario':'Calcular Salario', 'rrhh-sueldos':'Sueldos y Salarios', 'rrhh-nomina':'Nómina', 'rrhh-kpis':'Management — KPIs',
   'personal-areas':'Control de Personal — Áreas', 'personal-perfiles':'Control de Personal — Perfiles de Trabajo',
   'personal-tipos-puesto':'Control de Personal — Tipo de Puesto',
   'personal-listado':'Control de Personal — Listado de Trabajadores',
@@ -6031,7 +6031,8 @@ const MODULE_GROUPS = [
   { label: '✈ Servicio',             mods: ['viaticos','gastos-viaje','envios'] },
   { label: '📊 Reportes y Config',    mods: ['wh','report','multirpt','fx','projconfig','projconfig-dashboard','projconfig-presupuesto','projconfig-timing','projconfig-abiertos','projconfig-cambios','projconfig-documentos'] },
   { label: '💹 Finanzas',             mods: ['fin-recepciones','fin-procesarcompra','fin-cpp','fin-pagos','fin-esquemas'] },
-  { label: '🧑‍💼 Recursos Humanos',    mods: ['rrhh-asistencia','rrhh-vacaciones','rrhh-permisos','rrhh-salario','rrhh-sueldos','rrhh-nomina','rrhh-kpis','personal-areas','personal-tipos-puesto','personal-perfiles','personal-listado'] },
+  { label: '🧑‍💼 Recursos Humanos',    mods: ['rrhh-asistencia','rrhh-vacaciones','rrhh-permisos','rrhh-salario','rrhh-sueldos','rrhh-nomina','personal-areas','personal-tipos-puesto','personal-perfiles','personal-listado'] },
+  { label: '📈 Management',          mods: ['rrhh-kpis'] },
   { label: '🏭 Operaciones',           mods: ['ops-capacidad','ops-ot','ops-op','ops-os'] },
 ];
 
@@ -6131,6 +6132,12 @@ function adminSelectUser(uname) {
         <input type="checkbox" id="admin-sal-${uname}" ${puedeVerSalarios||isAdmin?'checked':''} ${isAdmin?'disabled':''} onchange="adminSetPuedeVerSalarios('${uname}',this.checked)" style="width:16px;height:16px;cursor:pointer">
         <label for="admin-sal-${uname}" style="font-size:12px;font-weight:600;cursor:pointer">🔒 Puede ver/editar Salarios (Sueldos y Salarios)</label>
         ${isAdmin?'<span style="font-size:10px;color:var(--muted);margin-left:auto">Los administradores siempre pueden</span>':''}
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;background:rgba(0,0,0,.03);border:1px solid var(--border);border-radius:8px;padding:8px 14px;margin-bottom:14px">
+        <label style="font-size:12px;font-weight:600;white-space:nowrap">👤 Persona en Control de Personal</label>
+        <select onchange="adminSetTid('${esc(uname)}', this.value)" style="flex:1;background:var(--inp);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12px">
+          <option value="">— Sin ligar —</option>${(d.personal||[]).map(p=>`<option value="${esc(p.tid)}" ${info.tid===p.tid?'selected':''}>${esc(p.nombre)} (${esc(p.tid)})</option>`).join('')}</select>
+        <span style="font-size:10px;color:var(--muted)">Sus KPIs personales aparecen en su Dashboard</span>
       </div>
       ${role==='PROJECT MANAGER'?`<div id="admin-pm-${esc(uname)}" style="background:rgba(0,0,0,.03);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:14px">
         <div style="display:flex;align-items:center;margin-bottom:6px"><b style="font-size:12px">PM en los Jobs ligado a este usuario</b>
@@ -6275,6 +6282,12 @@ function applyPermsToDom(d) {
         }
       }
     }
+  });
+  // rev93: un menú sin ninguna opción visible (ej. Management sin acceso a KPIs) no se muestra
+  document.querySelectorAll('.nav-group').forEach(g=>{
+    const dd = g.querySelector('.nav-dropdown'); if(!dd) return;
+    const bs = [...dd.querySelectorAll('button')];
+    if(bs.length && bs.every(b=>b.style.display==='none')) g.style.display='none';
   });
 
   // ── Module-level button visibility
@@ -7144,6 +7157,7 @@ async function initHomeDashboard(){
       await loadPurchDashboard();
     }
   }catch(e){ /* si falla, se queda la bienvenida de siempre — nunca romper el inicio */ }
+  kpiHomeInsert();                                    // rev94: KPIs del usuario y de su perfil
 }
 
 // ── Dashboard PROJECT MANAGER: Jobs Open/WIP del PM ligado al usuario.
@@ -18764,8 +18778,17 @@ function kpiRender(){
   if(!_kpi.asign.length){ body.innerHTML = `<div class="es"><div class="ei">🎯</div><p>Aún no hay KPIs asignados. Usa "+ Asignar KPI".</p></div>${kpiCatalogoHTML()}`; return; }
   const grupos = {}; lst.forEach(x=>{ const k = x.asignacion.nombre || 'Global'; (grupos[k]=grupos[k]||[]).push(x); });
   const puede = permCanCreate('rrhh-kpis');
+  const tarjeta = x => kpiTarjetaHTML(x, puede);
+  body.innerHTML = Object.entries(grupos).map(([n, xs])=>{
+    const ver = xs.filter(x=>x.estado==='verde').length, rojo = xs.filter(x=>x.estado==='rojo').length;
+    return `<div style="margin-bottom:22px"><div style="display:flex;align-items:baseline;gap:10px;margin-bottom:8px"><div style="font-size:15px;font-weight:800">${esc(n)}</div>
+      <span style="font-size:11px;color:var(--muted2)">${xs.length} KPI${xs.length===1?'':'s'} · <span style="color:#16a34a">${ver} en meta</span>${rojo?` · <span style="color:#c8102e">${rojo} fuera de meta</span>`:''}</span></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px">${xs.map(tarjeta).join('')}</div></div>`;
+  }).join('') + kpiCatalogoHTML();
+}
+function kpiTarjetaHTML(x, puede, compacta){
   const MES1 = ['E','F','M','A','M','J','J','A','S','O','N','D'];
-  const tarjeta = x => {
+  {
     const a = x.asignacion, K = x.kpi, col = KPI_COL[x.estado] || 'var(--muted)';
     const max = Math.max(1, ...x.periodos.map(p=>Math.abs(p.valor||0)), Math.abs(a.meta||0));
     const fina = x.periodos.length > 20, H = 56, lblH = fina ? 0 : 14;
@@ -18784,25 +18807,25 @@ function kpiRender(){
       </div>
       <div style="display:flex;align-items:baseline;gap:10px;margin:8px 0 4px;flex-wrap:wrap">
         <span style="font-size:26px;font-weight:800;color:${col}">${esc(kpiFmt(x.promedio,K.unidad))}</span>
-        <span style="font-size:10.5px;color:var(--muted2)">${K.sentido==='reduccion'?(()=>{ const u=[...x.periodos].reverse().find(p=>p.valor!=null); return `último valor${u?` (${esc(u.p)})`:''}${u&&u.variacion!=null?` · ${u.variacion>0?'+':''}${u.variacion} % vs mes anterior`:''}`; })():K.periodo==='proyecto'?'promedio de proyectos cerrados':'promedio del año'}${x.ultimo&&K.periodo!=='proyecto'?` · último (${esc(x.ultimo.p)}): <b>${esc(kpiFmt(x.ultimo.valor,K.unidad))}</b>`:''}${x.en_curso&&K.periodo!=='proyecto'?` · en curso (${esc(x.en_curso.p)}): ${esc(kpiFmt(x.en_curso.valor,K.unidad))}`:''}${x.wip&&x.wip.n?` · <span title="Jobs en WIP: valor al día de hoy, no se evalúan">WIP (${x.wip.n}): ${esc(kpiFmt(x.wip.promedio,K.unidad))}</span>`:''}</span>
+        <span style="font-size:10.5px;color:var(--muted2)">${x.pie?`del año · ${x.pie.aceptadas} de ${x.pie.emitidas} emitidas`:K.sentido==='reduccion'?(()=>{ const u=[...x.periodos].reverse().find(p=>p.valor!=null); return `último valor${u?` (${esc(u.p)})`:''}${u&&u.variacion!=null?` · ${u.variacion>0?'+':''}${u.variacion} % vs mes anterior`:''}`; })():K.periodo==='proyecto'?'promedio de proyectos cerrados':'promedio del año'}${x.ultimo&&K.periodo!=='proyecto'?` · último (${esc(x.ultimo.p)}): <b>${esc(kpiFmt(x.ultimo.valor,K.unidad))}</b>`:''}${x.en_curso&&K.periodo!=='proyecto'?` · en curso (${esc(x.en_curso.p)}): ${esc(kpiFmt(x.en_curso.valor,K.unidad))}`:''}${x.wip&&x.wip.n?` · <span title="Jobs en WIP: valor al día de hoy, no se evalúan">WIP (${x.wip.n}): ${esc(kpiFmt(x.wip.promedio,K.unidad))}</span>`:''}</span>
         <span style="margin-left:auto;font-size:10.5px;color:var(--muted2)">${a.meta==null?'sin meta':x.evaluados?`cumplió ${x.cumplidos} de ${x.evaluados}`:'sin datos aún'}</span>
       </div>
-      ${x.periodos.length?`<div style="position:relative;display:flex;gap:${fina?1:3}px;align-items:flex-end;height:${H+lblH+4}px;padding-top:4px">${barras}
+      ${x.pie ? kpiPieHTML(x.pie) : x.periodos.length?`<div style="position:relative;display:flex;gap:${fina?1:3}px;align-items:flex-end;height:${H+lblH+4}px;padding-top:4px">${barras}
         ${a.meta!=null && K.sentido!=='reduccion'?`<div title="Meta ${esc(kpiFmt(a.meta,K.unidad))}" style="position:absolute;left:0;right:0;bottom:${lblH+metaY}px;border-top:1px dashed var(--red);opacity:.7"></div>`:''}</div>`:''}
       ${x.nota?`<div style="font-size:10px;color:var(--muted);margin-top:4px">${esc(x.nota)}</div>`:''}
+      ${(x.desglose||[]).length?`<table style="width:100%;font-size:11px;border-collapse:collapse;margin-top:8px"><thead><tr><th style="text-align:left;padding:3px 4px;cursor:default">Área</th><th style="text-align:right;padding:3px 4px;cursor:default">${K.periodo==='proyecto'?'Último proyecto':'Último mes'}</th><th style="text-align:right;padding:3px 4px;cursor:default">${K.periodo==='proyecto'?'Promedio (proyectos)':'Promedio'}</th></tr></thead>
+        <tbody>${x.desglose.map(d=>{ const st = kpiEstadoLocal(d.ultimo, a, K); return `<tr style="border-top:1px solid var(--border)"><td style="padding:3px 4px">${esc(d.area)}</td>
+          <td style="padding:3px 4px;text-align:right;font-weight:700;color:${KPI_COL[st]||'var(--text)'}" title="${esc(d.ultimo_p||'')}">${esc(kpiFmt(d.ultimo,K.unidad))}</td>
+          <td style="padding:3px 4px;text-align:right">${esc(kpiFmt(d.promedio,K.unidad))}${d.n!=null?` <span style="color:var(--muted);font-size:10px">(${d.n})</span>`:''}</td></tr>`; }).join('')}</tbody></table>`:''}
       ${tablaProy}
       ${(x.excluidos||[]).length?`<details style="margin-top:6px"><summary style="cursor:pointer;font-size:11px;color:#b45309">⚠ ${x.excluidos.length} proyecto(s) cerrado(s) sin dato para calcular</summary>
         <table style="width:100%;font-size:11px;border-collapse:collapse;margin-top:4px">${x.excluidos.map(e=>`<tr style="border-top:1px solid var(--border)"><td style="padding:3px 4px;font-family:'DM Mono',monospace;color:var(--gold)">${esc(e.job)}</td><td style="padding:3px 4px;color:var(--muted2);white-space:normal;word-break:break-word;font-size:10.5px">${esc(e.motivo)}</td></tr>`).join('')}</table></details>`:''}
-      ${a.alcance==='persona'?`<div style="font-size:9.5px;color:var(--muted);margin-top:6px" title="Identificadores">🔎 ${esc((a.identificadores||[]).join(' · '))}</div>`:''}
+      ${a.alcance==='persona'&&!compacta?`<div style="font-size:9.5px;color:var(--muted);margin-top:6px" title="Identificadores">🔎 ${esc((a.identificadores||[]).join(' · '))}</div>`:''}
+      ${a.alcance!=='persona'&&!compacta?`<div style="font-size:9.5px;color:var(--muted);margin-top:4px">🏠 Dashboard: ${(a.dashboard_perfiles||[]).length?esc(a.dashboard_perfiles.map(p=>p==='admin'?'Administrador':p.charAt(0)+p.slice(1).toLowerCase()).join(', ')):'ningún perfil'}</div>`:''}
     </div>`;
-  };
-  body.innerHTML = Object.entries(grupos).map(([n, xs])=>{
-    const ver = xs.filter(x=>x.estado==='verde').length, rojo = xs.filter(x=>x.estado==='rojo').length;
-    return `<div style="margin-bottom:22px"><div style="display:flex;align-items:baseline;gap:10px;margin-bottom:8px"><div style="font-size:15px;font-weight:800">${esc(n)}</div>
-      <span style="font-size:11px;color:var(--muted2)">${xs.length} KPI${xs.length===1?'':'s'} · <span style="color:#16a34a">${ver} en meta</span>${rojo?` · <span style="color:#c8102e">${rojo} fuera de meta</span>`:''}</span></div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px">${xs.map(tarjeta).join('')}</div></div>`;
-  }).join('') + kpiCatalogoHTML();
+  }
 }
+
 function kpiCatalogoHTML(){
   if(!_kpi.cat) return '';
   return `<details style="margin-top:10px"><summary style="cursor:pointer;font-size:12px;font-weight:700">Cómo se calcula cada KPI</summary>
@@ -18829,6 +18852,7 @@ function kpiAbrir(kid){
   document.getElementById('kpi-tol').value = a && a.tolerancia!=null ? a.tolerancia : '';
   document.getElementById('kpi-notas').value = a ? (a.notas||'') : '';
   document.getElementById('kpi-activo').checked = a ? a.activo!==false : true;
+  kpiPerfilesUI(a ? (a.dashboard_perfiles||[]) : []);
   _kpi.ids = a ? [...(a.identificadores||[])] : [];
   kpiInfo(); kpiRenderIds();
   document.getElementById('mo-kpi').classList.add('on');
@@ -18838,6 +18862,8 @@ function kpiInfo(ev){
   if(ev && ev.target && ev.target.id==='kpi-kpi') kpiAlcances();
   const alc = document.getElementById('kpi-alcance').value, glob = alc!=='persona';
   document.getElementById('kpi-area-box').style.display = alc==='area' ? '' : 'none';
+  document.getElementById('kpi-perf-box').style.display = alc==='persona' ? 'none' : '';
+  document.getElementById('kpi-pers-dash').style.display = alc==='persona' ? '' : 'none';
   document.getElementById('kpi-info').innerHTML = `<b>${KPI_PER[k.periodo]}</b> · ${esc(k.formula)}<br><i>Fuente: ${esc(k.fuente)}</i> · ${k.sentido==='menor'?'menor es mejor':'mayor es mejor'}`;
   document.getElementById('kpi-meta-lbl').textContent = k.sentido==='reduccion' ? 'Meta: % que debe bajar vs el mes anterior' : `Meta (${k.unidad}) — ${k.sentido==='menor'?'no mayor a':'al menos'}`;
   document.getElementById('kpi-persona-box').style.display = glob ? 'none' : '';
@@ -18864,7 +18890,8 @@ async function kpiGuardar(){
   const body = {kid: document.getElementById('kpi-kid').value || undefined, kpi: document.getElementById('kpi-kpi').value,
     alcance: document.getElementById('kpi-alcance').value, tid: document.getElementById('kpi-tid').value, area: document.getElementById('kpi-area').value,
     meta: document.getElementById('kpi-meta').value, tolerancia: document.getElementById('kpi-tol').value,
-    identificadores: _kpi.ids, notas: document.getElementById('kpi-notas').value, activo: document.getElementById('kpi-activo').checked};
+    identificadores: _kpi.ids, notas: document.getElementById('kpi-notas').value, activo: document.getElementById('kpi-activo').checked,
+    dashboard_perfiles: [...document.querySelectorAll('#kpi-perfiles input:checked')].map(i=>i.value)};
   const r = await apiCall('POST','/kpis/asignaciones',body);
   if(r.error){ toast(r.error,'er'); return; }
   toast('KPI guardado ✓','ok'); closeMo('mo-kpi'); kpiCargar();
@@ -18959,4 +18986,69 @@ async function whReasigConfirmar(){
     if(typeof whLoad==='function') whLoad(); else if(typeof loadWH==='function') loadWH();
   }catch(e){ toast('No se reasignó: '+e.message,'er',8000); }
   finally{ btn.textContent = 'Reasignar'; }
+}
+
+
+// rev94: estado de un valor contra la meta (para el desglose por área)
+function kpiEstadoLocal(v, a, K){
+  if(v==null || a.meta==null || K.sentido==='reduccion') return null;
+  const tol = a.tolerancia!=null ? Math.abs(a.tolerancia) : Math.abs(a.meta)*0.1;
+  if(K.sentido==='menor') return v<=a.meta ? 'verde' : v<=a.meta+tol ? 'ambar' : 'rojo';
+  return v>=a.meta ? 'verde' : v>=a.meta-tol ? 'ambar' : 'rojo';
+}
+
+// ════════════════════════════════════════════════════════
+//  rev94 — KPIs en el Dashboard de inicio
+// ════════════════════════════════════════════════════════
+let _kpiHomeHTML = '', _kpiHomeObs = null;
+async function kpiHomeInsert(){
+  try{
+    const d = await fetch('/api/kpis/mi-dashboard').then(r=>r.json());
+    const res = (d && d.resultados) || [];
+    if(!res.length){ _kpiHomeHTML = ''; return; }
+    const pers = res.filter(x=>x.asignacion._motivo==='persona'), perf = res.filter(x=>x.asignacion._motivo!=='persona');
+    const bloque = (titulo, xs) => xs.length ? `<div style="margin-bottom:14px"><div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);margin-bottom:8px">${titulo}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px">${xs.map(x=>kpiTarjetaHTML(x,false,true)).join('')}</div></div>` : '';
+    _kpiHomeHTML = `<div id="home-kpis" style="margin-bottom:22px">
+      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:10px"><div style="font-size:18px;font-weight:800">🎯 KPIs ${d.anio}</div>
+        <span style="font-size:11px;color:var(--muted2)">${res.filter(x=>x.estado==='verde').length} en meta · ${res.filter(x=>x.estado==='rojo').length} fuera de meta</span></div>
+      ${bloque('Mis KPIs', pers)}${bloque(pers.length?'KPIs de la empresa':'', perf)}</div>`;
+    const wrap = document.getElementById('home-dashboard'), dflt = document.getElementById('home-default');
+    if(!wrap) return;
+    if(wrap.style.display==='none'){ wrap.innerHTML=''; wrap.style.display='block'; if(dflt) dflt.style.display='none'; }
+    const poner = () => { if(_kpiHomeHTML && !document.getElementById('home-kpis')) wrap.insertAdjacentHTML('afterbegin', _kpiHomeHTML); };
+    poner();
+    // los dashboards de cada perfil reescriben el contenido al cambiar filtros: se vuelve a poner
+    if(!_kpiHomeObs){ _kpiHomeObs = new MutationObserver(()=>{ if(!document.getElementById('home-kpis')) poner(); }); _kpiHomeObs.observe(wrap, {childList:true}); }
+  }catch(e){ /* nunca romper el inicio */ }
+}
+function kpiPerfilesUI(sel){
+  const box = document.getElementById('kpi-perfiles'); if(!box || !_kpi.cat) return;
+  const N = p => p==='admin' ? 'Administrador' : p.charAt(0)+p.slice(1).toLowerCase();
+  box.innerHTML = (_kpi.cat.perfiles||[]).map(p=>`<label class="kpi-perf" style="display:inline-flex;gap:5px;align-items:center;font-size:11px;margin:2px 10px 2px 0;cursor:pointer;text-transform:none;letter-spacing:0;font-weight:400"><input type="checkbox" value="${esc(p)}" ${(sel||[]).includes(p)?'checked':''}> ${esc(N(p))}</label>`).join('');
+}
+
+// rev94: ligar usuario ↔ persona de Control de Personal (KPIs personales en su Dashboard)
+async function adminSetTid(uname, tid){
+  const r = await fetch('/api/admin/users/'+encodeURIComponent(uname),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({tid})}).then(r=>r.json());
+  if(r.error){ toast(r.error,'er'); return; }
+  if(_adminUsersData?.users?.[uname]) _adminUsersData.users[uname].tid = tid || null;
+  toast(tid ? `${uname} ligado a la persona ${tid}` : `${uname} sin persona ligada`,'ok',3000);
+}
+
+
+// rev96: gráfica de pastel (Quote success rate): aceptadas / rechazadas / pendientes del año
+function kpiPieHTML(p){
+  const tot = p.emitidas || 0;
+  const seg = [['Aceptadas', p.aceptadas, '#16a34a'], ['Rechazadas', p.rechazadas, '#c8102e'], ['Pendientes', p.pendientes, '#94a3b8']];
+  if(!tot) return '<div style="font-size:11px;color:var(--muted);padding:18px 0;text-align:center">Sin cotizaciones emitidas en el año</div>';
+  const R = 44, C = 2*Math.PI*R; let off = 0;
+  const arcos = seg.filter(x=>x[1]>0).map(([n,v,c])=>{ const L = v/tot*C; const el = `<circle r="${R}" cx="60" cy="60" fill="none" stroke="${c}" stroke-width="22" stroke-dasharray="${L} ${C-L}" stroke-dashoffset="${-off}" transform="rotate(-90 60 60)"><title>${n}: ${v} (${(v/tot*100).toFixed(1)} %)</title></circle>`; off += L; return el; }).join('');
+  return `<div style="display:flex;align-items:center;gap:16px;margin-top:4px">
+    <svg viewBox="0 0 120 120" width="120" height="120" style="flex-shrink:0">${arcos}
+      <text x="60" y="56" text-anchor="middle" style="font-size:20px;font-weight:800;fill:var(--text)">${tot}</text>
+      <text x="60" y="73" text-anchor="middle" style="font-size:9px;fill:var(--muted)">emitidas</text></svg>
+    <div style="flex:1;font-size:12px">${seg.map(([n,v,c])=>`<div style="display:flex;align-items:center;gap:7px;margin:4px 0">
+      <span style="width:11px;height:11px;border-radius:3px;background:${c}"></span><span style="flex:1">${n}</span>
+      <b>${v}</b><span style="color:var(--muted);width:48px;text-align:right">${(v/tot*100).toFixed(1)} %</span></div>`).join('')}</div></div>`;
 }
