@@ -8368,32 +8368,126 @@ def api_dashboard_engineering():
 #  Sales (cotizaciones) y como empleado (Work Hours). Alcance "global" = toda la empresa.
 # ══════════════════════════════════════════════════════════════════
 KPI_CATALOGO = [
-    {"k": "cotizaciones_creadas", "nombre": "Tasa de creación de cotizaciones", "periodo": "mensual", "unidad": "cotizaciones",
-     "sentido": "mayor", "fuente": "Cotizaciones (Key Account Manager / Technical Sales)",
+    # alcances: "global" (toda la empresa), "persona", "area" (área de Control de Personal / área operativa)
+    {"k": "cotizaciones_creadas", "nombre": "Quotes issued by month", "nombre_es": "Tasa de creación de cotizaciones",
+     "periodo": "mensual", "unidad": "cotizaciones", "sentido": "mayor", "alcances": ["global", "persona"],
+     "fuente": "Cotizaciones (Key Account Manager / Technical Sales)",
      "formula": "Cotizaciones registradas en el mes (fecha de recepción del RFQ, o de alta)."},
-    {"k": "aceptacion_cotizaciones", "nombre": "Tasa de aceptación de cotizaciones", "periodo": "trimestral", "unidad": "%",
-     "sentido": "mayor", "fuente": "Cotizaciones (Key Account Manager / Technical Sales)",
+    {"k": "aceptacion_cotizaciones", "nombre": "Quote success rate", "nombre_es": "Tasa de aceptación de cotizaciones",
+     "periodo": "trimestral", "unidad": "%", "sentido": "mayor", "alcances": ["global", "persona"],
+     "fuente": "Cotizaciones (Key Account Manager / Technical Sales)",
      "formula": "Cotizaciones ganadas (Awarded) ÷ cotizaciones enviadas al cliente en el trimestre × 100."},
-    {"k": "pos_recibidas", "nombre": "Índice de POs recibidas", "periodo": "mensual", "unidad": "POs",
-     "sentido": "mayor", "fuente": "Customer POs (PM)",
+    {"k": "pos_recibidas", "nombre": "POs received by month", "nombre_es": "Índice de POs recibidas",
+     "periodo": "mensual", "unidad": "POs", "sentido": "mayor", "alcances": ["global", "persona"], "fuente": "Customer POs (PM)",
      "formula": "Customer POs de revenue recibidas en el mes (fecha de la PO). También se informa el monto."},
-    {"k": "margen_proyectos", "nombre": "Margen de ganancia promedio de proyectos asignados", "periodo": "proyecto", "unidad": "%",
-     "sentido": "mayor", "fuente": "Jobs donde es PM",
+    {"k": "margen_proyectos", "nombre": "Avg. gross margin per project", "nombre_es": "Margen de ganancia promedio de proyectos asignados",
+     "periodo": "proyecto", "unidad": "%", "sentido": "mayor", "alcances": ["global", "persona"], "fuente": "Jobs donde es PM",
      "formula": "Margen de cada Job cerrado en el año: resultado operativo ÷ Internal Target; si el Job no tiene Internal Target, (revenue − costo) ÷ revenue. El valor del KPI es el promedio de sus Jobs."},
-    {"k": "entrega_tiempo", "nombre": "Entrega en tiempo de proyectos asignados", "periodo": "proyecto", "unidad": "%",
-     "sentido": "mayor", "fuente": "Jobs donde es PM",
+    {"k": "entrega_tiempo", "nombre": "On-time delivery index", "nombre_es": "Entrega en tiempo de proyectos asignados",
+     "periodo": "proyecto", "unidad": "%", "sentido": "mayor", "alcances": ["global", "persona"], "fuente": "Jobs donde es PM",
      "formula": "Proyectos entregados en o antes de la fecha de envío comprometida ÷ proyectos entregados × 100. Entrega real: fecha real de la actividad de Envío del Timing, o fecha de cierre del Job."},
-    {"k": "ahorro_compras", "nombre": "Porcentaje promedio de ahorro por compra de componentes", "periodo": "proyecto", "unidad": "%",
-     "sentido": "mayor", "fuente": "Jobs donde es PM (o global para Compras)",
+    {"k": "ahorro_compras", "nombre": "Avg. purchasing savings", "nombre_es": "Porcentaje promedio de ahorro por compra de componentes",
+     "periodo": "proyecto", "unidad": "%", "sentido": "mayor", "alcances": ["global", "persona"], "fuente": "Jobs donde es PM (o global para Compras)",
      "formula": "Promedio de (Target Compras − adquirido) ÷ Target Compras × 100 de los proyectos cerrados (estatus Done). Target Compras = el de Configurar Proyecto; adquirido = órdenes de compra del Job (todos sus años)."},
-    {"k": "horas_extra", "nombre": "Índice de horas extras", "periodo": "semanal", "unidad": "%",
-     "sentido": "menor", "fuente": "Work Hours (empleado)",
+    {"k": "horas_extra", "nombre": "Weekly overtime index", "nombre_es": "Índice de horas extras",
+     "periodo": "semanal", "unidad": "%", "sentido": "menor", "alcances": ["global", "persona", "area"], "fuente": "Work Hours (empleado)",
      "formula": "Horas que pasan de su jornada semanal (Tipo de Puesto, o 48 h) ÷ horas ordinarias × 100."},
-    {"k": "eficiencia_horas", "nombre": "Eficiencia horas usadas vs horas planeadas por proyecto", "periodo": "proyecto", "unidad": "%",
-     "sentido": "menor", "fuente": "Jobs donde es PM",
+    {"k": "eficiencia_horas", "nombre": "Hours efficiency: used vs planned", "nombre_es": "Eficiencia horas usadas vs horas planeadas por proyecto",
+     "periodo": "proyecto", "unidad": "%", "sentido": "menor", "alcances": ["global", "persona"], "fuente": "Jobs donde es PM",
      "formula": "Horas usadas (Work Hours) ÷ horas planeadas (Configurar Proyecto) × 100, de sus Jobs cerrados. La meta es el máximo permitido: 100 % = se usó exactamente lo planeado; más de 100 % = se usaron más horas de las planeadas."},
+    # ── rev92: nuevos
+    {"k": "asistencia", "nombre": "Weekly attendance index", "nombre_es": "Índice de asistencia semanal",
+     "periodo": "semanal", "unidad": "%", "sentido": "mayor", "alcances": ["global", "persona", "area"], "fuente": "Kiosco de asistencia + Control de Personal",
+     "formula": "Días con registro de entrada en el kiosco ÷ días laborables esperados × 100. Días esperados: los de su jornada (Tipo de Puesto, o lunes a viernes), sin días festivos de ley, sin permisos o vacaciones aprobados y solo desde su fecha de ingreso."},
+    {"k": "valor_stock", "nombre": "Monthly stock value", "nombre_es": "Valor mensual del Stock",
+     "periodo": "mensual", "unidad": "$", "sentido": "reduccion", "alcances": ["global"], "fuente": "Almacén ▸ Stock (foto diaria)",
+     "formula": "Valor del Stock al cierre de cada mes (existencia × último costo). La meta es el % que debe BAJAR respecto al mes anterior (ej. 5 % = el nuevo mes debe valer al menos 5 % menos)."},
+    {"k": "valor_consignacion", "nombre": "Monthly consignment value", "nombre_es": "Valor mensual de material en consignación",
+     "periodo": "mensual", "unidad": "$", "sentido": "reduccion", "alcances": ["global"], "fuente": "Almacén ▸ Consignación (foto diaria)",
+     "formula": "Valor del material en consignación al cierre de cada mes (existencia × último costo). La meta es el % que debe BAJAR respecto al mes anterior."},
+    {"k": "costo_hora_area", "nombre": "Avg. cost per hour by operating area", "nombre_es": "Costo promedio por hora de cada área operativa",
+     "periodo": "mensual", "unidad": "$/h", "sentido": "menor", "alcances": ["global", "area"], "fuente": "Work Hours + Hourly Rate",
+     "formula": "Costo de mano de obra del mes (horas × tarifa de cada empleado) ÷ horas del mes, de las áreas operativas (Ingeniería Mecánica, Eléctrica, Manufactura, Ensamble). Global = las cuatro juntas."},
+    {"k": "rotacion", "nombre": "Monthly staff turnover index", "nombre_es": "Índice mensual de rotación de personal",
+     "periodo": "mensual", "unidad": "%", "sentido": "menor", "alcances": ["global", "area"], "fuente": "Control de Personal",
+     "formula": "Bajas del mes ÷ plantilla promedio del mes ((activos al inicio + activos al fin) ÷ 2) × 100."},
+    {"k": "indice_cpp", "nombre": "Accounts payable index (avg. days to pay)", "nombre_es": "Índice de CPP",
+     "periodo": "mensual", "unidad": "días", "sentido": "menor", "alcances": ["global"], "fuente": "Finanzas ▸ CPP y Pagos",
+     "formula": "Días promedio entre el registro de la cuenta por pagar y su pago, de las CPP pagadas en el mes. También se informa el saldo pendiente."},
+    {"k": "indice_cpc", "nombre": "Accounts receivable index (overdue %)", "nombre_es": "Índice de CPC",
+     "periodo": "mensual", "unidad": "%", "sentido": "menor", "alcances": ["global"], "fuente": "Finanzas ▸ CPC",
+     "formula": "Monto de cuentas por cobrar vencidas al cierre del mes ÷ monto total por cobrar a esa fecha × 100 (cartera vencida)."},
 ]
 KPI_POR_CLAVE = {k["k"]: k for k in KPI_CATALOGO}
+
+# ── rev92: fotos diarias del valor de Stock y Consignación (no guardan historia propia)
+def _kpi_snap_set(clave, data):
+    if not (_orm and _orm.DB_ENABLED): return
+    s_ = _orm.get_session()
+    try:
+        r = s_.query(_orm.KpiSnapshot).filter(_orm.KpiSnapshot.clave == clave).one_or_none()
+        if r is None: s_.add(_orm.KpiSnapshot(clave=clave, data=data))
+        else: r.data = data; _orm_flag_modified(r, "data")
+        s_.commit()
+    except Exception as e:
+        s_.rollback(); print(f"[KPI] foto {clave}: {e}")
+    finally:
+        s_.close()
+
+def _kpi_snap_get(prefijo):
+    """{clave: data} de las fotos que empiezan con `prefijo`."""
+    if not (_orm and _orm.DB_ENABLED): return {}
+    s_ = _orm.get_session()
+    try:
+        return {r.clave: r.data for r in s_.query(_orm.KpiSnapshot).filter(_orm.KpiSnapshot.clave.like(prefijo + "%")).all()}
+    finally:
+        s_.close()
+
+def _valor_inventario(recs):
+    tot, n = 0.0, 0
+    for r in recs or []:
+        try:
+            q = float(r.get("quantity") or 0); c = float(r.get("last_cost") or 0)
+        except (TypeError, ValueError):
+            continue
+        if q > 0: tot += q * c; n += 1
+    return round(tot, 2), n
+
+def _kpi_foto_inventarios():
+    """Guarda la foto de hoy del valor de Stock y de Consignación."""
+    hoy = datetime.date.today().isoformat()
+    try:
+        v, n = _valor_inventario(stock_load())
+        _kpi_snap_set(f"stock:{hoy}", {"valor": v, "partidas": n, "at": datetime.datetime.now().isoformat(timespec="minutes")})
+    except Exception as e: print(f"[KPI] foto stock: {e}")
+    if _consig:
+        try:
+            v, n = _valor_inventario(_consig.load("items"))
+            _kpi_snap_set(f"consignacion:{hoy}", {"valor": v, "partidas": n, "at": datetime.datetime.now().isoformat(timespec="minutes")})
+        except Exception as e: print(f"[KPI] foto consignación: {e}")
+
+def _kpi_sembrar_globales():
+    """Por default, cada KPI queda configurado para toda la empresa (alcance global, meta
+    por definir). Se hace una sola vez por KPI: si después lo eliminan, no se vuelve a crear."""
+    if not (_orm and _orm.DB_ENABLED): return
+    hechos = (_kpi_snap_get("config:sembrado").get("config:sembrado") or {}).get("kpis", [])
+    faltan = [k["k"] for k in KPI_CATALOGO if k["k"] not in hechos]
+    if not faltan: return
+    with lock:
+        recs = _load_catalog("kpi_asignaciones")
+        ya = {r.get("kpi") for r in recs if r.get("alcance") == "global"}
+        n = len(recs) + 1
+        usados = {r.get("kid") for r in recs}
+        for k in faltan:
+            if k in ya: continue
+            while f"KPI-{n:04d}" in usados: n += 1
+            usados.add(f"KPI-{n:04d}")
+            recs.append({"kid": f"KPI-{n:04d}", "kpi": k, "alcance": "global", "tid": None, "area": None,
+                         "nombre": "Global (toda la empresa)", "meta": None, "tolerancia": None, "identificadores": [],
+                         "activo": True, "notas": "Configurado por default — define la meta",
+                         "creado": datetime.datetime.now().isoformat(timespec="minutes"), "creado_por": "sistema"})
+        _save_catalog("kpi_asignaciones", recs)
+    _kpi_snap_set("config:sembrado", {"kpis": sorted(set(hechos) | set(faltan))})
 
 def _kpi_norm(v):
     """Nombre comparable: sin acentos, sin " - Persico", sin signos, palabras ordenadas."""
@@ -8432,12 +8526,15 @@ def api_kpis_catalogo():
         print(f"[kpis] sugerencias: {e}")
     personal = [{"tid": p.get("tid"), "nombre": p.get("nombre"), "puesto": p.get("puesto"), "area": p.get("area")}
                 for p in _load_personal() if (p.get("estado") or "Activo") != "Baja"]
-    return jsonify({"kpis": KPI_CATALOGO, "personal": sorted(personal, key=lambda x: x["nombre"] or ""),
+    areas = sorted({a.get("nombre") for a in (_load_catalog("areas") or []) if a.get("nombre")})
+    return jsonify({"kpis": KPI_CATALOGO, "personal": sorted(personal, key=lambda x: x["nombre"] or ""), "areas": areas,
                     "sugerencias": {k: sorted(v) for k, v in nombres.items()}})
 
 @app.route("/api/kpis/asignaciones", methods=["GET"])
 def api_kpis_asignaciones():
     if not _can_kpis("view"): return jsonify({"error": "Sin permiso"}), 403
+    try: _kpi_sembrar_globales()                         # rev92: todos los KPIs para toda la empresa
+    except Exception as e: print(f"[KPI] sembrado: {e}")
     return jsonify(_load_catalog("kpi_asignaciones"))
 
 @app.route("/api/kpis/asignaciones", methods=["POST"])
@@ -8446,14 +8543,19 @@ def api_kpis_asignar():
     d = request.json or {}
     kpi = d.get("kpi")
     if kpi not in KPI_POR_CLAVE: return jsonify({"error": "KPI inválido"}), 400
-    alcance = "global" if d.get("alcance") == "global" else "persona"
+    alcance = d.get("alcance") if d.get("alcance") in ("global", "persona", "area") else "persona"
+    if alcance not in KPI_POR_CLAVE[kpi].get("alcances", ["global", "persona"]):
+        return jsonify({"error": f"Este KPI no se puede asignar por {alcance}"}), 400
     tid = (d.get("tid") or "").strip()
+    area = (d.get("area") or "").strip()
     personal = {p.get("tid"): p for p in _load_personal()}
     if alcance == "persona" and tid not in personal: return jsonify({"error": "Selecciona a la persona"}), 400
-    try:
-        meta = float(d.get("meta"))
-    except (TypeError, ValueError):
-        return jsonify({"error": "Captura la meta (número)"}), 400
+    if alcance == "area" and not area: return jsonify({"error": "Selecciona el área"}), 400
+    if d.get("meta") in (None, ""):
+        meta = None                                       # rev92: meta por definir
+    else:
+        try: meta = float(d.get("meta"))
+        except (TypeError, ValueError): return jsonify({"error": "La meta debe ser un número"}), 400
     tol = d.get("tolerancia")
     try: tol = float(tol) if tol not in (None, "") else None
     except (TypeError, ValueError): return jsonify({"error": "La tolerancia debe ser un número"}), 400
@@ -8468,8 +8570,8 @@ def api_kpis_asignar():
             while f"KPI-{n:04d}" in {r.get("kid") for r in recs}: n += 1
             rec = {"kid": f"KPI-{n:04d}", "creado": datetime.datetime.now().isoformat(timespec="minutes"), "creado_por": session.get("user", "")}
             recs.append(rec)
-        rec.update(kpi=kpi, alcance=alcance, tid=tid if alcance == "persona" else None,
-                   nombre=(personal.get(tid) or {}).get("nombre") if alcance == "persona" else "Global (toda la empresa)",
+        rec.update(kpi=kpi, alcance=alcance, tid=tid if alcance == "persona" else None, area=area if alcance == "area" else None,
+                   nombre=(personal.get(tid) or {}).get("nombre") if alcance == "persona" else (f"Área: {area}" if alcance == "area" else "Global (toda la empresa)"),
                    meta=meta, tolerancia=tol, identificadores=ids, activo=bool(d.get("activo", True)),
                    notas=(d.get("notas") or "").strip()[:500], actualizado=datetime.datetime.now().isoformat(timespec="minutes"),
                    actualizado_por=session.get("user", ""))
@@ -8492,6 +8594,149 @@ def _kpi_estado(valor, meta, sentido, tol):
         return "verde" if valor <= meta else ("ambar" if valor <= meta + tol else "rojo")
     return "verde" if valor >= meta else ("ambar" if valor >= meta - tol else "rojo")
 
+# ── rev92: cálculos de los KPIs nuevos ─────────────────────────────────────────
+def _kpi_fd(v):
+    try: return datetime.date.fromisoformat(str(v or "")[:10])
+    except ValueError: return None
+
+def _kpi_asistencia(anio, hoy, a, personal_all):
+    """Por semana ISO: días con entrada en el kiosco ÷ días laborables esperados × 100."""
+    fd = _kpi_fd
+    if not _attendance_configured():
+        return [], "El kiosco de asistencia no está conectado"
+    try:
+        r = _att_get("/api/records", params={"from": f"{anio - 1}-12-25", "to": f"{anio + 1}-01-07T23:59:59"}, timeout=20)
+        regs = r.json() if r.status_code == 200 else []
+    except Exception as e:
+        return [], f"No se pudo leer el kiosco: {e}"
+    presentes = {}                                   # tid -> {fechas con entrada}
+    inicio = None                                    # arranque del kiosco: antes no hay con qué medir
+    for x in regs:
+        if x.get("type") != "entrada": continue
+        tid = x.get("workerId")
+        try:   # fecha local (México, UTC-6) del registro
+            f = (datetime.datetime.fromisoformat(str(x.get("timestamp")).replace("Z", "+00:00")) - datetime.timedelta(hours=6)).date()
+        except Exception:
+            continue
+        presentes.setdefault(tid, set()).add(f)
+        if inicio is None or f < inicio: inicio = f
+    if inicio is None:
+        return [], "Aún no hay registros de entrada en el kiosco"
+    tp = {p.get("tid"): p for p in _tipo_puesto_de_personas([dict(p) for p in personal_all])}
+    if a.get("alcance") == "persona": gente = [p for p in personal_all if p.get("tid") == a.get("tid")]
+    elif a.get("alcance") == "area": gente = [p for p in personal_all if (p.get("area") or "").strip().lower() == (a.get("area") or "").strip().lower()]
+    else: gente = list(personal_all)
+    festivos = {f for f, _n in _festivos_lft(anio)} | {f for f, _n in _festivos_lft(anio + 1)} | {f for f, _n in _festivos_lft(anio - 1)}
+    ausencias = {}                                    # tid -> {fechas con permiso/vacaciones aprobados}
+    for pm in _load_permisos() or []:
+        if pm.get("estatus") != "Aprobado" or pm.get("modalidad") == "horas": continue
+        pi, pf = fd(pm.get("fecha_inicio") or pm.get("fecha")), fd(pm.get("fecha_fin") or pm.get("fecha"))
+        if not pi: continue
+        d = pi
+        while d <= (pf or pi):
+            ausencias.setdefault(pm.get("tid"), set()).add(d); d += datetime.timedelta(days=1)
+    n_sem = datetime.date(anio, 12, 28).isocalendar()[1]
+    out = []
+    for w in range(1, n_sem + 1):
+        lun = datetime.date.fromisocalendar(anio, w, 1)
+        if lun > hoy: out.append({"p": f"S{w}", "valor": None}); continue
+        esp = pres = 0
+        for p in gente:
+            tid = p.get("tid")
+            hd = ((tp.get(tid) or {}).get("tipo_puesto") or {}).get("horas_dia") or [1, 1, 1, 1, 1, 0, 0]
+            fi, fb = fd(p.get("fecha_ingreso")), fd(p.get("fecha_baja"))
+            baja = (p.get("estado") or "Activo") == "Baja"
+            for i in range(7):
+                d = lun + datetime.timedelta(days=i)
+                if d > hoy or d < inicio or not hd[i] or d in festivos: continue
+                if fi and d < fi: continue
+                if baja and (not fb or d > fb): continue
+                if d in ausencias.get(tid, set()): continue
+                esp += 1
+                if d in presentes.get(tid, set()): pres += 1
+        out.append({"p": f"S{w}", "valor": round(pres / esp * 100, 1) if esp else None, "extra": f"{pres} de {esp} día(s) esperados"})
+    return out, f"{len(gente)} persona(s) · desde el primer registro del kiosco ({inicio.isoformat()}) · días esperados según su jornada, sin festivos ni permisos/vacaciones aprobados"
+
+def _kpi_costo_hora(anio, hoy, a):
+    """Por mes: costo de mano de obra ÷ horas, de las áreas operativas (o de una)."""
+    _na = lambda v: " ".join(_sin_acentos(v).split())
+    areas4 = [x for x in (_load_catalog("areas") or []) if _na(x.get("nombre")) in CAP_AREAS_INDICES]
+    mapeo, _sug = _cap_mapeo(areas4)
+    if a.get("alcance") == "area":
+        objetivo = {_na(a.get("area"))}
+    else:
+        objetivo = {_na(x.get("nombre")) for x in areas4}
+    rates = {normalize_name(r.get("employee", "")): float(r.get("rate") or 0) for r in load_rates(anio)}
+    clasif = _wh_clasificador([]).clasificar
+    hrs, cost, sin_tarifa = [0.0] * 12, [0.0] * 12, set()
+    for r in wh_load(anio):
+        f = _kpi_fd(r.get("date_worked"))
+        if not f or f.year != anio: continue
+        c = clasif(r, anio)
+        if not c: continue
+        _f, k, _dep, h, _c, _t = c
+        ar = mapeo.get(k) if k else None
+        if not ar or _na(ar) not in objetivo: continue
+        e = normalize_name(r.get("employee", ""))
+        rt = rates.get(e)
+        if not rt: sin_tarifa.add(e); continue
+        hrs[f.month - 1] += h; cost[f.month - 1] += h * rt
+    out = []
+    for m in range(12):
+        if datetime.date(anio, m + 1, 1) > hoy or not hrs[m]: out.append({"p": f"{anio}-{m + 1:02d}", "valor": None}); continue
+        out.append({"p": f"{anio}-{m + 1:02d}", "valor": round(cost[m] / hrs[m], 2), "extra": f"${cost[m]:,.0f} ÷ {hrs[m]:,.1f} h"})
+    nota = ("Área: " + a.get("area")) if a.get("alcance") == "area" else "Áreas operativas: " + ", ".join(x.get("nombre") for x in areas4)
+    if sin_tarifa: nota += f" · {len(sin_tarifa)} empleado(s) sin tarifa en Hourly Rate {anio} no se cuentan"
+    return out, nota
+
+def _kpi_cpp(anio, hoy):
+    """Por mes: días promedio entre el registro de la CPP y su pago (CPP pagadas en el mes)."""
+    cpps = {str(c.get("cpp_number") or "").upper(): c for c in cpp_load()}
+    pagos = pago_load()
+    out = []
+    for m in range(1, 13):
+        d0 = datetime.date(anio, m, 1); d1 = (datetime.date(anio + (m == 12), m % 12 + 1, 1) - datetime.timedelta(days=1))
+        if d0 > hoy: out.append({"p": f"{anio}-{m:02d}", "valor": None}); continue
+        dias = []
+        for pg in pagos:
+            fp = _kpi_fd(pg.get("fecha"))
+            if not fp or not (d0 <= fp <= d1): continue
+            c = cpps.get(str(pg.get("cpp_number") or "").upper())
+            fc = _kpi_fd((c or {}).get("fecha") or (c or {}).get("created_at"))
+            if fc: dias.append((fp - fc).days)
+        corte = min(d1, hoy)
+        saldo = sum(abs(float(c.get("monto") or 0)) for c in cpps.values()
+                    if _kpi_fd(c.get("fecha") or c.get("created_at")) and _kpi_fd(c.get("fecha") or c.get("created_at")) <= corte
+                    and not any(str(pg.get("cpp_number") or "").upper() == str(c.get("cpp_number") or "").upper() and _kpi_fd(pg.get("fecha")) and _kpi_fd(pg.get("fecha")) <= corte for pg in pagos))
+        out.append({"p": f"{anio}-{m:02d}", "valor": round(sum(dias) / len(dias), 1) if dias else None,
+                    "extra": f"{len(dias)} pago(s) · saldo pendiente al cierre ${saldo:,.0f}"})
+    return out, "Días entre el registro de la CPP y la fecha del pago"
+
+def _kpi_cpc(anio, hoy):
+    """Por mes: % de la cartera por cobrar que está vencida al cierre del mes."""
+    cpcs = []
+    for y in range(anio - 2, anio + 1):
+        try: cpcs += cpc_load(y)
+        except Exception: pass
+    out = []
+    for m in range(1, 13):
+        d0 = datetime.date(anio, m, 1)
+        if d0 > hoy: out.append({"p": f"{anio}-{m:02d}", "valor": None}); continue
+        corte = min((datetime.date(anio + (m == 12), m % 12 + 1, 1) - datetime.timedelta(days=1)), hoy)
+        tot = venc = 0.0
+        for c in cpcs:
+            if c.get("estatus") == "Cancelada": continue
+            ff, fv, fp = _kpi_fd(c.get("fecha_factura")), _kpi_fd(c.get("fecha_vencimiento")), _kpi_fd(c.get("fecha_pago"))
+            if not ff or ff > corte: continue
+            if fp and fp <= corte: continue                       # ya cobrada a esa fecha
+            if not fp and c.get("estatus") == "Pagada": continue   # pagada sin fecha registrada
+            monto = float(c.get("total") or 0)
+            tot += monto
+            if fv and fv < corte: venc += monto
+        out.append({"p": f"{anio}-{m:02d}", "valor": round(venc / tot * 100, 1) if tot else None,
+                    "extra": f"vencido ${venc:,.0f} de ${tot:,.0f} por cobrar"})
+    return out, "Cartera vencida al cierre de cada mes (fecha de vencimiento de la factura)"
+
 @app.route("/api/kpis/resultados", methods=["GET"])
 def api_kpis_resultados():
     """Valores de cada KPI asignado en el año: por mes, trimestre, semana o proyecto."""
@@ -8506,6 +8751,12 @@ def api_kpis_resultados():
             except ValueError: return None
         trimestre = lambda d: (d.month - 1) // 3 + 1
         necesita = {a["kpi"] for a in asign}
+        # ── rev92: datos de los KPIs nuevos
+        personal_all = (_load_personal() or []) if necesita & {"asistencia", "rotacion", "horas_extra"} else []
+        if necesita & {"valor_stock", "valor_consignacion"} and anio == hoy.year:
+            try: _kpi_foto_inventarios()                  # la foto de hoy siempre está al día al consultar
+            except Exception as e: print(f"[KPI] foto: {e}")
+        fin_mes = lambda y, m: (datetime.date(y + (m == 12), m % 12 + 1, 1) - datetime.timedelta(days=1))
         # ── Datos comunes, cargados solo si algún KPI los necesita
         quotes = read_quote_records() if necesita & {"cotizaciones_creadas", "aceptacion_cotizaciones"} else []
         cpos = cpo_load(anio) if "pos_recibidas" in necesita else []
@@ -8585,7 +8836,11 @@ def api_kpis_resultados():
             K = KPI_POR_CLAVE.get(a["kpi"])
             if not K: continue
             glob = a.get("alcance") == "global"
+            por_area = a.get("alcance") == "area"
             ids = [_kpi_norm(x) for x in a.get("identificadores") or [] if _kpi_norm(x)]
+            if por_area:   # rev92: las personas del área (Control de Personal) por nombre
+                ids = [_kpi_norm(p.get("nombre")) for p in (personal_all or _load_personal() or [])
+                       if (p.get("area") or "").strip().lower() == (a.get("area") or "").strip().lower() and _kpi_norm(p.get("nombre"))]
             es = (lambda v: True) if glob else (lambda v: _kpi_es(ids, v))
             periodos, detalle, nota, excluidos = [], [], "", []
             if a["kpi"] == "cotizaciones_creadas":
@@ -8710,6 +8965,56 @@ def api_kpis_resultados():
                     periodos.append({"p": f"S{w}", "valor": round(ext / ords * 100, 1) if ords else None,
                                      "extra": f"{ext:,.1f} h extra de {sum(tot):,.1f} h"})
                 nota = f"Jornada base {base:g} h/semana" + ("" if glob else (" (Tipo de Puesto)" if (p or {}).get("tipo_puesto") else " (sin Tipo de Puesto: 48 h)"))
+            elif a["kpi"] == "asistencia":
+                periodos, nota = _kpi_asistencia(anio, hoy, a, personal_all)
+            elif a["kpi"] in ("valor_stock", "valor_consignacion"):
+                pref = "stock:" if a["kpi"] == "valor_stock" else "consignacion:"
+                fotos = _kpi_snap_get(pref)
+                por_mes = {}
+                for clave, dat in sorted(fotos.items()):
+                    f = fd(clave.split(":", 1)[1])
+                    if f: por_mes[(f.year, f.month)] = (f, float((dat or {}).get("valor") or 0))     # la última del mes
+                prev = por_mes.get((anio - 1, 12))
+                for m in range(1, 13):
+                    x = por_mes.get((anio, m))
+                    if not x: periodos.append({"p": f"{anio}-{m:02d}", "valor": None}); prev = None; continue
+                    f, v = x
+                    reg = {"p": f"{anio}-{m:02d}", "valor": round(v, 2), "extra": f"foto del {f.isoformat()}"}
+                    if prev:
+                        var = (v - prev[1]) / prev[1] * 100 if prev[1] else None
+                        if var is not None:
+                            reg["variacion"] = round(var, 1)
+                            reg["extra"] += f" · {var:+.1f} % vs mes anterior"
+                            meta = a.get("meta")
+                            if meta is not None:          # la meta = cuánto debe BAJAR (%) vs el mes anterior
+                                tol = abs(a.get("tolerancia")) if a.get("tolerancia") is not None else abs(meta) * 0.1
+                                reg["estado"] = "verde" if -var >= meta else ("ambar" if -var >= meta - tol else "rojo")
+                    periodos.append(reg); prev = x
+                if not fotos: nota = "Aún no hay fotos del valor: se toma una cada día que se guarda el inventario o se consultan los KPIs."
+                else: nota = f"Desde {min(fotos).split(':', 1)[1]} · el valor del mes es el de su última foto"
+            elif a["kpi"] == "costo_hora_area":
+                periodos, nota = _kpi_costo_hora(anio, hoy, a)
+            elif a["kpi"] == "rotacion":
+                grupo = personal_all if glob else [p for p in personal_all if (p.get("area") or "").strip().lower() == (a.get("area") or "").strip().lower()]
+                activo_p = lambda p: (p.get("estado") or "Activo") != "Baja"
+                def activo_en(p, dd):
+                    fi, fb = fd(p.get("fecha_ingreso")), fd(p.get("fecha_baja"))
+                    if fi and fi > dd: return False
+                    if not activo_p(p) and (not fb or fb < dd): return False
+                    return True
+                for m in range(1, 13):
+                    d0, d1 = datetime.date(anio, m, 1), fin_mes(anio, m)
+                    if d0 > hoy: periodos.append({"p": f"{anio}-{m:02d}", "valor": None}); continue
+                    ini = sum(1 for p in grupo if activo_en(p, d0)); fin_ = sum(1 for p in grupo if activo_en(p, min(d1, hoy)))
+                    b = sum(1 for p in grupo if not activo_p(p) and fd(p.get("fecha_baja")) and d0 <= fd(p["fecha_baja"]) <= d1)
+                    prom = (ini + fin_) / 2
+                    periodos.append({"p": f"{anio}-{m:02d}", "valor": round(b / prom * 100, 1) if prom else None,
+                                     "extra": f"{b} baja(s) · plantilla promedio {prom:g}"})
+                nota = f"{len(grupo)} persona(s) en el alcance"
+            elif a["kpi"] == "indice_cpp":
+                periodos, nota = _kpi_cpp(anio, hoy)
+            elif a["kpi"] == "indice_cpc":
+                periodos, nota = _kpi_cpc(anio, hoy)
             # el periodo en curso (mes, trimestre o semana de hoy) se muestra pero no se evalúa:
             # todavía no termina y bajaría el promedio injustamente
             if K["periodo"] != "proyecto" and anio == hoy.year:
@@ -8719,18 +9024,29 @@ def api_kpis_resultados():
                     if x["p"] == actual and x.get("valor") is not None: x["en_curso"] = True
             # resumen
             con = [x["valor"] for x in periodos if x.get("valor") is not None and not x.get("en_curso")]
-            if a["kpi"] not in ("margen_proyectos", "entrega_tiempo", "ahorro_compras", "eficiencia_horas"):
+            if a["kpi"] in ("valor_stock", "valor_consignacion"):
+                ult_v = next((x for x in reversed(periodos) if x.get("valor") is not None), None)
+                val_anual = ult_v["valor"] if ult_v else None      # valor más reciente, no promedio
+            elif a["kpi"] not in ("margen_proyectos", "entrega_tiempo", "ahorro_compras", "eficiencia_horas"):
                 val_anual = round(sum(con) / len(con), 1) if con else None
             ultimo = next((x for x in reversed(periodos) if x.get("valor") is not None and not x.get("en_curso")), None)
             en_curso = next((x for x in periodos if x.get("en_curso")), None)
-            for x in periodos: x["estado"] = None if x.get("en_curso") else _kpi_estado(x.get("valor"), a.get("meta"), K["sentido"], a.get("tolerancia"))
+            for x in periodos:
+                if K["sentido"] == "reduccion": x.setdefault("estado", None)      # ya se evaluó contra el mes anterior
+                else: x["estado"] = None if x.get("en_curso") else _kpi_estado(x.get("valor"), a.get("meta"), K["sentido"], a.get("tolerancia"))
+            if K["sentido"] == "reduccion":
+                evals = [x for x in periodos if x.get("estado")]
+                estado_g = evals[-1]["estado"] if evals else None
+            else:
+                estado_g = _kpi_estado(val_anual, a.get("meta"), K["sentido"], a.get("tolerancia"))
             out.append({"asignacion": a, "kpi": K, "periodos": periodos, "nota": nota,
                         "excluidos": excluidos if a["kpi"] in ("margen_proyectos", "entrega_tiempo", "ahorro_compras", "eficiencia_horas") else [],
                         "ultimo": ultimo, "en_curso": en_curso, "promedio": val_anual,
                         "wip": (lambda w: {"n": len(w), "promedio": round(sum(w) / len(w), 1) if w else None})(
                             [x["valor"] for x in periodos if x.get("en_curso") and x.get("valor") is not None]) if K["periodo"] == "proyecto" else None,
-                        "estado": _kpi_estado(val_anual, a.get("meta"), K["sentido"], a.get("tolerancia")),
-                        "cumplidos": sum(1 for x in periodos if x.get("estado") == "verde"), "evaluados": len(con)})
+                        "estado": estado_g,
+                        "cumplidos": sum(1 for x in periodos if x.get("estado") == "verde"),
+                        "evaluados": len([x for x in periodos if x.get("estado")]) if K["sentido"] == "reduccion" else len(con)})
         return jsonify({"anio": anio, "resultados": out})
     except Exception as e:
         import traceback; traceback.print_exc()
@@ -11334,6 +11650,19 @@ def stock_load():
     return []
 
 def stock_save(records):
+    _stock_save_impl(records)
+    try: _kpi_foto_inventarios_async()
+    except Exception: pass
+
+_kpi_foto_ult = {"t": 0.0}
+def _kpi_foto_inventarios_async():
+    """Foto del valor de inventarios después de guardar Stock (a lo más una vez por minuto)."""
+    import time as _t
+    if _t.time() - _kpi_foto_ult["t"] < 60: return
+    _kpi_foto_ult["t"] = _t.time()
+    _thr_cache.Thread(target=_kpi_foto_inventarios, daemon=True).start()
+
+def _stock_save_impl(records):
     if _orm and _orm.DB_ENABLED:
         try:
             s = _orm.get_session()
@@ -11912,9 +12241,9 @@ except Exception as _e_consig:
 # rev91: las reasignaciones de consignación también generan apartados
 if _consig is not None:
     _consig.HOOKS.update(
-        despues_crear=lambda: _sincronizar_apartados_reasignaciones(),
+        despues_crear=lambda: (_sincronizar_apartados_reasignaciones(), _kpi_foto_inventarios_async()),
         validar_eliminar=lambda order: _reasig_validar_eliminar(order, "consignacion"),
-        despues_eliminar=lambda order: _reasig_quitar_apartados(order))
+        despues_eliminar=lambda order: (_reasig_quitar_apartados(order), _kpi_foto_inventarios_async()))
 
 # Si False, las reasignaciones/recuperaciones de consignación NO afectan el
 # costo del Job en los reportes (solo quedan registradas en su propia base).
@@ -19833,6 +20162,11 @@ try:
     _n_hist = _sincronizar_apartados_reasignaciones(historico=True)
 except Exception as _e:
     print(f"[REASIG→APARTADOS] No se pudo sincronizar al arrancar: {_e}")
+# rev92: KPIs por default para toda la empresa + foto del valor de inventarios del día
+try:
+    _kpi_sembrar_globales(); _kpi_foto_inventarios()
+except Exception as _e:
+    print(f"[KPI] arranque: {_e}")
 
 if __name__ == "__main__":
     print("=" * 60)

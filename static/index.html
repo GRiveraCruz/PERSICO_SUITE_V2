@@ -2752,14 +2752,15 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
     <div class="mh"><h2 id="kpi-mo-titulo">Asignar KPI</h2><button class="px" onclick="closeMo('mo-kpi')">Cerrar</button></div>
     <div class="mb2">
       <input type="hidden" id="kpi-kid">
-      <div class="fi"><label>KPI</label><select id="kpi-kpi" onchange="kpiInfo()"></select></div>
+      <div class="fi"><label>KPI</label><select id="kpi-kpi" onchange="kpiInfo(event)"></select></div>
       <div id="kpi-info" style="font-size:11.5px;color:var(--muted2);margin:-4px 0 12px;padding:8px 10px;border-radius:8px;background:rgba(0,0,0,.03)"></div>
       <div class="fr">
-        <div class="fi"><label>Alcance</label><select id="kpi-alcance" onchange="kpiInfo()"><option value="persona">Una persona</option><option value="global">Global (toda la empresa)</option></select></div>
+        <div class="fi"><label>Alcance</label><select id="kpi-alcance" onchange="kpiInfo()"></select></div>
         <div class="fi" id="kpi-persona-box"><label>Persona</label><select id="kpi-tid" onchange="kpiSugerirIds()"></select></div>
+        <div class="fi" id="kpi-area-box" style="display:none"><label>Área</label><select id="kpi-area"></select></div>
       </div>
       <div class="fr">
-        <div class="fi"><label id="kpi-meta-lbl">Meta</label><input type="number" id="kpi-meta" step="any"></div>
+        <div class="fi"><label id="kpi-meta-lbl">Meta</label><input type="number" id="kpi-meta" step="any" placeholder="Por definir"></div>
         <div class="fi"><label>Tolerancia (ámbar)</label><input type="number" id="kpi-tol" step="any" placeholder="10 % de la meta"></div>
       </div>
       <div class="fi" id="kpi-ids-box"><label>Identificadores (cómo aparece la persona en los datos)</label>

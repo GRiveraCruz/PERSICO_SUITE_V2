@@ -213,6 +213,13 @@ class KpiAsignacion(Base, JSONBMixin):
     kid = Column(String, unique=True, index=True)
 
 
+class KpiSnapshot(Base, JSONBMixin):
+    """rev92: fotos diarias de valores que no guardan historia (valor del Stock y de
+    Consignación) y banderas de configuración de KPIs. clave = "<tipo>:<AAAA-MM-DD>"."""
+    __tablename__ = "kpi_snapshots"
+    clave = Column(String, unique=True, index=True)
+
+
 class TipoPuesto(Base, JSONBMixin):
     """rev77: tipo de puesto con su jornada semanal (hora de entrada y salida por día).
     Cada perfil de puesto elige un tipo; las personas lo heredan por su perfil."""

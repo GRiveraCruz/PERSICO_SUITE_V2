@@ -18722,7 +18722,19 @@ document.addEventListener('DOMContentLoaded', () => {
 let _kpi = {cat:null, asign:[], res:null, ids:[]};
 const KPI_PER = {mensual:'Mensual', trimestral:'Trimestral', semanal:'Semanal', proyecto:'Por proyecto'};
 const KPI_COL = {verde:'#16a34a', ambar:'#f59e0b', rojo:'#c8102e'};
-const kpiFmt = (v,u) => v==null ? '—' : (u==='%' ? `${Number(v).toLocaleString('es-MX',{maximumFractionDigits:1})} %` : Number(v).toLocaleString('es-MX',{maximumFractionDigits:1}));
+const kpiFmt = (v,u) => {
+  if(v==null) return '—';
+  const n = Number(v);
+  if(u==='%') return `${n.toLocaleString('es-MX',{maximumFractionDigits:1})} %`;
+  if(u==='$') return '$' + n.toLocaleString('en-US',{maximumFractionDigits:0});
+  if(u==='$/h') return '$' + n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + '/h';
+  if(u==='días') return `${n.toLocaleString('es-MX',{maximumFractionDigits:1})} días`;
+  return n.toLocaleString('es-MX',{maximumFractionDigits:1});
+};
+// rev92: texto de la meta según el tipo de KPI
+const kpiMetaTxt = (a,K) => a.meta==null ? '<span style="color:var(--amber)">meta por definir</span>'
+  : K.sentido==='reduccion' ? `meta: bajar <b>${a.meta} %</b> vs mes anterior`
+  : `meta ${K.sentido==='menor'?'≤':'≥'} <b>${esc(kpiFmt(a.meta,K.unidad))}</b>`;
 async function kpiCargar(){
   const sel = document.getElementById('kpi-anio');
   if(sel && !sel.options.length){ const y=new Date().getFullYear(); sel.innerHTML=[y-1,y,y+1].map(a=>`<option ${a===y?'selected':''}>${a}</option>`).join(''); }
@@ -18766,21 +18778,22 @@ function kpiRender(){
     return `<div style="background:var(--card,#fff);border:1px solid var(--border);border-left:4px solid ${col};border-radius:10px;padding:12px 14px;min-width:0">
       <div style="display:flex;gap:8px;align-items:flex-start">
         <div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:700">${esc(K.nombre)}</div>
-          <div style="font-size:10.5px;color:var(--muted)">${KPI_PER[K.periodo]} · meta ${K.sentido==='menor'?'≤':'≥'} <b>${esc(kpiFmt(a.meta,K.unidad))}</b>${a.alcance==='global'?' · global':''}</div></div>
+          <div style="font-size:10px;color:var(--muted);margin-top:-1px">${esc(K.nombre_es||'')}</div>
+          <div style="font-size:10.5px;color:var(--muted)">${KPI_PER[K.periodo]} · ${kpiMetaTxt(a,K)}${a.alcance==='global'?' · global':a.alcance==='area'?' · área':''}</div></div>
         ${puede?`<button class="fi-del" style="color:var(--muted2)" onclick="kpiAbrir('${esc(a.kid)}')">Editar</button><button class="fi-del" onclick="kpiEliminar('${esc(a.kid)}')">✕</button>`:''}
       </div>
       <div style="display:flex;align-items:baseline;gap:10px;margin:8px 0 4px;flex-wrap:wrap">
         <span style="font-size:26px;font-weight:800;color:${col}">${esc(kpiFmt(x.promedio,K.unidad))}</span>
-        <span style="font-size:10.5px;color:var(--muted2)">${K.periodo==='proyecto'?'promedio de proyectos cerrados':'promedio del año'}${x.ultimo&&K.periodo!=='proyecto'?` · último (${esc(x.ultimo.p)}): <b>${esc(kpiFmt(x.ultimo.valor,K.unidad))}</b>`:''}${x.en_curso&&K.periodo!=='proyecto'?` · en curso (${esc(x.en_curso.p)}): ${esc(kpiFmt(x.en_curso.valor,K.unidad))}`:''}${x.wip&&x.wip.n?` · <span title="Jobs en WIP: valor al día de hoy, no se evalúan">WIP (${x.wip.n}): ${esc(kpiFmt(x.wip.promedio,K.unidad))}</span>`:''}</span>
-        <span style="margin-left:auto;font-size:10.5px;color:var(--muted2)">${x.evaluados?`cumplió ${x.cumplidos} de ${x.evaluados}`:'sin datos aún'}</span>
+        <span style="font-size:10.5px;color:var(--muted2)">${K.sentido==='reduccion'?(()=>{ const u=[...x.periodos].reverse().find(p=>p.valor!=null); return `último valor${u?` (${esc(u.p)})`:''}${u&&u.variacion!=null?` · ${u.variacion>0?'+':''}${u.variacion} % vs mes anterior`:''}`; })():K.periodo==='proyecto'?'promedio de proyectos cerrados':'promedio del año'}${x.ultimo&&K.periodo!=='proyecto'?` · último (${esc(x.ultimo.p)}): <b>${esc(kpiFmt(x.ultimo.valor,K.unidad))}</b>`:''}${x.en_curso&&K.periodo!=='proyecto'?` · en curso (${esc(x.en_curso.p)}): ${esc(kpiFmt(x.en_curso.valor,K.unidad))}`:''}${x.wip&&x.wip.n?` · <span title="Jobs en WIP: valor al día de hoy, no se evalúan">WIP (${x.wip.n}): ${esc(kpiFmt(x.wip.promedio,K.unidad))}</span>`:''}</span>
+        <span style="margin-left:auto;font-size:10.5px;color:var(--muted2)">${a.meta==null?'sin meta':x.evaluados?`cumplió ${x.cumplidos} de ${x.evaluados}`:'sin datos aún'}</span>
       </div>
       ${x.periodos.length?`<div style="position:relative;display:flex;gap:${fina?1:3}px;align-items:flex-end;height:${H+lblH+4}px;padding-top:4px">${barras}
-        ${a.meta?`<div title="Meta ${esc(kpiFmt(a.meta,K.unidad))}" style="position:absolute;left:0;right:0;bottom:${lblH+metaY}px;border-top:1px dashed var(--red);opacity:.7"></div>`:''}</div>`:''}
+        ${a.meta!=null && K.sentido!=='reduccion'?`<div title="Meta ${esc(kpiFmt(a.meta,K.unidad))}" style="position:absolute;left:0;right:0;bottom:${lblH+metaY}px;border-top:1px dashed var(--red);opacity:.7"></div>`:''}</div>`:''}
       ${x.nota?`<div style="font-size:10px;color:var(--muted);margin-top:4px">${esc(x.nota)}</div>`:''}
       ${tablaProy}
       ${(x.excluidos||[]).length?`<details style="margin-top:6px"><summary style="cursor:pointer;font-size:11px;color:#b45309">⚠ ${x.excluidos.length} proyecto(s) cerrado(s) sin dato para calcular</summary>
         <table style="width:100%;font-size:11px;border-collapse:collapse;margin-top:4px">${x.excluidos.map(e=>`<tr style="border-top:1px solid var(--border)"><td style="padding:3px 4px;font-family:'DM Mono',monospace;color:var(--gold)">${esc(e.job)}</td><td style="padding:3px 4px;color:var(--muted2);white-space:normal;word-break:break-word;font-size:10.5px">${esc(e.motivo)}</td></tr>`).join('')}</table></details>`:''}
-      ${a.alcance!=='global'?`<div style="font-size:9.5px;color:var(--muted);margin-top:6px" title="Identificadores">🔎 ${esc((a.identificadores||[]).join(' · '))}</div>`:''}
+      ${a.alcance==='persona'?`<div style="font-size:9.5px;color:var(--muted);margin-top:6px" title="Identificadores">🔎 ${esc((a.identificadores||[]).join(' · '))}</div>`:''}
     </div>`;
   };
   body.innerHTML = Object.entries(grupos).map(([n, xs])=>{
@@ -18793,17 +18806,26 @@ function kpiRender(){
 function kpiCatalogoHTML(){
   if(!_kpi.cat) return '';
   return `<details style="margin-top:10px"><summary style="cursor:pointer;font-size:12px;font-weight:700">Cómo se calcula cada KPI</summary>
-    <table style="width:100%;font-size:11.5px;border-collapse:collapse;margin-top:6px">${_kpi.cat.kpis.map(k=>`<tr style="border-top:1px solid var(--border)"><td style="padding:5px 6px;font-weight:700;white-space:nowrap">${esc(k.nombre)}</td><td style="padding:5px 6px;white-space:nowrap">${KPI_PER[k.periodo]}</td><td style="padding:5px 6px;color:var(--muted2)">${esc(k.formula)} <i>Fuente: ${esc(k.fuente)}.</i> ${k.sentido==='menor'?'Menor es mejor.':''}</td></tr>`).join('')}</table></details>`;
+    <table style="width:100%;font-size:11.5px;border-collapse:collapse;margin-top:6px">${_kpi.cat.kpis.map(k=>`<tr style="border-top:1px solid var(--border)"><td style="padding:5px 6px;font-weight:700;white-space:nowrap">${esc(k.nombre)}<div style="font-weight:400;font-size:10px;color:var(--muted)">${esc(k.nombre_es||'')}</div></td><td style="padding:5px 6px;white-space:nowrap">${KPI_PER[k.periodo]}</td><td style="padding:5px 6px;color:var(--muted2)">${esc(k.formula)} <i>Fuente: ${esc(k.fuente)}.</i> ${k.sentido==='menor'?'Menor es mejor.':''}</td></tr>`).join('')}</table></details>`;
+}
+function kpiAlcances(){
+  const k = _kpi.cat.kpis.find(x=>x.k===document.getElementById('kpi-kpi').value); if(!k) return;
+  const sel = document.getElementById('kpi-alcance'), cur = sel.value;
+  const N = {global:'Global (toda la empresa)', persona:'Una persona', area:'Un área'};
+  sel.innerHTML = (k.alcances||['global','persona']).map(x=>`<option value="${x}">${N[x]}</option>`).join('');
+  sel.value = (k.alcances||[]).includes(cur) ? cur : (k.alcances||['global'])[0];
 }
 function kpiAbrir(kid){
   if(!_kpi.cat) return;
   const a = kid ? _kpi.asign.find(x=>x.kid===kid) : null;
   document.getElementById('kpi-mo-titulo').textContent = a ? 'Editar KPI asignado' : 'Asignar KPI';
   document.getElementById('kpi-kid').value = a ? a.kid : '';
-  document.getElementById('kpi-kpi').innerHTML = _kpi.cat.kpis.map(k=>`<option value="${k.k}" ${a&&a.kpi===k.k?'selected':''}>${esc(k.nombre)} (${KPI_PER[k.periodo]})</option>`).join('');
+  document.getElementById('kpi-kpi').innerHTML = _kpi.cat.kpis.map(k=>`<option value="${k.k}" ${a&&a.kpi===k.k?'selected':''}>${esc(k.nombre)} — ${esc(k.nombre_es||'')} (${KPI_PER[k.periodo]})</option>`).join('');
+  document.getElementById('kpi-area').innerHTML = '<option value="">— Selecciona —</option>' + (_kpi.cat.areas||[]).map(n=>`<option ${a&&a.area===n?'selected':''}>${esc(n)}</option>`).join('');
   document.getElementById('kpi-tid').innerHTML = '<option value="">— Selecciona —</option>' + _kpi.cat.personal.map(p=>`<option value="${esc(p.tid)}" ${a&&a.tid===p.tid?'selected':''}>${esc(p.nombre)}${p.puesto?' · '+esc(p.puesto):''}</option>`).join('');
-  document.getElementById('kpi-alcance').value = a && a.alcance==='global' ? 'global' : 'persona';
-  document.getElementById('kpi-meta').value = a ? a.meta : '';
+  kpiAlcances();
+  document.getElementById('kpi-alcance').value = a ? a.alcance : document.getElementById('kpi-alcance').value;
+  document.getElementById('kpi-meta').value = a && a.meta!=null ? a.meta : '';
   document.getElementById('kpi-tol').value = a && a.tolerancia!=null ? a.tolerancia : '';
   document.getElementById('kpi-notas').value = a ? (a.notas||'') : '';
   document.getElementById('kpi-activo').checked = a ? a.activo!==false : true;
@@ -18811,11 +18833,13 @@ function kpiAbrir(kid){
   kpiInfo(); kpiRenderIds();
   document.getElementById('mo-kpi').classList.add('on');
 }
-function kpiInfo(){
+function kpiInfo(ev){
   const k = _kpi.cat.kpis.find(x=>x.k===document.getElementById('kpi-kpi').value); if(!k) return;
-  const glob = document.getElementById('kpi-alcance').value==='global';
+  if(ev && ev.target && ev.target.id==='kpi-kpi') kpiAlcances();
+  const alc = document.getElementById('kpi-alcance').value, glob = alc!=='persona';
+  document.getElementById('kpi-area-box').style.display = alc==='area' ? '' : 'none';
   document.getElementById('kpi-info').innerHTML = `<b>${KPI_PER[k.periodo]}</b> · ${esc(k.formula)}<br><i>Fuente: ${esc(k.fuente)}</i> · ${k.sentido==='menor'?'menor es mejor':'mayor es mejor'}`;
-  document.getElementById('kpi-meta-lbl').textContent = `Meta (${k.unidad}) — ${k.sentido==='menor'?'no mayor a':'al menos'}`;
+  document.getElementById('kpi-meta-lbl').textContent = k.sentido==='reduccion' ? 'Meta: % que debe bajar vs el mes anterior' : `Meta (${k.unidad}) — ${k.sentido==='menor'?'no mayor a':'al menos'}`;
   document.getElementById('kpi-persona-box').style.display = glob ? 'none' : '';
   document.getElementById('kpi-ids-box').style.display = glob ? 'none' : '';
   const fuente = ['cotizaciones_creadas','aceptacion_cotizaciones'].includes(k.k) ? 'ventas' : k.k==='horas_extra' ? 'empleados' : 'pm';
@@ -18838,7 +18862,7 @@ function kpiAgregarId(){ const el=document.getElementById('kpi-id-nuevo'), v=el.
 async function kpiGuardar(){
   if(document.getElementById('kpi-id-nuevo').value.trim()) kpiAgregarId();
   const body = {kid: document.getElementById('kpi-kid').value || undefined, kpi: document.getElementById('kpi-kpi').value,
-    alcance: document.getElementById('kpi-alcance').value, tid: document.getElementById('kpi-tid').value,
+    alcance: document.getElementById('kpi-alcance').value, tid: document.getElementById('kpi-tid').value, area: document.getElementById('kpi-area').value,
     meta: document.getElementById('kpi-meta').value, tolerancia: document.getElementById('kpi-tol').value,
     identificadores: _kpi.ids, notas: document.getElementById('kpi-notas').value, activo: document.getElementById('kpi-activo').checked};
   const r = await apiCall('POST','/kpis/asignaciones',body);
