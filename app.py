@@ -8409,6 +8409,31 @@ def _puede_dash_ing():
     info = get_user_perms(me) if me else {}
     return is_admin() or info.get("role") in DASH_ING_ROLES
 
+# ── rev99: Timing en días hábiles (igual que la pantalla de Configurar Proyecto) ──
+def _es_habil(d):
+    return d.weekday() < 5 and d not in {f for f, _n in _festivos_lft(d.year)}
+
+def _sig_habil(d):
+    g = 0
+    while not _es_habil(d) and g < 30: d += datetime.timedelta(days=1); g += 1
+    return d
+
+def _sumar_habiles(d, n):
+    g = 0
+    while n > 0 and g < 5000:
+        d += datetime.timedelta(days=1); g += 1
+        if _es_habil(d): n -= 1
+    return d
+
+def _fechas_actividad(inicio, dias):
+    """(inicio, fin_incluido, es_hito): N días hábiles; 0 días = hito."""
+    ini = _sig_habil(inicio)
+    if dias <= 0: return ini, ini, True
+    return ini, _sumar_habiles(ini, dias - 1), False
+
+def _inicio_sucesora(fin, hito):
+    return fin if hito else _sig_habil(fin + datetime.timedelta(days=1))
+
 def _timing_fechas(timing):
     """Resuelve fechas del Timing guardado (sin depender del orden): {actividad: (inicio, fin)}."""
     def fd(v):
@@ -8418,7 +8443,7 @@ def _timing_fechas(timing):
         except ValueError: return None
     filas = [t for t in (timing or []) if t.get("tipo") != "grupo" and (t.get("actividad") or "").strip()]
     nk = lambda v: (v or "").strip().upper()
-    res, cambio, vueltas = {}, True, 0
+    res, hitos, cambio, vueltas = {}, {}, True, 0
     while cambio and vueltas <= len(filas):
         cambio, vueltas = False, vueltas + 1
         for t in filas:
@@ -8426,11 +8451,13 @@ def _timing_fechas(timing):
             if k in res: continue
             ini = fd(t.get("fecha_inicial"))
             if not ini and t.get("actividad_previa") and nk(t["actividad_previa"]) in res:
-                ini = res[nk(t["actividad_previa"])][1] + datetime.timedelta(days=1)
+                pk = nk(t["actividad_previa"])
+                ini = _inicio_sucesora(res[pk][1], hitos.get(pk))          # rev99: sin día vacío
             if not ini: continue
             try: dias = int(float(t.get("dias_estimados") or 0))
             except (TypeError, ValueError): dias = 0
-            res[k] = (ini, ini + datetime.timedelta(days=dias)); cambio = True
+            a, b, h = _fechas_actividad(ini, dias)                          # rev99: días hábiles
+            res[k] = (a, b); hitos[k] = h; cambio = True
     return res
 
 def _docs_estado_por_ptsv(keys):
@@ -19399,10 +19426,13 @@ def _build_gantt_svg(timing):
             try: start = _dt2.datetime.strptime(fini[:10], "%Y-%m-%d")
             except: pass
         if not start and prev in end_map:
-            start = end_map[prev] + _dt2.timedelta(days=1)
+            fin_p, hito_p = end_map[prev]
+            start = _dt2.datetime.combine(_inicio_sucesora(fin_p, hito_p), _dt2.time())   # rev99
         if not start: continue
-        end = start + _dt2.timedelta(days=max(dias,1))
-        end_map[act] = end
+        a, b, h = _fechas_actividad(start.date(), dias)                                     # rev99: hábiles
+        start = _dt2.datetime.combine(a, _dt2.time())
+        end = _dt2.datetime.combine(b, _dt2.time()) + _dt2.timedelta(days=1)                # barra hasta el fin incluido
+        end_map[act] = (b, h)
         entries.append((act, start, end, dias, cumpl, mile))
     if not entries: return ""
     today  = _dt2.datetime.now().replace(hour=0,minute=0,second=0,microsecond=0)
@@ -19417,8 +19447,13 @@ def _build_gantt_svg(timing):
         color='#48c78e' if cumpl else ('#c8102e' if end<today else '#f5a623')
         label=(act[:22]+'…') if len(act)>23 else act
         micon=' ★' if mile else ''
-        rows+=f'<rect x="{LABEL+x:.1f}" y="{y+2}" width="{w:.1f}" height="{ROW-4}" rx="3" fill="{color}" opacity=".9"/>'
-        rows+=f'<text x="{LABEL+x+4:.1f}" y="{y+ROW-5}" font-size="8" fill="white" font-family="Arial">{dias}d</text>'
+        if dias <= 0:   # rev99: hito → rombo
+            cx, cy = LABEL + x, y + ROW / 2
+            hcol = "#48c78e" if cumpl else "#6d28d9"
+            rows+=f'<rect x="{cx-5:.1f}" y="{cy-5:.1f}" width="10" height="10" fill="{hcol}" transform="rotate(45 {cx:.1f} {cy:.1f})"/>'
+        else:
+            rows+=f'<rect x="{LABEL+x:.1f}" y="{y+2}" width="{w:.1f}" height="{ROW-4}" rx="3" fill="{color}" opacity=".9"/>'
+            rows+=f'<text x="{LABEL+x+4:.1f}" y="{y+ROW-5}" font-size="8" fill="white" font-family="Arial">{dias}d</text>'
         rows+=f'<text x="{LABEL-3:.1f}" y="{y+ROW-5}" font-size="9" fill="#333" text-anchor="end" font-family="Arial">{label}{micon}</text>'
     todayX=px(today)
     ht=PAD+len(entries)*(ROW+2)

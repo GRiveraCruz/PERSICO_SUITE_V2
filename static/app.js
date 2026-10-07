@@ -13270,25 +13270,53 @@ function _pcF(tr,field){
 // rev58: las fechas se resuelven sin depender del orden de las filas. Antes, si una
 // actividad quedaba ARRIBA de su actividad previa, no encontraba su fecha (una sola
 // pasada) — y al poder reordenar el Timing eso pasaría seguido.
+// ── rev99: días hábiles en el Timing ──────────────────────────────────────────
+//  · La duración ("días estimados") cuenta solo días hábiles: sin sábados, domingos ni
+//    festivos de ley (mismos que permisos y vacaciones).
+//  · Una actividad de N días empieza en un día hábil y TERMINA el N-ésimo día hábil
+//    (fecha fin incluida). Antes la fin era inicio + N días naturales y la siguiente
+//    empezaba un día después → quedaba un día vacío entre actividades.
+//  · La sucesora empieza el siguiente día hábil después del fin de su previa; si la previa
+//    es un hito (0 días), empieza el mismo día del hito.
+//  · Duración 0 = hito: se dibuja como rombo.
+const _pcFestCache = {};
+function pcEsHabil(d){
+  const y = d.getFullYear();
+  if(!_pcFestCache[y]) _pcFestCache[y] = diasFestivosLFT(y);
+  const iso = `${y}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  return d.getDay()!==0 && d.getDay()!==6 && !_pcFestCache[y].has(iso);
+}
+function pcSigHabil(d){ const x = new Date(d); x.setHours(0,0,0,0); let g = 0; while(!pcEsHabil(x) && g++ < 30) x.setDate(x.getDate()+1); return x; }
+function pcSumarHabiles(d, n){ const x = new Date(d); let k = n, g = 0; while(k > 0 && g++ < 5000){ x.setDate(x.getDate()+1); if(pcEsHabil(x)) k--; } return x; }
+function pcFechasActividad(inicio, dias){
+  const ini = pcSigHabil(inicio);
+  if(dias <= 0) return {ini, fin: new Date(ini), hito: true};
+  return {ini, fin: pcSumarHabiles(ini, dias-1), hito: false};
+}
+function pcInicioSucesora(fin, hito){
+  if(hito) return new Date(fin);
+  const x = new Date(fin); x.setDate(x.getDate()+1); return pcSigHabil(x);
+}
 function _pcResolverTiming(rows){
   const nk = s => (s||'').trim().toUpperCase();
   const info = rows.filter(tr=>tr.dataset.tipo!=='grupo').map(tr=>({tr, act:nk(_pcF(tr,'actividad')), prev:nk(_pcF(tr,'actividad_previa')),
-      ini:_pcFecha(_pcF(tr,'fecha_inicial')), dias:parseInt(_pcF(tr,'dias_estimados'))||0, fCond:null, fObj:null}));
-  const endDateMap = {}, nombres = new Set(info.map(i=>i.act).filter(Boolean));
+      ini:_pcFecha(_pcF(tr,'fecha_inicial')), dias:parseInt(_pcF(tr,'dias_estimados'))||0, fCond:null, fObj:null, hito:false}));
+  const endDateMap = {}, hitoMap = {}, nombres = new Set(info.map(i=>i.act).filter(Boolean));
   let cambio = true, vueltas = 0;
   while(cambio && vueltas++ <= info.length){
     cambio = false;
     info.forEach(i=>{
       if(i.fCond) return;
       let f = i.ini;
-      if(!f && i.prev && endDateMap[i.prev]){ f = new Date(endDateMap[i.prev]); f.setDate(f.getDate()+1); }
+      if(!f && i.prev && endDateMap[i.prev]) f = pcInicioSucesora(endDateMap[i.prev], hitoMap[i.prev]);
       if(!f) return;
-      i.fCond = f; i.fObj = new Date(f); i.fObj.setDate(i.fObj.getDate()+i.dias);
-      if(i.act) endDateMap[i.act] = i.fObj;
+      const r = pcFechasActividad(f, i.dias);
+      i.fCond = r.ini; i.fObj = r.fin; i.hito = r.hito;          // fObj = último día (incluido)
+      if(i.act){ endDateMap[i.act] = i.fObj; hitoMap[i.act] = i.hito; }
       cambio = true;
     });
   }
-  return {porFila: new Map(info.map(i=>[i.tr, i])), endDateMap, nombres};
+  return {porFila: new Map(info.map(i=>[i.tr, i])), endDateMap, hitoMap, nombres};
 }
 
 function pcUpdateTimingCalcs() {
@@ -13318,7 +13346,7 @@ function pcUpdateTimingCalcs() {
     if(fCond) {
       const fmt = d=>d.toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'});
       if(condEl) condEl.textContent=fmt(fCond);
-      const fObj=new Date(fCond); fObj.setDate(fObj.getDate()+dias);
+      const fObj=new Date(_res.porFila.get(tr).fObj);         // rev99: último día hábil (incluido)
       if(objEl) objEl.textContent=fmt(fObj);
       if(activ) endDateMap[normKey(activ)]=fObj;
       if(grupo) {
@@ -13468,6 +13496,7 @@ function pcRenderGantt(rows, endDateMap, groupRanges) {
   if(!wrap || !gantt) return;
 
   const normKey = s => (s||'').trim().toUpperCase();
+  const _resG = _pcResolverTiming(rows);                       // rev99: mismas fechas que la tabla
 
   // 1) Actividades reales con fecha resuelta (igual que antes), más a qué grupo
   //    pertenece cada una — y el orden en que aparecen los grupos en la tabla.
@@ -13490,17 +13519,13 @@ function pcRenderGantt(rows, endDateMap, groupRanges) {
     const fRealStr = _pcF(tr,'fecha_real_finalizacion');
     if(!act) return;
 
-    let start = _pcFecha(fIni);
-    if(!start && prev && endDateMap[prev.trim().toUpperCase()]) {
-      start = new Date(endDateMap[prev.trim().toUpperCase()]);
-      start.setDate(start.getDate()+1);
-    }
-    if(!start) return; // sin información de fecha — se omite
-
-    const end = new Date(start);
-    end.setDate(end.getDate() + Math.max(dias, 1));
+    const rr = _resG.porFila.get(tr);
+    if(!rr || !rr.fCond) return; // sin información de fecha — se omite
+    // rev99: la barra cubre del primer al último día hábil (incluido) → se dibuja hasta el día siguiente
+    const start = new Date(rr.fCond), fin = new Date(rr.fObj), end = new Date(rr.fObj);
+    end.setDate(end.getDate() + 1);
     const fReal = _pcFecha(fRealStr);
-    activityEntries.push({act, start, end, dias, cumpl, mile, fReal, grupo: grupo||null});
+    activityEntries.push({act, start, end, fin, hito: rr.hito, dias, cumpl, mile, fReal, grupo: grupo||null});
   });
 
   if(!activityEntries.length){ wrap.style.display='none'; pcLastGanttSVG=null; return; }
@@ -13523,7 +13548,7 @@ function pcRenderGantt(rows, endDateMap, groupRanges) {
     drawEntries.push({
       kind:'group', act:gname, count: children.length, collapsed,
       start: range ? range.min : children[0].start,
-      end:   range ? range.max : children[0].end,
+      end:   range ? (()=>{ const x = new Date(range.max); x.setDate(x.getDate()+1); return x; })() : children[0].end,
     });
     if(!collapsed) children.forEach(c => drawEntries.push(Object.assign({kind:'activity', indent:true}, c)));
   });
@@ -13609,30 +13634,34 @@ function pcRenderGantt(rows, endDateMap, groupRanges) {
     }
 
     const indentPx = e.indent ? INDENT : 0;
-    const color = e.cumpl ? '#1f8a4c' : (e.end < today ? '#c8102e' : '#a8650a');
+    const color = e.cumpl ? '#1f8a4c' : (e.fin < today ? '#c8102e' : '#a8650a');
     const mileIcon = e.mile ? ' ★' : '';
     const maxLabelLen = e.indent ? 20 : 24;
     const label = e.act.length > maxLabelLen ? e.act.slice(0,maxLabelLen-1)+'…' : e.act;
-    const rangoTxt = `${_pcFmtD(e.start)} → ${_pcFmtD(e.end)}`;
+    const rangoTxt = e.hito ? `◆ ${_pcFmtD(e.start)}` : `${_pcFmtD(e.start)} → ${_pcFmtD(e.fin)}`;
     let extra = '';
     if(e.fReal) {
       const xr = parseFloat(pct(e.fReal));
-      const diffDays = Math.round((e.fReal - e.end) / 86400000);
+      const diffDays = Math.round((e.fReal - e.fin) / 86400000);
       const markerColor = diffDays > 0 ? '#c8102e' : (diffDays < 0 ? '#1f8a4c' : '#1f3864');
       // Marcador (rombo) en la fecha real de finalización
       extra += `<rect x="${LABEL+xr-3.5}" y="${y+ROW/2-3.5}" width="7" height="7" fill="${markerColor}" stroke="#fff" stroke-width="0.6" transform="rotate(45 ${LABEL+xr} ${y+ROW/2})"/>`;
       // Línea/bracket entre lo planeado y lo real si difieren
       if(diffDays !== 0) {
-        const xEnd = LABEL + parseFloat(pct(e.end));
+        const xEnd = LABEL + parseFloat(pct(e.hito ? e.start : e.end));
         const xReal = LABEL + xr;
         const x1b = Math.min(xEnd, xReal), x2b = Math.max(xEnd, xReal);
         extra += `<line x1="${x1b}" y1="${y+ROW/2}" x2="${x2b}" y2="${y+ROW/2}" stroke="${markerColor}" stroke-width="1.2" stroke-dasharray="2,2"/>
         <text x="${x2b+4}" y="${y+ROW/2+3}" font-size="8" fill="${markerColor}" font-family="Arial" font-weight="700">${diffDays>0?'+':''}${diffDays}d</text>`;
       }
     }
+    // rev99: duración 0 = hito → rombo en su fecha
+    const barra = e.hito
+      ? `<rect x="${LABEL+x-6}" y="${y+ROW/2-6}" width="12" height="12" fill="${e.cumpl ? '#1f8a4c' : '#6d28d9'}" stroke="#fff" stroke-width="1.5" transform="rotate(45 ${LABEL+x} ${y+ROW/2})"><title>Hito: ${esc(e.act)} · ${_pcFmtD(e.start)}</title></rect>`
+      : `<rect x="${LABEL+indentPx+x}" y="${y+3}" width="${Math.max(2,w-indentPx)}" height="${ROW-6}" rx="3" fill="${color}" opacity=".85"/>
+    <text x="${LABEL+indentPx+x+4}" y="${y+ROW-8}" font-size="9" fill="white" font-family="Arial">${e.dias>0?e.dias+'d':''}</text>`;
     return `
-    <rect x="${LABEL+indentPx+x}" y="${y+3}" width="${Math.max(2,w-indentPx)}" height="${ROW-6}" rx="3" fill="${color}" opacity=".85"/>
-    <text x="${LABEL+indentPx+x+4}" y="${y+ROW-8}" font-size="9" fill="white" font-family="Arial">${e.dias>0?e.dias+'d':''}</text>
+    ${barra}
     <text x="${LABEL-4}" y="${y+ROW-8}" font-size="10" fill="#555" text-anchor="end" font-family="Arial">${esc(label)}${mileIcon}</text>
     <text x="${LABEL+W+8}" y="${y+ROW-8}" font-size="8.5" fill="#444" font-family="'DM Mono',monospace">${rangoTxt}</text>
     ${extra}`;
@@ -13683,6 +13712,7 @@ function pcPrintGanttPDF(){
       <div><span class="sw" style="background:#1f8a4c"></span>Cumplido</div>
       <div><span class="sw" style="background:#c8102e"></span>Retraso</div>
       <div><span class="sw" style="background:#1f3864;border-radius:0;transform:rotate(45deg)"></span>Fecha real de finalización</div>
+      <div><span class="sw" style="background:#6d28d9;border-radius:0;transform:rotate(45deg)"></span>Hito (0 días)</div>
     </div>
     ${pcLastGanttSVG}
     <script>window.onload=()=>window.print();<\/script>
