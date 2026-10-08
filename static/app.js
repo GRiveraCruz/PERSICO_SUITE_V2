@@ -5796,8 +5796,9 @@ function ptRender() {
       <td>${esc(r.customer||'')}</td>
       <td>${esc(r.customer_program||'')}</td>
       <td style="font-size:11px;color:var(--muted2)">${esc(r.pm||'')}</td>
-      <td>${(r.jobs||[]).map(j=>`<span style="display:inline-block;background:rgba(200,16,46,.12);color:var(--red);border-radius:4px;padding:1px 7px;font-family:'DM Mono',monospace;font-size:11px;margin:1px">${esc(j)}</span>`).join(' ')}</td>
-      <td style="font-size:11px;color:var(--muted)">${esc(r.notes||'')}</td>
+      <td style="white-space:normal;max-width:340px;min-width:160px"><div style="display:flex;flex-wrap:wrap;gap:3px">${(r.jobs||[]).map(j=>`<span style="display:inline-block;background:rgba(200,16,46,.12);color:var(--red);border-radius:4px;padding:1px 7px;font-family:'DM Mono',monospace;font-size:11px;white-space:nowrap">${esc(j)}</span>`).join('')}</div></td>
+      <td style="font-size:11px;color:var(--muted);white-space:normal;max-width:260px">${esc(r.notes||'')}</td>
+      <td><button class="btn-reload" style="font-size:10px;padding:3px 9px;white-space:nowrap" onclick="pcAbrirDesdeLista('PT','${esc(r.pt_number)}',event)" title="Abrir la configuración del proyecto">⚙ Configurar</button></td>
     </tr>`).join('');
   document.getElementById('pt-count').textContent = `${rows.length} PT Numbers`;
 }
@@ -6788,8 +6789,8 @@ function svRender() {
       <td>${esc(r.customer||'')}</td>
       <td>${esc(r.customer_program||'')}</td>
       <td style="font-size:11px;color:var(--muted2)">${esc(r.pm||'')}</td>
-      <td>${(r.jobs||[]).map(j=>`<span style="display:inline-block;background:rgba(200,16,46,.12);color:var(--red);border-radius:4px;padding:1px 7px;font-family:'DM Mono',monospace;font-size:11px;margin:1px">${esc(j)}</span>`).join(' ')}</td>
-      <td style="font-size:11px;color:var(--muted)">${esc(r.notes||'')}</td>
+      <td style="white-space:normal;max-width:340px;min-width:160px"><div style="display:flex;flex-wrap:wrap;gap:3px">${(r.jobs||[]).map(j=>`<span style="display:inline-block;background:rgba(200,16,46,.12);color:var(--red);border-radius:4px;padding:1px 7px;font-family:'DM Mono',monospace;font-size:11px;white-space:nowrap">${esc(j)}</span>`).join('')}</div></td>
+      <td style="font-size:11px;color:var(--muted);white-space:normal;max-width:260px">${esc(r.notes||'')}</td>
     </tr>`).join('');
   document.getElementById('sv-count').textContent = `${rows.length} SV Numbers`;
 }
@@ -8413,8 +8414,9 @@ function svRender() {
       <td>${esc(r.customer||'')}</td>
       <td>${esc(r.customer_program||'')}</td>
       <td style="font-size:11px;color:var(--muted2)">${esc(r.pm||'')}</td>
-      <td>${(r.jobs||[]).map(j=>`<span style="display:inline-block;background:rgba(200,16,46,.12);color:var(--red);border-radius:4px;padding:1px 7px;font-family:'DM Mono',monospace;font-size:11px;margin:1px">${esc(j)}</span>`).join(' ')}</td>
-      <td style="font-size:11px;color:var(--muted)">${esc(r.notes||'')}</td>
+      <td style="white-space:normal;max-width:340px;min-width:160px"><div style="display:flex;flex-wrap:wrap;gap:3px">${(r.jobs||[]).map(j=>`<span style="display:inline-block;background:rgba(200,16,46,.12);color:var(--red);border-radius:4px;padding:1px 7px;font-family:'DM Mono',monospace;font-size:11px;white-space:nowrap">${esc(j)}</span>`).join('')}</div></td>
+      <td style="font-size:11px;color:var(--muted);white-space:normal;max-width:260px">${esc(r.notes||'')}</td>
+      <td><button class="btn-reload" style="font-size:10px;padding:3px 9px;white-space:nowrap" onclick="pcAbrirDesdeLista('SV','${esc(r.sv_number)}',event)" title="Abrir la configuración del proyecto">⚙ Configurar</button></td>
     </tr>`).join('');
   document.getElementById('sv-count').textContent = `${rows.length} SV Numbers`;
 }
@@ -11376,6 +11378,7 @@ function pcAplicarSoloLectura(tab){
   cont.querySelectorAll('button').forEach(b=>{
     const oc = b.getAttribute('onclick')||'';
     if(/pcPuntoAbrir/.test(oc)) return;                 // rev79: el modal del punto se puede ver en solo lectura
+    if(/pcJobTabSel/.test(oc)) return;                  // rev100: pestañas de Jobs en solo lectura
     if(/Export|PDF|Excel|pcToggleGroup|pcSetGanttZoom|pcPrintGantt/i.test(oc) && !/Abrir|Import/i.test(oc)) return;
     b.style.display='none';
   });
@@ -11552,6 +11555,8 @@ function pcRenderJobs(jobDetails, savedRows) {
   const pctInp  = 'background:var(--inp);border:1px solid rgba(255,193,7,.35);border-radius:4px;color:var(--amber);padding:5px 7px;font-size:12px;width:80px;text-align:right;font-weight:600';
   const estInp  = 'background:var(--inp);border:1px solid rgba(255,193,7,.35);border-radius:4px;color:var(--text);padding:6px 8px;font-size:12px;width:100%;text-align:right';
 
+  // rev100: pestañas por Job (las tarjetas siguen en la página; solo se muestra la elegida)
+  setTimeout(()=>pcJobTabsRender(jobDetails), 0);
   document.getElementById('pc-jobs-body').innerHTML = jobDetails.map((j,idx) => {
     const saved = savedRows[j.job_number] || {};
     const revenue = parseFloat(j.revenue)||0;
@@ -11578,6 +11583,7 @@ function pcRenderJobs(jobDetails, savedRows) {
         <div><div style="${lbl}">Run Off Interno</div><input class="pc-blue-field" data-field="runoff_interno" type="date" value="${saved.runoff_interno||''}" oninput="pcCalc(${idx})" style="${dateInp}"></div>
         <div><div style="${lbl}">Run Off Cliente</div><input class="pc-blue-field" data-field="runoff_cliente" type="date" value="${saved.runoff_cliente||''}" oninput="pcCalc(${idx})" style="${dateInp}"></div>
         <div><div style="${lbl}">F. Envío</div><input class="pc-blue-field" data-field="fecha_envio" type="date" value="${saved.fecha_envio||''}" oninput="pcCalc(${idx})" style="${dateInp}"></div>
+        <div><div style="${lbl}">Espacio requerido (m²)</div><input class="pc-blue-field" data-field="espacio_requerido" type="number" min="0" step="0.1" value="${saved.espacio_requerido ?? ''}" placeholder="m²" title="Espacio estimado en piso para instalar el equipo" style="${dateInp};width:110px;text-align:right"></div>
       </div>
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:28px;margin-bottom:16px">
@@ -11805,6 +11811,7 @@ async function pcSave() {
       runoff_interno:         f('runoff_interno'),
       runoff_cliente:         f('runoff_cliente'),
       fecha_envio:            f('fecha_envio'),
+      espacio_requerido:      (()=>{ const v = parseFloat(f('espacio_requerido')); return isNaN(v) ? null : v; })(),   // rev100: m² en piso
       markup_pct:             markupPct,
       monto_markup:           montoMarkup,
       presupuesto_operativo:  presOperativo,
@@ -19146,4 +19153,50 @@ function pmDiasHabilesUI(pre){
   if(b < a){ el.innerHTML = '<span style="color:var(--red)">La fecha de fin es anterior a la de inicio</span>'; return; }
   const n = diasHabiles(a, b);
   el.innerHTML = n ? `Cuenta como <b>${n} día${n===1?'':'s'} hábil${n===1?'':'es'}</b> (no se cuentan sábados, domingos ni días festivos)` : '<span style="color:var(--red)">El periodo no tiene días hábiles</span>';
+}
+
+
+// ════════════════════════════════════════════════════════
+//  rev100 — Presupuesto: una pestaña por Job
+// ════════════════════════════════════════════════════════
+let _pcJobTab = 0;
+function pcJobTabsRender(jobDetails){
+  const body = document.getElementById('pc-jobs-body'); if(!body) return;
+  let bar = document.getElementById('pc-jobs-tabs');
+  if(!bar){
+    bar = document.createElement('div'); bar.id = 'pc-jobs-tabs';
+    bar.style.cssText = 'display:flex;gap:4px;flex-wrap:wrap;border-bottom:2px solid var(--border);margin-bottom:12px';
+    body.parentNode.insertBefore(bar, body);
+  }
+  const jobs = jobDetails || pcJobRows || [];
+  if(jobs.length <= 1){ bar.style.display = 'none'; pcJobTabSel(0); return; }
+  bar.style.display = 'flex';
+  if(_pcJobTab !== 'todos' && _pcJobTab >= jobs.length) _pcJobTab = 0;
+  bar.innerHTML = jobs.map((j,i)=>`<button type="button" class="pc-jobtab" data-i="${i}" onclick="pcJobTabSel(${i})"
+      style="border:1px solid var(--border);border-bottom:none;border-radius:8px 8px 0 0;padding:7px 14px;cursor:pointer;background:var(--card);margin-bottom:-2px;font-size:12px;line-height:1.25;text-align:left">
+      <div style="font-family:'DM Mono',monospace;font-weight:800;color:var(--gold)">${esc(j.job_number)}</div>
+      <div style="font-size:10px;color:var(--muted)">${esc(j.customer||'')}${j.revenue?` · $${Number(j.revenue).toLocaleString('en-US',{maximumFractionDigits:0})}`:''}</div></button>`).join('')
+    + `<button type="button" class="pc-jobtab" data-i="todos" onclick="pcJobTabSel('todos')" title="Ver todos los Jobs uno debajo de otro"
+      style="border:1px solid var(--border);border-bottom:none;border-radius:8px 8px 0 0;padding:7px 14px;cursor:pointer;background:var(--card);margin-bottom:-2px;font-size:11px;margin-left:auto;color:var(--muted2)">Ver todos</button>`;
+  pcJobTabSel(_pcJobTab);
+}
+function pcJobTabSel(i){
+  _pcJobTab = i;
+  document.querySelectorAll('#pc-jobs-body .pc-job-card').forEach((c,k)=>{ c.style.display = (i==='todos' || k===i) ? '' : 'none'; });
+  document.querySelectorAll('#pc-jobs-tabs .pc-jobtab').forEach(b=>{
+    const on = String(b.dataset.i) === String(i);
+    b.style.background = on ? 'var(--red)' : 'var(--card)';
+    b.style.borderColor = on ? 'var(--red)' : 'var(--border)';
+    b.querySelectorAll('div').forEach((d,n)=>{ d.style.color = on ? '#fff' : (n===0 ? 'var(--gold)' : 'var(--muted)'); });
+    if(!b.querySelector('div')) b.style.color = on ? '#fff' : 'var(--muted2)';
+  });
+}
+
+// rev100: abrir la Configuración del Proyecto desde la lista de PT / SV Numbers
+function pcAbrirDesdeLista(tipo, num, ev){
+  if(ev) ev.stopPropagation();
+  const src = tipo === 'PT' ? (typeof ptData!=='undefined' ? ptData : []) : (typeof svData!=='undefined' ? svData : []);
+  const r = src.find(x => (tipo==='PT' ? x.pt_number : x.sv_number) === num) || {};
+  switchMenu('projconfig', 'ng-proyectos');
+  setTimeout(()=>{ try{ pcSelectPTSV({label: num, type: tipo, jobs: r.jobs||[], customer: r.customer||''}); }catch(e){ pcLoadConfig(num); } }, 450);
 }

@@ -35,6 +35,7 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;dis
 .nav-group-btn{gap:5px}
 .nav-tabs>.nav-group{flex-shrink:0}
 @media (max-width:1600px){.nav-tab{padding:0 14px;letter-spacing:.6px}}   /* rev93: cabe el menú Management */
+@media (max-width:1440px){.nav-tab{padding:0 9px;letter-spacing:.3px;font-size:10.5px}}   /* rev101: pantallas de 1366 px */
 .nav-group-btn.on{color:var(--red);font-weight:700;border-bottom-color:var(--red)}
 .nav-dropdown{display:none;position:absolute;top:48px;left:0;background:var(--panel);border:1px solid var(--border);border-radius:0 0 8px 8px;min-width:220px;z-index:999;box-shadow:0 8px 24px rgba(0,0,0,.15);flex-direction:column;padding:4px 0}
 .nav-dropdown::before{content:'';position:absolute;top:-8px;left:0;right:0;height:8px;background:transparent}
@@ -958,7 +959,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
     <div style="overflow-x:auto;flex:1">
       <table class="tbl">
         <thead><tr>
-          <th>SV Number</th><th>Cliente</th><th>Programa Cliente</th><th>PM</th><th>Jobs</th><th>Notas</th>
+          <th>SV Number</th><th>Cliente</th><th>Programa Cliente</th><th>PM</th><th>Jobs</th><th>Notas</th><th></th>
         </tr></thead>
         <tbody id="sv-tb"></tbody>
       </table>
@@ -4033,7 +4034,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
     <div style="overflow-x:auto;flex:1">
       <table class="tbl">
         <thead><tr>
-          <th>PT Number</th><th>Cliente</th><th>Programa Cliente</th><th>PM</th><th>Jobs</th><th>Notas</th>
+          <th>PT Number</th><th>Cliente</th><th>Programa Cliente</th><th>PM</th><th>Jobs</th><th>Notas</th><th></th>
         </tr></thead>
         <tbody id="pt-tb"></tbody>
       </table>
