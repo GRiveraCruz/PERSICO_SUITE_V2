@@ -5953,6 +5953,74 @@ def api_export_po(year):
 def api_po_years():
     return jsonify({"available_years": po_available_years(), "current_year": CURRENT_YEAR})
 
+# ── rev103: la edición de un renglón de PO también actualiza la PO generada ─────────
+def _gpo_recalcular(g):
+    """Subtotal, impuestos y total de la PO generada a partir de sus renglones y su esquema."""
+    sub = round(sum(float(i.get("total") or 0) for i in g.get("items") or []), 2)
+    esq = g.get("esquema_tributario") or {}
+    iva_pct = float(g.get("iva_pct") or 0)
+    g["subtotal"] = sub
+    g["iva_amt"] = round(sub * iva_pct / 100, 2)
+    g["isr_retenido_amt"] = round(sub * float(esq.get("isr_retenido", 0) or 0) / 100, 2)
+    g["iva_retenido_amt"] = round(sub * float(esq.get("iva_retenido", 0) or 0) / 100, 2)
+    g["ieps_amt"] = round(sub * float(esq.get("ieps", 0) or 0) / 100, 2)
+    g["total"] = round(sub + g["iva_amt"] - g["isr_retenido_amt"] - g["iva_retenido_amt"] + g["ieps_amt"], 2)
+    fx = float(g.get("fx_rate") or 1) or 1
+    g["total_usd"] = round(g["total"] / fx, 2) if g.get("moneda") == "MXN" else g["total"]
+
+def _gpo_sincronizar_edicion(rec, antes, data):
+    """Aplica a la PO generada el cambio de un renglón (cantidad, precio, descripción, No.
+    de parte, Job) y, si viene, el cambio de esquema tributario. Regresa
+    {"guardar": registros} para guardar, o {"error": ...}."""
+    gnum = str(rec.get("gpo_number") or "").upper()
+    norm = lambda x: str(x or "").upper().replace("PO#", "PO-").replace("PO_", "PO-")
+    gpos = gpo_load()
+    g = next((x for x in gpos if norm(x.get("po_number")) == norm(gnum)), None)
+    if not g: return None
+    it = next((i for i in g.get("items") or [] if str(i.get("part_number") or "").upper() == antes["part_number"]
+               and str(i.get("job") or "").upper() == antes["job"]), None) \
+         or next((i for i in g.get("items") or [] if str(i.get("part_number") or "").upper() == antes["part_number"]), None)
+    if it is not None:
+        if rec.get("quantity") not in (None, ""): it["quantity"] = rec["quantity"]
+        if rec.get("unit_price") not in (None, ""): it["unit_price"] = rec["unit_price"]
+        try: it["total"] = round(float(it.get("quantity") or 0) * float(it.get("unit_price") or 0), 2)
+        except (TypeError, ValueError): pass
+        for campo_ipo, campo_gpo in (("description", "description"), ("part_number", "part_number"), ("entregar_a", "job")):
+            if rec.get(campo_ipo): it[campo_gpo] = rec[campo_ipo]
+    if data.get("moneda"): g["moneda"] = data["moneda"]
+    if data.get("tipo_cambio") and g.get("moneda") == "MXN": g["fx_rate"] = data["tipo_cambio"]
+    if data.get("nombre"): g["supplier_name"] = data["nombre"]
+    cambio_esq = False
+    folio = data.get("esquema_folio")
+    if folio is not None:
+        actual = (g.get("esquema_tributario") or {}).get("folio") or ""
+        if folio != actual:
+            if folio == "":
+                g["esquema_tributario"] = None; g["iva_pct"] = 0
+            else:
+                e = next((x for x in esquemas_load() if x.get("folio") == folio), None)
+                if not e: return {"error": f"Esquema tributario {folio} no encontrado"}
+                g["esquema_tributario"] = {k: e.get(k) for k in ("folio", "nombre", "iva_trasladado", "isr_retenido", "iva_retenido", "ieps")}
+                g["iva_pct"] = float(e.get("iva_trasladado") or 0)
+            cambio_esq = True
+            g.setdefault("historial_esquema", []).append({"de": actual, "a": folio, "fecha": datetime.datetime.now().isoformat(timespec="seconds"),
+                                                          "usuario": session.get("user", "")})
+    _gpo_recalcular(g)
+    g["revision"] = int(g.get("revision") or 0) + 1
+    g["_edited_by"] = session.get("user", ""); g["_edited_at"] = datetime.datetime.now().isoformat(timespec="seconds")
+    return {"guardar": gpos, "esquema_cambiado": cambio_esq}
+
+@app.route("/api/po/gpo-info/<path:gpo_number>", methods=["GET"])
+def api_po_gpo_info(gpo_number):
+    """Esquema tributario actual de una PO generada y los esquemas disponibles (para el modal de edición)."""
+    if not (can("view", "po") or is_admin()): return jsonify({"error": "Sin permiso"}), 403
+    norm = lambda x: str(x or "").upper().replace("PO#", "PO-").replace("PO_", "PO-")
+    g = next((x for x in gpo_load() if norm(x.get("po_number")) == norm(gpo_number)), None)
+    if not g: return jsonify({"error": "PO no encontrada"}), 404
+    esqs = [{k: e.get(k) for k in ("folio", "nombre", "iva_trasladado", "isr_retenido", "iva_retenido", "ieps")} for e in esquemas_load()]
+    return jsonify({"esquema": g.get("esquema_tributario"), "iva_pct": g.get("iva_pct"), "esquemas": esqs,
+                    "subtotal": g.get("subtotal"), "total": g.get("total"), "moneda": g.get("moneda"), "revision": g.get("revision") or 0})
+
 @app.route("/api/po/<int:year>/edit", methods=["POST"])
 def api_po_edit(year):
     """Manually edit a PO/IVP record."""
@@ -5972,16 +6040,34 @@ def api_po_edit(year):
                 rec = next((r for r in matches if str(r.get("part_number","")).upper()==target_pnum), matches[0])
             else:
                 rec = matches[0]
+            antes = {"part_number": str(rec.get("part_number") or "").upper(), "job": str(rec.get("entregar_a") or "").upper()}
             for field in ["nombre","entregar_a","fecha_doc","subtotal","moneda",
                           "tipo_cambio","estatus","fecha_recepcion",
                           "description","part_number","quantity","unit_price",
                           "subtotal_usd","subtotal_mxn"]:
                 if field in data and data[field] is not None:
                     rec[field] = data[field]
+            # rev103: en un renglón de una PO generada, el subtotal es cantidad × precio
+            if rec.get("gpo_number") and rec.get("quantity") not in (None, "") and rec.get("unit_price") not in (None, ""):
+                try:
+                    rec["subtotal"] = round(float(rec["quantity"]) * float(rec["unit_price"]), 2)
+                    tc = float(rec.get("tipo_cambio") or 1) or 1
+                    rec["subtotal_usd"] = rec["subtotal"] if rec.get("moneda") == "USD" else round(rec["subtotal"] / tc, 2)
+                except (TypeError, ValueError):
+                    pass
             rec["_edited_by"] = session.get("user","")
             rec["_edited_at"] = datetime.datetime.now().isoformat()
+            # rev103: la PO generada (de la que sale el PDF) se actualiza con el mismo cambio
+            gpo_info = None
+            if rec.get("gpo_number"):
+                gpo_info = _gpo_sincronizar_edicion(rec, antes, data)
+                if gpo_info and gpo_info.get("error"):
+                    return jsonify({"error": gpo_info["error"]}), 400
             po_save(year, records)
-        return jsonify({"ok": True})
+            if gpo_info and gpo_info.get("guardar"):
+                gpo_save(gpo_info["guardar"])
+        return jsonify({"ok": True, "pdf_actualizado": bool(gpo_info and gpo_info.get("guardar")),
+                        "esquema_cambiado": bool(gpo_info and gpo_info.get("esquema_cambiado"))})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -9966,6 +10052,7 @@ MODULES = [
     "proveedores",
     # Compras — Documentos
     "gpo", "po", "ivp", "reassign", "consig-reassign", "recovery", "compras-requisicion",
+    "fin-cpc",                                     # rev104: CPC (antes solo el administrador)
     # Almacenes
     "stock", "consignacion", "ingreso", "apartados", "manuf-stock", "salida",
     # Servicio
@@ -10455,7 +10542,8 @@ MODULOS_HEREDAN = {"projconfig-dashboard": "projconfig", "projconfig-presupuesto
                    "projconfig-timing": "projconfig", "projconfig-abiertos": "projconfig",
                    "projconfig-cambios": "projconfig", "projconfig-documentos": "projconfig",
                    "personal-tipos-puesto": "personal-perfiles",
-                   "rrhh-kpis": "personal-listado"}
+                   "rrhh-kpis": "personal-listado",
+                   "fin-cpc": "fin-cpp"}           # rev104: CPC toma el nivel de CPP mientras no se fije
 
 def nivel_heredado(info, mod):
     """Nivel efectivo de un módulo de MODULOS_HEREDAN para el usuario `info`."""
@@ -15126,6 +15214,19 @@ def api_gpo_modificar(po_number):
                 new_items = data.get("items",[])
                 if not new_items:
                     return jsonify({"error":"La nueva versión debe tener al menos un item"}), 400
+                # rev106: la nueva versión puede cambiar el esquema tributario
+                esq_anterior = rec.get("esquema_tributario")
+                folio = data.get("esquema_folio")
+                if folio is not None and folio != ((esq_anterior or {}).get("folio") or ""):
+                    if folio == "":
+                        rec["esquema_tributario"] = None; rec["iva_pct"] = 0
+                    else:
+                        e = next((x for x in esquemas_load() if x.get("folio") == folio), None)
+                        if not e: return jsonify({"error": f"Esquema tributario {folio} no encontrado"}), 400
+                        rec["esquema_tributario"] = {k: e.get(k) for k in ("folio", "nombre", "iva_trasladado", "isr_retenido", "iva_retenido", "ieps")}
+                        rec["iva_pct"] = float(e.get("iva_trasladado") or 0)
+                    rec.setdefault("historial_esquema", []).append({"de": (esq_anterior or {}).get("folio") or "", "a": folio,
+                                                                    "fecha": now, "usuario": user, "version": int(rec.get("version", 1)) + 1})
                 iva_pct  = float(rec.get("iva_pct",0) or 0)
                 moneda   = rec.get("moneda","USD")
                 fx_rate  = float(rec.get("fx_rate",1) or 1)
@@ -15168,6 +15269,7 @@ def api_gpo_modificar(po_number):
                     "items":    rec.get("items",[]),
                     "subtotal": rec.get("subtotal",0),
                     "total":    rec.get("total",0),
+                    "esquema_tributario": esq_anterior,
                     "archived_at": now,
                     "archived_by": user,
                 }]
@@ -15238,31 +15340,58 @@ def api_gpo_modificar(po_number):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+def _json_seguro(v):
+    """rev105: NaN / Infinito no son JSON válido (el navegador no puede leer la respuesta);
+    se cambian por None, en cualquier nivel."""
+    import math
+    if isinstance(v, float): return None if (math.isnan(v) or math.isinf(v)) else v
+    if isinstance(v, dict): return {k: _json_seguro(x) for k, x in v.items()}
+    if isinstance(v, (list, tuple)): return [_json_seguro(x) for x in v]
+    if isinstance(v, (datetime.date, datetime.datetime)): return v.isoformat()
+    return v
+
+def _num_seguro(v):
+    import math
+    try:
+        f = float(str(v).replace(",", "").replace("$", "").strip()) if v not in (None, "") else 0.0
+        return 0.0 if (math.isnan(f) or math.isinf(f)) else f
+    except (TypeError, ValueError):
+        return 0.0
+
+def _gpo_buscar(records, po_number):
+    """rev105: acepta PO-000000009, PO#000000009, PO_000000009, po-9 o 9."""
+    norm = lambda x: str(x or "").upper().strip().replace("PO#", "PO-").replace("PO_", "PO-").replace(" ", "")
+    q = norm(po_number)
+    rec = next((r for r in records if norm(r.get("po_number")) == q), None)
+    if rec is None:
+        dig = re.sub(r"\D", "", q)
+        if dig:
+            rec = next((r for r in records if re.sub(r"\D", "", norm(r.get("po_number"))).lstrip("0") == dig.lstrip("0")), None)
+    return rec
+
 @app.route("/api/gpo/<po_number>/lookup", methods=["GET"])
 def api_gpo_lookup(po_number):
     """Returns a single GPO record with delivered quantity info."""
     try:
         records = gpo_load()
-        rec = next((r for r in records
-            if str(r.get("po_number","")).upper() == po_number.upper()), None)
+        rec = _gpo_buscar(records, po_number)
         if not rec:
             return jsonify({"error":f"Orden {po_number} no encontrada"}), 404
-        # Calculate cierre breakdown
-        moneda  = rec.get("moneda","USD")
-        fx_rate = float(rec.get("fx_rate",1) or 1)
+        rec = dict(rec)
         delivered_total = 0.0
         pending_total   = 0.0
-        for it in rec.get("items",[]):
-            qty     = float(it.get("quantity",0) or 0)
-            qty_del = float(it.get("quantity_delivered",0) or 0)
-            up      = float(it.get("unit_price",0) or 0)
+        for it in rec.get("items") or []:
+            qty     = _num_seguro(it.get("quantity"))
+            qty_del = _num_seguro(it.get("quantity_delivered"))
+            up      = _num_seguro(it.get("unit_price"))
             delivered_total += qty_del * up
             pending_total   += (qty - qty_del) * up
         rec["_delivered_total"] = round(delivered_total, 2)
         rec["_pending_total"]   = round(pending_total, 2)
-        return jsonify({"record": rec})
+        return jsonify({"record": _json_seguro(rec)})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        import traceback; traceback.print_exc()
+        return jsonify({"error": f"No se pudo leer la orden: {e}"}), 500
 
 
 @app.route("/api/gpo/<po_number>/pdf")
@@ -15312,6 +15441,7 @@ def api_gpo_pdf(po_number):
               <td style="text-align:right;font-weight:600">{fmt(it.get('total',0))}</td>
               <td style="font-size:9px;color:#777">{it.get('notes','')}</td>
             </tr>"""
+        rev_txt = f"Revisión {rec.get('revision')} · {str(rec.get('_edited_at') or '')[:10]}" if rec.get("revision") else ""   # rev103
         html = f"""<!DOCTYPE html>
 <html lang="es"><head><meta charset="UTF-8">
 <title>{rec['po_number']}</title>
@@ -15354,6 +15484,7 @@ def api_gpo_pdf(po_number):
   <div>
     <div class="po-num-label">Purchase Order</div>
     <div class="po-num">{rec['po_number'].replace('-','_')}</div>
+    {f'<div class="po-num-label" style="color:#c8102e">{rev_txt}</div>' if rev_txt else ''}
     <div style="font-size:10px;color:#888;text-align:right;margin-top:4px">{rec['created_at'][:10]}</div>
     {f'<div style="font-size:10px;font-weight:700;text-align:right;color:#f5a623;margin-top:2px;letter-spacing:.5px">Versión {rec["version"]}</div>' if rec.get("version") and int(rec.get("version",1)) > 1 else '<div style="font-size:10px;color:#aaa;text-align:right;margin-top:2px">v1 — Original</div>'}
     <div class="barcode-wrap">

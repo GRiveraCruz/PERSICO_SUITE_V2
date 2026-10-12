@@ -3877,11 +3877,11 @@ function poRender(){
     // Delete: use idx parameter so only this specific row is deleted
     const clave = r.clave || r.gpo_number || '';
     const delBtn = isAdm
-      ? `<button onclick="deleteIPORow(${poActiveYear},'${esc(clave)}',${sameClaveIdx})" class="fi-del" style="font-size:11px;margin-left:4px" title="Eliminar este registro">Eliminar este registro</button>`
+      ? `<button onclick="deleteIPORow(${poActiveYear},'${esc(clave)}',${sameClaveIdx})" class="fi-del" style="font-size:11px;margin-left:4px" title="Eliminar este registro">Eliminar</button>`
       : '';
 
     const rowIdx = poFiltered().indexOf(r);
-    const editBtn = `<button onclick="poOpenEdit(${rowIdx})" class="btn-reload" style="font-size:10px;padding:3px 8px;margin-left:4px" title="Editar registro">Editar registro</button>`;
+    const editBtn = `<button onclick="poOpenEdit(${rowIdx})" class="btn-reload" style="font-size:10px;padding:3px 8px;margin-left:4px" title="Editar registro">Editar</button>`;
     return`<tr>
       <td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--red);font-weight:600;white-space:nowrap">${esc(String(poLabel))}</td>
       <td style="color:var(--muted2)">${poFmtDate(r.fecha_doc)}</td>
@@ -3899,7 +3899,7 @@ function poRender(){
       </td>
       <td><span class="badge" style="${estStyle}">${esc(r.estatus||'—')}</span></td>
       <td style="color:var(--muted2)">${poFmtDate(r.fecha_recepcion)}</td>
-      <td style="white-space:nowrap">${pdfBtn}${editBtn}${delBtn}</td>
+      <td style="min-width:120px"><div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center">${pdfBtn}${editBtn}${delBtn}</div></td>
     </tr>`;
   }).join('')+moreRow;
 }
@@ -5974,8 +5974,9 @@ let USER_PERMS = null;
 
 // rev77: módulos que heredan el nivel de otro mientras el administrador no les fije uno
 const MODULOS_HEREDAN = {'projconfig-dashboard':'projconfig','projconfig-presupuesto':'projconfig','projconfig-timing':'projconfig',
-  'projconfig-abiertos':'projconfig','projconfig-cambios':'projconfig','projconfig-documentos':'projconfig','personal-tipos-puesto':'personal-perfiles','rrhh-kpis':'personal-listado'};
+  'projconfig-abiertos':'projconfig','projconfig-cambios':'projconfig','projconfig-documentos':'projconfig','personal-tipos-puesto':'personal-perfiles','rrhh-kpis':'personal-listado','fin-cpc':'fin-cpp'};
 const MODULE_LABELS = {
+  'compras-requisicion':'Requisición de Compra', 'fin-cpc':'Cuentas por Cobrar (CPC)',
   // Proyectos
   'jobs':'Job Register', 'pt':'PT Numbers', 'sv':'SV Numbers',
   'rates':'Hourly Rates', 'quotes':'Quote Register',
@@ -6027,17 +6028,32 @@ const MODULE_GROUPS = [
   { label: '🤝 Ventas',               mods: ['cpo'] },
   { label: '⚡ Catálogos',            mods: ['cat-electrico','cat-mecanico','cat-servicios'] },
   { label: '🏭 Proveedores',          mods: ['proveedores'] },
-  { label: '📄 Documentos de Compra', mods: ['gpo','po','ivp','reassign','consig-reassign','recovery'] },
+  { label: '📄 Documentos de Compra', mods: ['compras-requisicion','gpo','po','ivp','reassign','consig-reassign','recovery'] },
   { label: '🏬 Almacenes',            mods: ['stock','consignacion','ingreso','apartados','manuf-stock','salida'] },
   { label: '✈ Servicio',             mods: ['viaticos','gastos-viaje','envios'] },
-  { label: '📊 Reportes y Config',    mods: ['wh','report','multirpt','fx','projconfig','projconfig-dashboard','projconfig-presupuesto','projconfig-timing','projconfig-abiertos','projconfig-cambios','projconfig-documentos'] },
-  { label: '💹 Finanzas',             mods: ['fin-recepciones','fin-procesarcompra','fin-cpp','fin-pagos','fin-esquemas'] },
+  { label: '⚙ Configurar Proyecto',   mods: ['projconfig','projconfig-dashboard','projconfig-presupuesto','projconfig-timing','projconfig-abiertos','projconfig-cambios','projconfig-documentos'] },
+  { label: '📊 Control de Costo',     mods: ['wh','report','multirpt','fx'] },
+  { label: '💹 Finanzas',             mods: ['fin-recepciones','fin-procesarcompra','fin-cpp','fin-cpc','fin-pagos','fin-esquemas'] },
   { label: '🧑‍💼 Recursos Humanos',    mods: ['rrhh-asistencia','rrhh-vacaciones','rrhh-permisos','rrhh-salario','rrhh-sueldos','rrhh-nomina','personal-areas','personal-tipos-puesto','personal-perfiles','personal-listado'] },
   { label: '📈 Management',          mods: ['rrhh-kpis'] },
   { label: '🏭 Operaciones',           mods: ['ops-capacidad','ops-ot','ops-op','ops-os'] },
 ];
 
 let _adminUsersData = null;
+function adminContarPestanas(){
+  document.querySelectorAll('.adm-pgrupo').forEach(t=>{
+    const sels = [...t.querySelectorAll('select')];
+    const con = sels.filter(x=> x.value==='inherit' ? !/sin acceso/i.test(x.options[x.selectedIndex].text) : x.value!=='none').length;
+    const b = document.querySelector(`.adm-ptab[data-i="${t.dataset.i}"] span`); if(b) b.textContent = `${con}/${sels.length}`;
+  });
+}
+let _adminPermTab = 0;                 // rev104: pestaña de permisos abierta (se conserva al cambiar de usuario)
+function adminPermTab(i){
+  _adminPermTab = i;
+  document.querySelectorAll('.adm-pgrupo').forEach(t=>{ t.style.display = String(t.dataset.i)===String(i) ? '' : 'none'; });
+  document.querySelectorAll('.adm-ptab').forEach(b=>{ const on = String(b.dataset.i)===String(i);
+    b.style.background = on ? 'var(--red)' : 'var(--card)'; b.style.color = on ? '#fff' : 'var(--text)'; b.style.borderColor = on ? 'var(--red)' : 'var(--border)'; });
+}
 
 function renderAdminUsers(d) {
   _adminUsersData = d;
@@ -6080,12 +6096,19 @@ function adminSelectUser(uname) {
   const pill = document.getElementById(`admin-pill-${uname}`);
   if(pill){ pill.style.background='rgba(200,16,46,.15)'; pill.style.borderColor='var(--red)'; pill.style.color='var(--red)'; }
 
-  const rows = MODULE_GROUPS.map(grp => {
-    const gm = grp.mods.filter(m => modules.includes(m));
-    if(!gm.length) return '';
-    const hdr = `<tr style="background:rgba(0,0,0,.035)"><td colspan="2"
-      style="padding:6px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--red);border-bottom:1px solid var(--border)">${grp.label}</td></tr>`;
-    return hdr + gm.map(mod => {
+  // rev104: una pestaña por grupo de módulos en lugar de una lista larga
+  const grupos = MODULE_GROUPS.map(g=>({...g, gm: g.mods.filter(m => modules.includes(m))})).filter(g=>g.gm.length);
+  if(_adminPermTab >= grupos.length) _adminPermTab = 0;
+  const nivelDe = mod => { const padre = MODULOS_HEREDAN[mod]; const expl = (info.perm_explicitos||[]).includes(mod) || (perms[mod] && perms[mod]!=='view');
+    return isAdmin ? 'full' : (padre && !expl ? (perms[padre]||'none') : (perms[mod]||'none')); };
+  const tabs = grupos.map((g,i)=>{ const con = g.gm.filter(m=>nivelDe(m)!=='none').length;
+    return `<button type="button" class="adm-ptab" data-i="${i}" onclick="adminPermTab(${i})"
+      style="border:1px solid ${i===_adminPermTab?'var(--red)':'var(--border)'};background:${i===_adminPermTab?'var(--red)':'var(--card)'};color:${i===_adminPermTab?'#fff':'var(--text)'};border-radius:16px;padding:5px 12px;font-size:11px;cursor:pointer;white-space:nowrap">
+      ${g.label} <span style="opacity:.75;font-size:10px">${con}/${g.gm.length}</span></button>`; }).join('');
+  const rows = grupos.map((grp, gi) => {
+    const gm = grp.gm;
+    const hdr = '';
+    return `<tbody class="adm-pgrupo" data-i="${gi}" style="${gi===_adminPermTab?'':'display:none'}">` + hdr + gm.map(mod => {
       // rev69/77: módulos que heredan el nivel de otro (pestañas de Configurar Proyecto,
       // Tipo de Puesto ← Perfiles de Trabajo). Solo cuenta el valor fijado por el administrador.
       const padre = MODULOS_HEREDAN[mod];
@@ -6103,7 +6126,7 @@ function adminSelectUser(uname) {
                  color:${clr};padding:5px 8px;font-size:11px;outline:none;cursor:${isAdmin?'not-allowed':'pointer'}">
           ${opts}</select></td>
       </tr>`;
-    }).join('');
+    }).join('') + '</tbody>';
   }).join('');
 
   const panel = document.getElementById('admin-user-panel');
@@ -6146,12 +6169,13 @@ function adminSelectUser(uname) {
         <div style="display:flex;flex-wrap:wrap;gap:6px 14px">${(d.pm_names||[]).map(n=>`<label style="font-size:11px;display:flex;gap:5px;align-items:center;cursor:pointer">
           <input type="checkbox" value="${esc(n)}" ${(info.pm_names||[]).includes(n)?'checked':''} onchange="adminSetPmNames('${esc(uname)}')">${esc(n)}</label>`).join('')||'<span style="font-size:11px;color:var(--muted)">Ningún Job tiene PM capturado</span>'}</div>
         <div style="font-size:10px;color:var(--muted);margin-top:6px">Se puede marcar más de uno si el mismo PM está escrito distinto en algunos Jobs.</div></div>`:''}
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">${tabs}</div>
       <table style="width:100%;border-collapse:collapse">
         <thead><tr>
-          <th style="padding:4px 10px;text-align:left;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Módulo</th>
+          <th style="padding:4px 10px;text-align:left;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Apartado</th>
           <th style="padding:4px 10px;text-align:left;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Nivel de acceso</th>
         </tr></thead>
-        <tbody>${rows}</tbody>
+        ${rows}
       </table>
     </div>`;
 }
@@ -6176,6 +6200,7 @@ async function adminSetLevel(sel) {
   // Update color
   const colors = {full:'var(--green)',create:'var(--gold)',view:'var(--text)',none:'var(--muted)'};
   sel.style.color = colors[level]||'var(--text)';
+  adminContarPestanas();                                   // rev104: contadores de las pestañas
   try {
     const d = await fetch('/api/admin/users/'+uname, {
       method:'PUT', headers:{'Content-Type':'application/json'},
@@ -6254,6 +6279,8 @@ function applyPermsToDom(d) {
     'fin-recepciones':    ["switchMenu('fin-recepciones'"],
     'fin-procesarcompra': ["switchMenu('fin-procesarcompra'"],
     'fin-cpp':            ["switchMenu('fin-cpp'"],
+    'fin-cpc':            ["switchMenu('fin-cpc'"],
+    'compras-requisicion':["switchMenu('requisicion'"],
     'fin-pagos':          ["switchMenu('fin-pagos'"],
     'fin-esquemas':       ["switchMenu('fin-esquemas'"],
     'rrhh-asistencia':    ["switchMenu('rrhh-asistencia'"],
@@ -15685,12 +15712,18 @@ async function gpoModBuscar() {
   const poNum = 'PO-' + num.replace(/\D/g,'').padStart(9,'0');
   const errEl = document.getElementById('gpo-mod-err');
   errEl.style.display = 'none';
-  try {
-    const d = await fetch(`/api/gpo/${encodeURIComponent(poNum)}/lookup`).then(r=>r.json());
-    if(d.error){ gpoModShowErr(d.error); return; }
-    gpoModRec = d.record;
-    gpoModShowPO(gpoModRec);
-  } catch(e){ gpoModShowErr('Error conectando al servidor'); }
+  // rev105: se distingue conexión, respuesta inválida del servidor, sesión vencida y error al mostrar
+  let resp, d;
+  try { resp = await fetch(`/api/gpo/${encodeURIComponent(poNum)}/lookup`); }
+  catch(e){ gpoModShowErr('Error conectando al servidor: ' + e.message); return; }
+  const txt = await resp.text();
+  if(resp.redirected || /<html/i.test(txt.slice(0,200))){ gpoModShowErr('Tu sesión expiró. Vuelve a iniciar sesión.'); return; }
+  try { d = JSON.parse(txt); }
+  catch(e){ gpoModShowErr(`El servidor respondió ${resp.status} con datos que no se pudieron leer. Avisa a soporte (orden ${poNum}).`); console.error('lookup', poNum, txt.slice(0,500)); return; }
+  if(d.error){ gpoModShowErr(d.error); return; }
+  gpoModRec = d.record;
+  try { gpoModShowPO(gpoModRec); }
+  catch(e){ gpoModShowErr('No se pudo mostrar la orden: ' + e.message); console.error(e); }
 }
 
 function gpoModShowErr(msg) {
@@ -15711,7 +15744,7 @@ function gpoModShowPO(rec) {
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">
       <div>
         <div style="font-size:16px;font-weight:700;font-family:'DM Mono',monospace;color:var(--gold)">${esc(rec.po_number||'')}${version}${modBadge}</div>
-        <div style="font-size:12px;color:var(--muted2);margin-top:2px">${esc(rec.supplier_name||'—')} · ${esc(rec.job||rec.job_type||'—')} · ${rec.created_at?.slice(0,10)||''}</div>
+        <div style="font-size:12px;color:var(--muted2);margin-top:2px">${esc(rec.supplier_name||'—')} · ${esc(rec.job||rec.job_type||'—')} · ${esc(String(rec.created_at||'').slice(0,10))}</div>
       </div>
       <div style="text-align:right">
         <div style="font-size:10px;color:var(--muted)">TOTAL ${moneda}</div>
@@ -15889,6 +15922,7 @@ function gpoModSelectTipo(tipo) {
     document.getElementById('gpo-action-nueva-version').style.display = '';
     document.getElementById('gpo-mod-nota-nv').value = '';
     gpoModPopulateItems(gpoModRec.items || []);
+    gpoModCargarEsquemas();                                 // rev106
   }
 }
 
@@ -15944,7 +15978,38 @@ function gpoModRecalc() {
     const totEl = tr.querySelector('.gpo-mod-row-total');
     if(totEl) totEl.textContent = fmt(row);
   });
-  document.getElementById('gpo-mod-new-total').textContent = fmt(total);
+  // rev106: impuestos según el esquema elegido y total con impuestos
+  const sel = document.getElementById('gpo-mod-esquema');
+  const e = sel && _gpoModEsq.lista.find(x=>x.folio===sel.value);
+  const iva = e ? Number(e.iva_trasladado||0) : (sel && sel.value==='' ? 0 : Number(gpoModRec?.iva_pct||0));
+  const isr = e ? Number(e.isr_retenido||0) : 0, ivr = e ? Number(e.iva_retenido||0) : 0, ieps = e ? Number(e.ieps||0) : 0;
+  const r2 = v => Math.round(v*100)/100;
+  const tIva = r2(total*iva/100), tIsr = r2(total*isr/100), tIvr = r2(total*ivr/100), tIeps = r2(total*ieps/100);
+  const gran = r2(total + tIva - tIsr - tIvr + tIeps);
+  const des = document.getElementById('gpo-mod-desglose');
+  if(des) des.innerHTML = `<span>Subtotal <b>${fmt(total)}</b></span><span>IVA ${iva}% <b>${fmt(tIva)}</b></span>`
+    + (isr?`<span>ISR ret. ${isr}% <b>−${fmt(tIsr)}</b></span>`:'') + (ivr?`<span>IVA ret. ${ivr}% <b>−${fmt(tIvr)}</b></span>`:'') + (ieps?`<span>IEPS ${ieps}% <b>${fmt(tIeps)}</b></span>`:'');
+  document.getElementById('gpo-mod-new-total').textContent = fmt(gran);
+  const av = document.getElementById('gpo-mod-esq-aviso');
+  if(av && sel) av.innerHTML = sel.value !== _gpoModEsq.original ? '<b style="color:var(--amber)">⚠ Cambia el esquema tributario de la orden</b>' : '<span style="color:var(--muted)">Esquema actual de la orden</span>';
+}
+
+// rev106: esquemas para la nueva versión
+let _gpoModEsq = {original: '', lista: []};
+async function gpoModCargarEsquemas(){
+  const sel = document.getElementById('gpo-mod-esquema'); if(!sel) return;
+  _gpoModEsq = {original: ((gpoModRec.esquema_tributario||{}).folio) || '', lista: []};
+  sel.innerHTML = '<option value="">Cargando…</option>';
+  try{
+    const d = await fetch('/api/po/gpo-info/'+encodeURIComponent(gpoModRec.po_number)).then(r=>r.json());
+    if(d.error) throw new Error(d.error);
+    _gpoModEsq.lista = d.esquemas || [];
+  }catch(e){ toast('No se pudieron cargar los esquemas tributarios: '+e.message,'er'); }
+  const actualFuera = _gpoModEsq.original && !_gpoModEsq.lista.some(x=>x.folio===_gpoModEsq.original);
+  sel.innerHTML = '<option value="">— Sin esquema (sin impuestos) —</option>'
+    + (actualFuera ? `<option value="${esc(_gpoModEsq.original)}" selected>${esc(_gpoModEsq.original)} · ${esc((gpoModRec.esquema_tributario||{}).nombre||'')} (ya no existe en el catálogo)</option>` : '')
+    + _gpoModEsq.lista.map(e=>`<option value="${esc(e.folio)}" ${e.folio===_gpoModEsq.original?'selected':''}>${esc(e.folio)} · ${esc(e.nombre)} — IVA ${e.iva_trasladado||0}%${e.isr_retenido?` · ISR ret. ${e.isr_retenido}%`:''}${e.iva_retenido?` · IVA ret. ${e.iva_retenido}%`:''}</option>`).join('');
+  gpoModRecalc();
 }
 
 async function gpoModGuardar() {
@@ -15986,6 +16051,15 @@ async function gpoModGuardar() {
       if(!items.length){ toast('Agrega al menos un item','er'); return; }
       body.items = items;
       body.nota  = document.getElementById('gpo-mod-nota-nv')?.value?.trim()||'';
+      // rev106: cambio de esquema tributario → confirmación con advertencia
+      const nuevoEsq = document.getElementById('gpo-mod-esquema')?.value ?? _gpoModEsq.original;
+      if(nuevoEsq !== _gpoModEsq.original){
+        const nom = f => { const e=_gpoModEsq.lista.find(x=>x.folio===f); return e ? `${e.folio} · ${e.nombre}` : (f||'Sin esquema'); };
+        if(!confirm(`⚠ CAMBIO DE ESQUEMA TRIBUTARIO\n\nOrden ${gpoModRec.po_number}\nDe: ${nom(_gpoModEsq.original)}\nA:  ${nom(nuevoEsq)}\n\nSe recalcularán el IVA, las retenciones, el IEPS y el TOTAL de la orden en esta nueva versión, y el PDF mostrará los nuevos importes. Si la orden ya se envió al proveedor, habrá que enviarle la versión corregida.\n\n¿Confirmas el cambio?`)){
+          return;
+        }
+        body.esquema_folio = nuevoEsq;
+      }
     }
 
     const poNum = encodeURIComponent(gpoModRec.po_number);
@@ -16041,6 +16115,37 @@ function poOpenEdit(rowIdx) {
   document.getElementById('po-edit-quantity').value        = r.quantity||'';
   document.getElementById('po-edit-unit-price').value      = r.unit_price||'';
   document.getElementById('mo-po-edit').classList.add('on');
+  poEditCargarEsquema(r);                                   // rev103
+}
+
+// rev103: esquema tributario de la PO generada (aplica a toda la PO)
+let _poEsq = {original: null, lista: []};
+async function poEditCargarEsquema(r){
+  const box = document.getElementById('po-edit-esq-box');
+  const sel0 = document.getElementById('po-edit-esquema'), info0 = document.getElementById('po-edit-esq-info');
+  _poEsq = {original: null, lista: []};
+  // rev106: en lugar de ocultar el campo, se explica por qué no se puede cambiar
+  const noDisponible = msg => { box.style.display=''; sel0.innerHTML='<option>—</option>'; sel0.disabled=true; info0.innerHTML = `<span style="color:var(--muted)">${msg}</span>`; };
+  sel0.disabled = false;
+  if(!r.gpo_number){ noDisponible('Este registro no viene de una orden generada en la Suite (importado de Excel): no tiene esquema tributario que cambiar.'); return; }
+  try{
+    const d = await fetch('/api/po/gpo-info/'+encodeURIComponent(r.gpo_number)).then(x=>x.json());
+    if(d.error){ noDisponible(`No se pudo leer la orden ${esc(r.gpo_number)}: ${esc(d.error)}. También puedes cambiar el esquema en Órdenes de Compra (GPO) ▸ Modificar ▸ Nueva Versión.`); return; }
+    _poEsq = {original: (d.esquema && d.esquema.folio) || '', lista: d.esquemas || [], moneda: d.moneda};
+    const sel = document.getElementById('po-edit-esquema');
+    sel.innerHTML = '<option value="">— Sin esquema —</option>' + _poEsq.lista.map(e=>`<option value="${esc(e.folio)}" ${e.folio===_poEsq.original?'selected':''}>${esc(e.folio)} · ${esc(e.nombre)}</option>`).join('');
+    box.style.display='';
+    poEditEsqInfo();
+  }catch(e){ noDisponible('No se pudieron cargar los esquemas tributarios: '+esc(e.message)); }
+}
+function poEditEsqInfo(){
+  const f = document.getElementById('po-edit-esquema').value, e = _poEsq.lista.find(x=>x.folio===f), el = document.getElementById('po-edit-esq-info');
+  const txt = e ? `IVA ${e.iva_trasladado||0}% · ISR ret. ${e.isr_retenido||0}% · IVA ret. ${e.iva_retenido||0}% · IEPS ${e.ieps||0}%` : 'Sin impuestos (IVA 0%)';
+  el.innerHTML = txt + (f !== _poEsq.original ? ' · <b style="color:var(--amber)">⚠ cambia el esquema de toda la PO</b>' : '');
+}
+function poEditRecalc(){
+  const q = parseFloat(document.getElementById('po-edit-quantity').value), p = parseFloat(document.getElementById('po-edit-unit-price').value);
+  if(poEditRecord && poEditRecord.gpo_number && !isNaN(q) && !isNaN(p)) document.getElementById('po-edit-subtotal').value = round2(q*p);
 }
 
 async function poSaveEdit() {
@@ -16066,6 +16171,17 @@ async function poSaveEdit() {
     if(payload.moneda==='USD') payload.subtotal_usd = payload.subtotal;
     else payload.subtotal_usd = payload.tipo_cambio>0 ? round2(payload.subtotal/payload.tipo_cambio) : payload.subtotal;
 
+    // rev103: cambio de esquema tributario → confirmación con advertencia
+    if(poEditRecord.gpo_number && document.getElementById('po-edit-esq-box').style.display!=='none'){
+      const nuevo = document.getElementById('po-edit-esquema').value;
+      if(_poEsq.original !== null && !document.getElementById('po-edit-esquema').disabled && nuevo !== _poEsq.original){
+        const nom = f => { const e=_poEsq.lista.find(x=>x.folio===f); return e ? `${e.folio} · ${e.nombre}` : 'Sin esquema'; };
+        if(!confirm(`⚠ CAMBIO DE ESQUEMA TRIBUTARIO\n\nPO ${poEditRecord.gpo_number}\nDe: ${nom(_poEsq.original)}\nA:  ${nom(nuevo)}\n\nSe recalcularán el IVA, las retenciones, el IEPS y el TOTAL de toda la orden de compra, y el PDF mostrará los nuevos importes. Si la PO ya se envió al proveedor, habrá que enviarle la versión corregida.\n\n¿Confirmas el cambio?`)){
+          btn.disabled=false; btn.textContent='💾 Guardar Cambios'; return;
+        }
+        payload.esquema_folio = nuevo;
+      }
+    }
     const clave = poEditRecord.gpo_number||poEditRecord.clave;
     const d = await fetch(`/api/po/${poActiveYear}/edit`,{
       method:'POST',
@@ -16074,7 +16190,7 @@ async function poSaveEdit() {
     }).then(r=>r.json());
     if(d.error){toast(d.error,'er');return;}
     closeMo('mo-po-edit');
-    toast('Registro actualizado ✓','ok');
+    toast('Registro actualizado ✓' + (d.pdf_actualizado ? ' · PDF de la PO actualizado' : '') + (d.esquema_cambiado ? ' · esquema tributario cambiado' : ''),'ok',5000);
     await loadPO();
   } catch(e){toast('Error: '+e.message,'er');}
   finally{btn.disabled=false; btn.textContent='💾 Guardar Cambios';}
