@@ -9041,6 +9041,8 @@ def _kpi_cpc(anio, hoy):
             if fp and fp <= corte: continue                       # ya cobrada a esa fecha
             if not fp and c.get("estatus") == "Pagada": continue   # pagada sin fecha registrada
             monto = float(c.get("total") or 0)
+            if (c.get("moneda") or "USD").upper() == "MXN" and float(c.get("tipo_cambio") or 0) > 0:
+                monto = monto / float(c["tipo_cambio"])          # rev108: todo en USD
             tot += monto
             if fv and fv < corte: venc += monto
         out.append({"p": f"{anio}-{m:02d}", "valor": round(venc / tot * 100, 1) if tot else None,
@@ -14895,6 +14897,74 @@ def api_get_gpo():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# ── rev107: No. de PO de SAE (para detectar órdenes subidas dos veces) ───────────
+def _sae_norm(v):
+    return re.sub(r"\s+", "", str(v or "")).upper()
+
+def _sae_duplicados(po_sae, excluir=None):
+    """Órdenes generadas (no canceladas) que ya tienen ese No. de PO de SAE."""
+    po_sae = _sae_norm(po_sae)
+    if not po_sae: return []
+    out = []
+    for g in gpo_load():
+        if _sae_norm(g.get("po_sae")) != po_sae: continue
+        if excluir and str(g.get("po_number") or "").upper() == str(excluir).upper(): continue
+        if g.get("status") == "Cancelada": continue
+        out.append({"po_number": g.get("po_number"), "fecha": str(g.get("created_at") or "")[:10],
+                    "proveedor": g.get("supplier_name") or "", "total": g.get("total"), "moneda": g.get("moneda"),
+                    "status": g.get("status"), "creado_por": g.get("created_by")})
+    return out
+
+@app.route("/api/gpo/sae-check", methods=["GET"])
+def api_gpo_sae_check():
+    """¿Ese No. de PO de SAE ya está en otra orden? (aviso mientras se captura)."""
+    if not (can("view", "gpo") or can("view", "po") or is_admin()): return jsonify({"error": "Sin permiso"}), 403
+    return jsonify({"po_sae": _sae_norm(request.args.get("sae")), "duplicados": _sae_duplicados(request.args.get("sae"), request.args.get("excluir"))})
+
+@app.route("/api/gpo/sae-duplicados", methods=["GET"])
+def api_gpo_sae_duplicados():
+    """Todos los No. de PO de SAE que aparecen en más de una orden (no canceladas)."""
+    if not (can("view", "gpo") or can("view", "po") or is_admin()): return jsonify({"error": "Sin permiso"}), 403
+    grupos = {}
+    for g in gpo_load():
+        k = _sae_norm(g.get("po_sae"))
+        if not k or g.get("status") == "Cancelada": continue
+        grupos.setdefault(k, []).append({"po_number": g.get("po_number"), "fecha": str(g.get("created_at") or "")[:10],
+                                         "proveedor": g.get("supplier_name") or "", "total": g.get("total"), "moneda": g.get("moneda"),
+                                         "status": g.get("status")})
+    dups = [{"po_sae": k, "ordenes": v} for k, v in sorted(grupos.items()) if len(v) > 1]
+    sin_sae = sum(1 for g in gpo_load() if not _sae_norm(g.get("po_sae")) and g.get("status") != "Cancelada")
+    return jsonify({"duplicados": dups, "sin_sae": sin_sae})
+
+@app.route("/api/gpo/<path:po_number>/sae", methods=["PUT"])
+def api_gpo_set_sae(po_number):
+    """Captura o corrige el No. de PO de SAE de una orden ya emitida (también en sus renglones)."""
+    if not (can("create", "po") or can("create", "gpo") or is_admin()): return jsonify({"error": "Sin permiso"}), 403
+    d = request.json or {}
+    po_sae = _sae_norm(d.get("po_sae"))
+    with lock:
+        gpos = gpo_load()
+        g = _gpo_buscar(gpos, po_number)
+        if not g: return jsonify({"error": "Orden no encontrada"}), 404
+        if po_sae and not d.get("confirmar_duplicado_sae"):
+            dups = _sae_duplicados(po_sae, excluir=g.get("po_number"))
+            if dups:
+                return jsonify({"duplicado_sae": dups, "po_sae": po_sae,
+                                "error": f"El No. de PO de SAE {po_sae} ya está registrado en {', '.join(x['po_number'] for x in dups)}"}), 409
+        anterior = g.get("po_sae") or ""
+        g["po_sae"] = po_sae
+        g.setdefault("historial_sae", []).append({"de": anterior, "a": po_sae, "fecha": datetime.datetime.now().isoformat(timespec="seconds"),
+                                                  "usuario": session.get("user", ""), "duplicado_confirmado": bool(d.get("confirmar_duplicado_sae"))})
+        gpo_save(gpos)
+        pn = str(g.get("po_number") or "").upper()
+        for y in {CURRENT_YEAR, int(str(g.get("created_at") or CURRENT_YEAR)[:4] or CURRENT_YEAR)}:
+            recs = po_load(y); cambio = False
+            for r in recs:
+                if str(r.get("gpo_number") or "").upper() == pn:
+                    r["po_sae"] = po_sae; cambio = True
+            if cambio: po_save(y, recs)
+    return jsonify({"ok": True, "po_sae": po_sae})
+
 @app.route("/api/gpo", methods=["POST"])
 def api_create_gpo():
     try:
@@ -14921,6 +14991,13 @@ def api_create_gpo():
             return jsonify({"error": "La PO debe tener al menos un item"}), 400
         if not esquema_tributario or not esquema_tributario.get("folio"):
             return jsonify({"error": "Debes seleccionar el Esquema Tributario antes de emitir la Orden de Compra"}), 400
+        # rev107: número de PO de SAE — si ya existe en otra orden, se avisa antes de emitir
+        po_sae = _sae_norm(data.get("po_sae"))
+        if po_sae and not data.get("confirmar_duplicado_sae"):
+            dups = _sae_duplicados(po_sae)
+            if dups:
+                return jsonify({"duplicado_sae": dups, "po_sae": po_sae,
+                                "error": f"El No. de PO de SAE {po_sae} ya está registrado en {', '.join(d['po_number'] for d in dups)}"}), 409
         # Renglones que vienen de Requisición de Compra: no se compra lo que hay en Stock
         # ni más de lo pendiente (pedido − reasignado − ya comprado).
         ligados = [it for it in items if it.get("req_item_id")]
@@ -15010,7 +15087,11 @@ def api_create_gpo():
                 "status":        "Emitida",
                 "created_by":    session.get("user",""),
                 "created_at":    now,
+                "po_sae":        po_sae,                                  # rev107
             }
+            if po_sae and data.get("confirmar_duplicado_sae"):
+                rec["po_sae_duplicado_confirmado"] = {"por": session.get("user", ""), "fecha": now,
+                                                      "con": [d["po_number"] for d in _sae_duplicados(po_sae)]}
             records = gpo_load()
             records.append(rec)
             gpo_save(records)
@@ -15037,6 +15118,7 @@ def api_create_gpo():
                     "gpo_number":           po_number,
                     "gpo_pdf":              i==0,
                     "cpo":                  cpo,
+                    "po_sae":               po_sae,                       # rev107
                     "part_number":          it["part_number"],
                     "description":          it["description"],
                     "quantity":             it["quantity"],
@@ -15485,6 +15567,7 @@ def api_gpo_pdf(po_number):
     <div class="po-num-label">Purchase Order</div>
     <div class="po-num">{rec['po_number'].replace('-','_')}</div>
     {f'<div class="po-num-label" style="color:#c8102e">{rev_txt}</div>' if rev_txt else ''}
+    {f'<div class="po-num-label">PO SAE: {_html.escape(str(rec.get("po_sae")))}</div>' if rec.get("po_sae") else ''}
     <div style="font-size:10px;color:#888;text-align:right;margin-top:4px">{rec['created_at'][:10]}</div>
     {f'<div style="font-size:10px;font-weight:700;text-align:right;color:#f5a623;margin-top:2px;letter-spacing:.5px">Versión {rec["version"]}</div>' if rec.get("version") and int(rec.get("version",1)) > 1 else '<div style="font-size:10px;color:#aaa;text-align:right;margin-top:2px">v1 — Original</div>'}
     <div class="barcode-wrap">
@@ -17666,6 +17749,11 @@ def _parse_cfdi_xml(xml_bytes: bytes) -> dict:
         "impuestos_trasladados": _f(impuestos.get("TotalImpuestosTrasladados",0)) if impuestos is not None else 0.0,
         "impuestos_retenidos":   _f(impuestos.get("TotalImpuestosRetenidos",0)) if impuestos is not None else 0.0,
         "conceptos":       conceptos,
+        # rev108: tipo de comprobante, tipo de cambio y retenciones por impuesto (001 ISR, 002 IVA)
+        "tipo_comprobante": root.get("TipoDeComprobante", ""),
+        "tipo_cambio":      _f(root.get("TipoCambio", 0)) or None,
+        "isr_retenido":     round(sum(_f(r.get("Importe", 0)) for r in (impuestos.findall("cfdi:Retenciones/cfdi:Retencion", CFDI_NS) if impuestos is not None else []) if r.get("Impuesto") == "001"), 2),
+        "iva_retenido":     round(sum(_f(r.get("Importe", 0)) for r in (impuestos.findall("cfdi:Retenciones/cfdi:Retencion", CFDI_NS) if impuestos is not None else []) if r.get("Impuesto") == "002"), 2),
     }
 
 def _cfdi_uuid_ya_procesado(uuid: str) -> str:
@@ -18009,6 +18097,83 @@ def _cpc_estatus_efectivo(rec):
             pass
     return rec.get("estatus", "Pendiente")
 
+# ── rev108: correcciones del módulo CPC ─────────────────────────────────────────
+#  · candado (proceso + PostgreSQL) en altas, cambios y bajas: antes dos guardados al
+#    mismo tiempo podían perder una factura (cada guardado reescribe el año completo)
+#  · moneda y tipo de cambio por factura; el saldo de la CPO se compara SIN IVA y en USD
+#  · validación del CFDI: emisor = la empresa (RFC_EMPRESA) y tipo de comprobante Ingreso
+#  · cambio de año al corregir la fecha de factura; aviso de sobre-facturación
+#  · una factura Pagada no se elimina (se cancela); bitácora de cambios y de bajas
+RFC_EMPRESA = {x.strip().upper() for x in _os.environ.get("RFC_EMPRESA", "").split(",") if x.strip()}
+
+from contextlib import contextmanager
+@contextmanager
+def _cpc_candado():
+    with lock:
+        s_l = _sesion_propia() if (_orm and _orm.DB_ENABLED) else None
+        try:
+            if s_l is not None: _pg_lock(s_l, "cpc")
+            yield
+            if s_l is not None: s_l.commit()
+        finally:
+            if s_l is not None: s_l.close()
+
+def _cpc_buscar(cpc_id):
+    """(año, registros_del_año, índice) de una CPC en cualquier año."""
+    for y in cpc_available_years() or [CURRENT_YEAR]:
+        recs = cpc_load(y)
+        for i, r in enumerate(recs):
+            if r.get("id") == cpc_id: return y, recs, i
+    return None, None, None
+
+def _cpc_usd(rec, campo="subtotal"):
+    v = float(rec.get(campo) or 0)
+    if (rec.get("moneda") or "USD").upper() == "MXN":
+        tc = float(rec.get("tipo_cambio") or 0)
+        return round(v / tc, 2) if tc > 0 else None
+    return round(v, 2)
+
+def _cpc_estatus_efectivo(rec):
+    """Vencida es un estatus calculado, no almacenado."""
+    if rec.get("estatus") == "Pendiente" and rec.get("fecha_vencimiento"):
+        try:
+            if datetime.date.fromisoformat(rec["fecha_vencimiento"]) < datetime.date.today():
+                return "Vencida"
+        except Exception:
+            pass
+    return rec.get("estatus", "Pendiente")
+
+def _cpc_facturado_por_cpo(excluir_id=None):
+    """{cpo_id: subtotal facturado en USD} de las CPC no canceladas (sin IVA)."""
+    out = {}
+    for c in cpc_all_records():
+        if c.get("estatus") == "Cancelada" or not c.get("cpo_id") or c.get("id") == excluir_id: continue
+        u = _cpc_usd(c)
+        if u is None: u = float(c.get("subtotal") or 0)
+        out[c["cpo_id"]] = out.get(c["cpo_id"], 0) + u
+    return out
+
+def _cpc_cpo_por_id(cpo_id):
+    for y in cpo_available_years() or [CURRENT_YEAR]:
+        for c in cpo_load(y):
+            if c.get("id") == cpo_id: return c
+    return None
+
+def _cpc_validar_cfdi(cfdi):
+    """Errores (lista) que impiden usar el CFDI como factura a cliente, y avisos."""
+    errores, avisos = [], []
+    if not cfdi: return errores, avisos
+    tc = (cfdi.get("tipo_comprobante") or "").upper()
+    if tc and tc != "I":
+        nombre = {"E": "Egreso (nota de crédito)", "P": "Pago (complemento de pago)", "T": "Traslado", "N": "Nómina"}.get(tc, tc)
+        errores.append(f"El CFDI es de tipo {nombre}; aquí solo se registran facturas de tipo Ingreso.")
+    if RFC_EMPRESA:
+        if (cfdi.get("rfc_emisor") or "").upper() not in RFC_EMPRESA:
+            errores.append(f"El emisor del CFDI ({cfdi.get('rfc_emisor')} · {cfdi.get('nombre_emisor')}) no es la empresa. ¿Es la factura de un proveedor?")
+    else:
+        avisos.append("No se validó el emisor: falta configurar la variable RFC_EMPRESA en el servidor.")
+    return errores, avisos
+
 @app.route("/api/cpc", methods=["GET"])
 def api_get_cpc():
     if not can("view", "fin-cpc"): return jsonify({"error": "Sin permiso"}), 403
@@ -18016,7 +18181,8 @@ def api_get_cpc():
     records = cpc_load(year)
     for r in records:
         r["estatus_efectivo"] = _cpc_estatus_efectivo(r)
-    return jsonify({"records": records, "years": cpc_available_years() or [CURRENT_YEAR]})
+        r["total_usd"] = _cpc_usd(r, "total")
+    return jsonify({"records": records, "years": cpc_available_years() or [CURRENT_YEAR], "rfc_configurado": bool(RFC_EMPRESA)})
 
 @app.route("/api/cpc/parse-cfdi", methods=["POST"])
 def api_cpc_parse_cfdi():
@@ -18030,86 +18196,120 @@ def api_cpc_parse_cfdi():
             cfdi = _parse_cfdi_xml(raw)
         except ValueError as ve:
             return jsonify({"error": str(ve)}), 400
-
+        errores, avisos = _cpc_validar_cfdi(cfdi)
+        if errores: return jsonify({"error": " ".join(errores)}), 400
         ya_usado = _cfdi_uuid_ya_procesado_cpc(cfdi["uuid"])
         cfdi["_ya_procesado"] = bool(ya_usado)
         cfdi["_folio_previo"] = ya_usado
+        cfdi["_avisos"] = avisos
         _guardar_cfdi_xml(cfdi, raw)
         return jsonify({"record": cfdi})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-def _cfdi_uuid_ya_procesado_cpc(uuid: str) -> str:
+def _cfdi_uuid_ya_procesado_cpc(uuid: str, excluir_id=None) -> str:
     if not uuid: return ""
     uuid = uuid.upper()
     for c in cpc_all_records():
-        if (c.get("cfdi") or {}).get("uuid", "").upper() == uuid:
+        if c.get("id") != excluir_id and (c.get("cfdi") or {}).get("uuid", "").upper() == uuid:
             return c.get("id", "")
     return ""
 
 @app.route("/api/cpo-saldos", methods=["GET"])
 def api_cpo_saldos():
-    """Para cada CPO del año: su valor total y cuánto ya se ha facturado (CPC no
-    canceladas ligadas a ella), para mostrar el saldo restante al crear una factura."""
+    """CPOs con su valor, lo ya facturado (subtotal SIN IVA, en USD) y el saldo por facturar.
+    rev108: todas las CPOs con saldo (de cualquier año), no solo las del año de la factura."""
     if not can("view", "fin-cpc"): return jsonify({"error": "Sin permiso"}), 403
-    year = int(request.args.get("year", CURRENT_YEAR))
-    cpos = cpo_load(year)
-    facturado_por_cpo = {}
-    for c in cpc_all_records():
-        if c.get("estatus") == "Cancelada" or not c.get("cpo_id"):
-            continue
-        facturado_por_cpo[c["cpo_id"]] = facturado_por_cpo.get(c["cpo_id"], 0) + (c.get("total") or 0)
-
+    facturado = _cpc_facturado_por_cpo()
     out = []
-    for cpo in cpos:
-        facturado = round(facturado_por_cpo.get(cpo.get("id"), 0), 2)
-        out.append({
-            "id": cpo.get("id"), "job": cpo.get("job"), "customer": cpo.get("customer"),
-            "po_number": cpo.get("po_number"), "value": cpo.get("value") or 0,
-            "facturado": facturado, "saldo": round((cpo.get("value") or 0) - facturado, 2),
-        })
+    for y in cpo_available_years() or [CURRENT_YEAR]:
+        for cpo in cpo_load(y):
+            if "REVENUE" not in str(cpo.get("type_name") or "01_REVENUE").upper(): continue
+            val = float(cpo.get("value") or 0)
+            fac = round(facturado.get(cpo.get("id"), 0), 2)
+            out.append({"id": cpo.get("id"), "job": cpo.get("job"), "customer": cpo.get("customer"), "year": y,
+                        "po_number": cpo.get("po_number"), "value": val, "facturado": fac, "saldo": round(val - fac, 2)})
+    out.sort(key=lambda c: (c["saldo"] <= 0.005, -(c["year"] or 0), c["id"] or ""))
     return jsonify(out)
+
+def _cpc_campos(data, rec):
+    """Aplica campos editables; regresa error o None."""
+    for k in ["job", "customer", "fecha_factura", "fecha_vencimiento", "notas"]:
+        if k in data: rec[k] = (data[k] or "").strip()
+    rec["job"] = (rec.get("job") or "").upper()
+    if "cpo_id" in data: rec["cpo_id"] = (data["cpo_id"] or "").strip() or None
+    for k in ["subtotal", "iva", "isr_retenido", "iva_retenido"]:
+        if k in data:
+            try: rec[k] = round(float(data[k] or 0), 2)
+            except (TypeError, ValueError): return f"Valor inválido en {k}"
+    if "total" in data and data["total"] not in (None, ""):
+        try: rec["total"] = round(float(data["total"]), 2)
+        except (TypeError, ValueError): return "Total inválido"
+    else:
+        rec["total"] = round(rec.get("subtotal", 0) + rec.get("iva", 0) - rec.get("isr_retenido", 0) - rec.get("iva_retenido", 0), 2)
+    if "moneda" in data:
+        m = str(data.get("moneda") or "USD").upper()
+        if m not in ("USD", "MXN"): return "Moneda inválida"
+        rec["moneda"] = m
+    rec.setdefault("moneda", "USD")
+    if "tipo_cambio" in data:
+        try: rec["tipo_cambio"] = round(float(data["tipo_cambio"]), 4) if data["tipo_cambio"] not in (None, "") else None
+        except (TypeError, ValueError): return "Tipo de cambio inválido"
+    if rec["moneda"] == "MXN" and not rec.get("tipo_cambio"):
+        fx = fx_rate_for_date(rec.get("fecha_factura") or datetime.date.today().isoformat(), fx_load_all())
+        if not fx: return "La factura es en MXN y no hay tipo de cambio registrado para su fecha: captúralo."
+        rec["tipo_cambio"] = round(float(fx), 4)
+    if rec["moneda"] == "USD": rec["tipo_cambio"] = None
+    if not rec.get("job") or not rec.get("customer") or not rec.get("fecha_factura"):
+        return "Completa Job, Cliente y Fecha de Factura"
+    try: datetime.date.fromisoformat(rec["fecha_factura"][:10])
+    except ValueError: return "Fecha de factura inválida"
+    return None
+
+def _cpc_sobre_facturacion(rec):
+    """Aviso si con esta factura lo facturado (sin IVA, USD) pasa del valor de la CPO."""
+    if not rec.get("cpo_id") or rec.get("estatus") == "Cancelada": return None
+    cpo = _cpc_cpo_por_id(rec["cpo_id"])
+    if not cpo: return None
+    previo = _cpc_facturado_por_cpo(excluir_id=rec.get("id")).get(rec["cpo_id"], 0)
+    esta = _cpc_usd(rec)
+    if esta is None: esta = float(rec.get("subtotal") or 0)
+    val = float(cpo.get("value") or 0)
+    if previo + esta > val + 0.01:
+        return {"cpo": rec["cpo_id"], "valor": round(val, 2), "facturado_previo": round(previo, 2), "esta_factura": round(esta, 2),
+                "exceso": round(previo + esta - val, 2)}
+    return None
+
+def _cpc_hist(rec, accion, detalle=""):
+    rec.setdefault("historial", []).append({"fecha": datetime.datetime.now().isoformat(timespec="seconds"),
+                                            "usuario": session.get("user", ""), "accion": accion, "detalle": detalle})
 
 @app.route("/api/cpc", methods=["POST"])
 def api_create_cpc():
     if not can("create", "fin-cpc"): return jsonify({"error": "Sin permiso"}), 403
     try:
         data = request.json or {}
-        year = int(data.get("year", CURRENT_YEAR))
         cfdi = data.get("cfdi") or None
-        if cfdi and cfdi.get("uuid"):
-            dup = _cfdi_uuid_ya_procesado_cpc(cfdi["uuid"])
-            if dup:
-                return jsonify({"error": f"Ese CFDI (UUID {cfdi['uuid']}) ya fue registrado en {dup}"}), 400
-
-        subtotal = float(data.get("subtotal") or 0)
-        iva = float(data.get("iva") or 0)
-        isr_ret = float(data.get("isr_retenido") or 0)
-        iva_ret = float(data.get("iva_retenido") or 0)
-        total = data.get("total")
-        total = float(total) if total not in (None, "") else round(subtotal + iva - isr_ret - iva_ret, 2)
-
-        records = cpc_load(year)
-        rec = {
-            "id": _doc_next_number("CPC"),
-            "year": year,
-            "job": (data.get("job") or "").strip().upper(),
-            "cpo_id": (data.get("cpo_id") or "").strip() or None,
-            "customer": (data.get("customer") or "").strip(),
-            "fecha_factura": (data.get("fecha_factura") or "").strip(),
-            "fecha_vencimiento": (data.get("fecha_vencimiento") or "").strip(),
-            "subtotal": round(subtotal, 2), "iva": round(iva, 2),
-            "isr_retenido": round(isr_ret, 2), "iva_retenido": round(iva_ret, 2),
-            "total": round(total, 2),
-            "cfdi": cfdi,
-            "estatus": "Pendiente",
-            "fecha_pago": None,
-            "notas": (data.get("notas") or "").strip(),
-            "created_by": session.get("user", ""),
-            "created_at": datetime.datetime.now().isoformat(),
-        }
-        records.append(rec)
-        cpc_save(year, records)
+        if cfdi:
+            errores, _av = _cpc_validar_cfdi(cfdi)
+            if errores: return jsonify({"error": " ".join(errores)}), 400
+        rec = {"cfdi": cfdi, "estatus": "Pendiente", "fecha_pago": None,
+               "created_by": session.get("user", ""), "created_at": datetime.datetime.now().isoformat()}
+        if cfdi and not data.get("moneda"): data["moneda"] = (cfdi.get("moneda") or "MXN").upper()
+        if cfdi and cfdi.get("tipo_cambio") and data.get("tipo_cambio") in (None, ""): data["tipo_cambio"] = cfdi["tipo_cambio"]
+        err = _cpc_campos(data, rec)
+        if err: return jsonify({"error": err}), 400
+        year = int(rec["fecha_factura"][:4])
+        with _cpc_candado():
+            if cfdi and cfdi.get("uuid"):
+                dup = _cfdi_uuid_ya_procesado_cpc(cfdi["uuid"])
+                if dup: return jsonify({"error": f"Ese CFDI (UUID {cfdi['uuid']}) ya fue registrado en {dup}"}), 400
+            sobre = _cpc_sobre_facturacion(rec)
+            if sobre and not data.get("confirmar_sobrefacturacion"):
+                return jsonify({"sobre_facturacion": sobre, "error": f"Con esta factura, la CPO {sobre['cpo']} quedaría facturada de más por ${sobre['exceso']:,.2f} USD"}), 409
+            rec["id"] = _doc_next_number("CPC"); rec["year"] = year
+            _cpc_hist(rec, "Alta", f"{rec['moneda']} {rec['total']:,.2f}" + (f" · sobre-facturación confirmada (+${sobre['exceso']:,.2f} USD)" if sobre else ""))
+            records = cpc_load(year); records.append(rec); cpc_save(year, records)
         return jsonify({"ok": True, "record": rec})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -18119,41 +18319,33 @@ def api_update_cpc(cpc_id):
     if not can("create", "fin-cpc"): return jsonify({"error": "Sin permiso"}), 403
     try:
         data = request.json or {}
-        year = int(data.get("year", CURRENT_YEAR))
-        records = cpc_load(year)
-        idx = next((i for i, r in enumerate(records) if r.get("id") == cpc_id), None)
-        if idx is None:
-            return jsonify({"error": "CPC no encontrada"}), 404
-        rec = records[idx]
-
-        for k in ["job", "customer", "fecha_factura", "fecha_vencimiento", "notas"]:
-            if k in data: rec[k] = (data[k] or "").strip()
-        if "job" in data: rec["job"] = rec["job"].upper()
-        if "cpo_id" in data: rec["cpo_id"] = (data["cpo_id"] or "").strip() or None
-        for k in ["subtotal", "iva", "isr_retenido", "iva_retenido"]:
-            if k in data:
-                try: rec[k] = round(float(data[k] or 0), 2)
-                except (TypeError, ValueError): pass
-        if "total" in data and data["total"] not in (None, ""):
-            try: rec["total"] = round(float(data["total"]), 2)
-            except (TypeError, ValueError): pass
-        else:
-            rec["total"] = round(rec.get("subtotal", 0) + rec.get("iva", 0) - rec.get("isr_retenido", 0) - rec.get("iva_retenido", 0), 2)
-
-        if "estatus" in data:
-            nuevo = data["estatus"]
-            if nuevo not in ("Pendiente", "Pagada", "Vencida", "Cancelada"):
-                return jsonify({"error": "Estatus inválido"}), 400
-            rec["estatus"] = nuevo
-            if nuevo == "Pagada":
-                rec["fecha_pago"] = data.get("fecha_pago") or datetime.date.today().isoformat()
-            elif nuevo != "Pagada":
-                rec["fecha_pago"] = None
-
-        rec["updated_by"] = session.get("user", "")
-        rec["updated_at"] = datetime.datetime.now().isoformat()
-        rec["year"] = year
-        cpc_save(year, records)
+        with _cpc_candado():
+            y_orig, records, idx = _cpc_buscar(cpc_id)
+            if idx is None: return jsonify({"error": "CPC no encontrada"}), 404
+            rec = dict(records[idx]); antes = dict(records[idx])
+            err = _cpc_campos(data, rec)
+            if err: return jsonify({"error": err}), 400
+            if "estatus" in data:
+                nuevo = data["estatus"]
+                if nuevo not in ("Pendiente", "Pagada", "Cancelada"):
+                    return jsonify({"error": "Estatus inválido"}), 400
+                rec["estatus"] = nuevo
+                rec["fecha_pago"] = (data.get("fecha_pago") or datetime.date.today().isoformat()) if nuevo == "Pagada" else None
+            sobre = _cpc_sobre_facturacion(rec)
+            if sobre and not data.get("confirmar_sobrefacturacion") and (
+                    rec.get("cpo_id") != antes.get("cpo_id") or _cpc_usd(rec) != _cpc_usd(antes) or antes.get("estatus") == "Cancelada"):
+                return jsonify({"sobre_facturacion": sobre, "error": f"Con este cambio, la CPO {sobre['cpo']} quedaría facturada de más por ${sobre['exceso']:,.2f} USD"}), 409
+            cambios = [k for k in ("job", "customer", "cpo_id", "fecha_factura", "fecha_vencimiento", "subtotal", "iva", "isr_retenido",
+                                   "iva_retenido", "total", "moneda", "tipo_cambio", "estatus", "fecha_pago") if rec.get(k) != antes.get(k)]
+            if cambios: _cpc_hist(rec, "Cambio", ", ".join(f"{k}: {antes.get(k)} → {rec.get(k)}" for k in cambios))
+            rec["updated_by"] = session.get("user", ""); rec["updated_at"] = datetime.datetime.now().isoformat()
+            y_nuevo = int(rec["fecha_factura"][:4])
+            rec["year"] = y_nuevo
+            if y_nuevo == y_orig:
+                records[idx] = rec; cpc_save(y_orig, records)
+            else:   # rev108: la factura cambió de año → se mueve
+                destino = cpc_load(y_nuevo); destino.append(rec); cpc_save(y_nuevo, destino)
+                cpc_save(y_orig, [r for r in records if r.get("id") != cpc_id])
         return jsonify({"ok": True, "record": rec})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -18162,12 +18354,17 @@ def api_update_cpc(cpc_id):
 def api_delete_cpc(cpc_id):
     if not can("delete", "fin-cpc"): return jsonify({"error": "Sin permiso"}), 403
     try:
-        year = int(request.args.get("year", CURRENT_YEAR))
-        records = cpc_load(year)
-        new_records = [r for r in records if r.get("id") != cpc_id]
-        if len(new_records) == len(records):
-            return jsonify({"error": "CPC no encontrada"}), 404
-        cpc_save(year, new_records)
+        with _cpc_candado():
+            y, records, idx = _cpc_buscar(cpc_id)
+            if idx is None: return jsonify({"error": "CPC no encontrada"}), 404
+            rec = records[idx]
+            if rec.get("estatus") == "Pagada":
+                return jsonify({"error": "Una factura pagada no se puede eliminar. Si hubo un error, cámbiala a Cancelada (queda en la bitácora)."}), 400
+            cpc_save(y, [r for r in records if r.get("id") != cpc_id])
+            try:   # bitácora de bajas
+                _kpi_snap_set(f"cpc_eliminada:{cpc_id}", dict(rec, _eliminada_por=session.get("user", ""), _eliminada_at=datetime.datetime.now().isoformat(timespec="seconds")))
+            except Exception as e:
+                print(f"[CPC] bitácora de baja: {e}")
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -18176,9 +18373,8 @@ def api_delete_cpc(cpc_id):
 def api_cpc_pdf(cpc_id):
     if not can("view", "fin-cpc"): return jsonify({"error": "Sin permiso"}), 403
     try:
-        year = int(request.args.get("year", CURRENT_YEAR))
-        recs = cpc_load(year)
-        rec = next((r for r in recs if r.get("id") == cpc_id), None)
+        _y, _recs, _i = _cpc_buscar(cpc_id)                      # rev108: en cualquier año
+        rec = _recs[_i] if _i is not None else None
         if not rec: return jsonify({"error": "Registro no encontrado"}), 404
         cfdi = rec.get("cfdi") or {}
         meta = [("Job", rec.get("job", "")), ("CPO", rec.get("cpo_id") or "—"),
@@ -18186,7 +18382,10 @@ def api_cpc_pdf(cpc_id):
                 ("Estatus", _cpc_estatus_efectivo(rec))]
         if cfdi.get("uuid"):
             meta += [("UUID CFDI", cfdi.get("uuid", "")), ("RFC Receptor", cfdi.get("rfc_receptor", ""))]
+        meta += [("Moneda", rec.get("moneda") or "USD")] + ([("Tipo de cambio", f"{rec.get('tipo_cambio')}")] if rec.get("tipo_cambio") else [])
         meta += [("Subtotal", f"${rec.get('subtotal',0):,.2f}"), ("IVA", f"${rec.get('iva',0):,.2f}")]
+        if rec.get("isr_retenido") or rec.get("iva_retenido"):
+            meta += [("ISR retenido", f"${rec.get('isr_retenido',0):,.2f}"), ("IVA retenido", f"${rec.get('iva_retenido',0):,.2f}")]
         html = _ledger_pdf_html(
             "CPC — Factura a Cliente", rec["id"], rec.get("fecha_factura", ""),
             meta, rec.get("total", 0),
@@ -20640,6 +20839,27 @@ def _permisos_recalcular_habiles():
     except Exception as e:
         print(f"[PERMISOS] recálculo en días hábiles: {e}")
 _permisos_recalcular_habiles()
+
+# rev108: las facturas CPC capturadas antes no tenían moneda → se toma la del CFDI (o USD)
+def _cpc_migrar_moneda():
+    try:
+        with _cpc_candado():
+            fx_all = None
+            for y in cpc_available_years():
+                recs = cpc_load(y); n = 0
+                for r in recs:
+                    if r.get("moneda"): continue
+                    m = ((r.get("cfdi") or {}).get("moneda") or "USD").upper()
+                    r["moneda"] = "MXN" if m == "MXN" else "USD"
+                    if r["moneda"] == "MXN":
+                        if fx_all is None: fx_all = fx_load_all()
+                        fx = fx_rate_for_date(r.get("fecha_factura") or datetime.date.today().isoformat(), fx_all)
+                        r["tipo_cambio"] = round(float(fx), 4) if fx else None
+                    r["_moneda_migrada"] = True; n += 1
+                if n: cpc_save(y, recs); print(f"[CPC] {n} factura(s) de {y}: moneda asignada (del CFDI o USD)")
+    except Exception as e:
+        print(f"[CPC] migración de moneda: {e}")
+_cpc_migrar_moneda()
 
 # rev92: KPIs por default para toda la empresa + foto del valor de inventarios del día
 try:
