@@ -9038,9 +9038,13 @@ def _kpi_cpc(anio, hoy):
             if c.get("estatus") == "Cancelada": continue
             ff, fv, fp = _kpi_fd(c.get("fecha_factura")), _kpi_fd(c.get("fecha_vencimiento")), _kpi_fd(c.get("fecha_pago"))
             if not ff or ff > corte: continue
-            if fp and fp <= corte: continue                       # ya cobrada a esa fecha
-            if not fp and c.get("estatus") == "Pagada": continue   # pagada sin fecha registrada
-            monto = float(c.get("total") or 0)
+            if c.get("pagos"):                                     # rev109: saldo a esa fecha según los pagos
+                monto = _cpc_saldo(c, al=corte)
+                if monto <= 0.01: continue
+            else:
+                if fp and fp <= corte: continue                       # ya cobrada a esa fecha
+                if not fp and c.get("estatus") == "Pagada": continue   # pagada sin fecha registrada
+                monto = float(c.get("total") or 0)
             if (c.get("moneda") or "USD").upper() == "MXN" and float(c.get("tipo_cambio") or 0) > 0:
                 monto = monto / float(c["tipo_cambio"])          # rev108: todo en USD
             tot += monto
@@ -10896,6 +10900,110 @@ def api_migrar_db_estatus_general():
     return jsonify({"db_enabled": True, "conteos": conteos})
 
 # ── Permission routes
+# ══════════════════════════════════════════════════════════════════
+#  rev110 — Respaldo de los archivos del volumen (DATA_DIR) en un ZIP
+#  pg_dump respalda la base de datos; esto respalda lo que vive en disco: XML de CFDI,
+#  documentos de Jobs, cotizaciones, personal, perfiles, permisos, SV, proveedores y
+#  Configurar Proyecto (y los JSON de respaldo del modo sin base de datos).
+# ══════════════════════════════════════════════════════════════════
+_RESPALDO_EXCLUIR = {".flask_secret_key"}                 # nunca sale del servidor
+_RESPALDO_GRUPOS = [   # (carpeta relativa, descripción) — solo para el resumen
+    ("FINANZAS/cfdi_xml", "XML de CFDI (Recepciones, Procesar Compra, CPC)"),
+    ("JOBs", "Archivos de Jobs (y de cierre)"),
+    ("QUOTE_REG", "Archivos de cotizaciones"),
+    ("proyecto_docs", "Documentos de Configurar Proyecto"),
+    ("SV_DOCS", "Documentos de SV"),
+    ("PROV_DOCS", "Documentos de proveedores"),
+    ("PERSONAL", "Documentos de personal, perfiles y permisos"),
+]
+
+def _respaldo_archivos():
+    """[(ruta_absoluta, ruta_en_zip, bytes)] de todo DATA_DIR menos lo excluido."""
+    base = Path(_DATA)
+    out = []
+    if not base.exists(): return out
+    for p in sorted(base.rglob("*")):
+        if not p.is_file(): continue
+        rel = p.relative_to(base).as_posix()
+        if p.name in _RESPALDO_EXCLUIR or "__pycache__" in rel or rel.startswith("respaldos_tmp/"): continue
+        try: out.append((p, rel, p.stat().st_size))
+        except OSError: pass
+    return out
+
+def _respaldo_resumen(archivos):
+    grupos = []
+    usados = set()
+    for carpeta, desc in _RESPALDO_GRUPOS:
+        sel = [a for a in archivos if a[1].startswith(carpeta + "/") and a[1] not in usados]
+        usados.update(a[1] for a in sel)
+        grupos.append({"carpeta": carpeta, "descripcion": desc, "archivos": len(sel), "bytes": sum(a[2] for a in sel)})
+    resto = [a for a in archivos if a[1] not in usados]
+    grupos.append({"carpeta": "(otros)", "descripcion": "Datos JSON de respaldo y otros archivos", "archivos": len(resto), "bytes": sum(a[2] for a in resto)})
+    return grupos
+
+@app.route("/api/admin/respaldo-archivos/info", methods=["GET"])
+def api_respaldo_archivos_info():
+    if not is_admin(): return jsonify({"error": "Solo el administrador"}), 403
+    arch = _respaldo_archivos()
+    try:
+        import shutil as _sh
+        du = _sh.disk_usage(_DATA)
+        disco = {"total": du.total, "usado": du.used, "libre": du.free}
+    except Exception:
+        disco = None
+    return jsonify({"data_dir": _DATA, "archivos": len(arch), "bytes": sum(a[2] for a in arch),
+                    "grupos": _respaldo_resumen(arch), "disco": disco,
+                    "ultimo": (_kpi_snap_get("config:respaldo_archivos").get("config:respaldo_archivos") if (_orm and _orm.DB_ENABLED) else None)})
+
+@app.route("/api/admin/respaldo-archivos", methods=["GET"])
+def api_respaldo_archivos_zip():
+    """Descarga un ZIP con los archivos del volumen. Se arma en un archivo temporal (no en
+    memoria) y se borra al terminar de enviarlo."""
+    if not is_admin(): return jsonify({"error": "Solo el administrador"}), 403
+    import tempfile, zipfile, hashlib as _hl
+    arch = _respaldo_archivos()
+    solo_docs = request.args.get("solo") == "documentos"
+    if solo_docs:
+        pref = tuple(c + "/" for c, _d in _RESPALDO_GRUPOS)
+        arch = [a for a in arch if a[1].startswith(pref)]
+    ahora = datetime.datetime.now()
+    tmp = tempfile.NamedTemporaryFile(prefix="respaldo_archivos_", suffix=".zip", delete=False)
+    tmp.close()
+    manifiesto = [f"Respaldo de archivos — Persico Suite V2", f"Generado: {ahora:%Y-%m-%d %H:%M:%S} por {session.get('user', '')}",
+                  f"Carpeta: {_DATA}", f"Contenido: {'solo documentos' if solo_docs else 'todo'}", "", "ruta\tbytes\tsha1"]
+    errores = []
+    with zipfile.ZipFile(tmp.name, "w", compression=zipfile.ZIP_DEFLATED, allowZip64=True) as z:
+        for p, rel, size in arch:
+            try:
+                h = _hl.sha1()
+                with open(p, "rb") as fh:
+                    for blk in iter(lambda: fh.read(1 << 20), b""): h.update(blk)
+                z.write(p, rel)
+                manifiesto.append(f"{rel}\t{size}\t{h.hexdigest()}")
+            except Exception as e:
+                errores.append(f"{rel}: {e}")
+        manifiesto += ["", f"Archivos: {len(arch) - len(errores)}", f"Bytes: {sum(a[2] for a in arch)}"]
+        if errores: manifiesto += ["", "NO SE PUDIERON INCLUIR:"] + errores
+        z.writestr("MANIFIESTO.txt", "\n".join(manifiesto))
+    try:
+        _kpi_snap_set("config:respaldo_archivos", {"fecha": ahora.isoformat(timespec="seconds"), "usuario": session.get("user", ""),
+                                                    "archivos": len(arch) - len(errores), "bytes": sum(a[2] for a in arch), "solo_documentos": solo_docs})
+    except Exception:
+        pass
+    print(f"[RESPALDO] {len(arch)} archivo(s) en ZIP por {session.get('user', '')}")
+    nombre = f"respaldo_archivos_persico_{ahora:%Y-%m-%d_%H%M}{'_documentos' if solo_docs else ''}.zip"
+    # se envía por partes y el temporal se borra al terminar (también si se corta la descarga)
+    tam = _os.path.getsize(tmp.name)
+    def _enviar(ruta=tmp.name):
+        try:
+            with open(ruta, "rb") as fh:
+                for blk in iter(lambda: fh.read(1 << 20), b""): yield blk
+        finally:
+            try: _os.remove(ruta)
+            except OSError: pass
+    return Response(_enviar(), mimetype="application/zip",
+                    headers={"Content-Disposition": f'attachment; filename="{nombre}"', "Content-Length": str(tam)})
+
 @app.route("/api/admin/users", methods=["GET"])
 def api_admin_get_users():
     if not is_admin():
@@ -18134,13 +18242,15 @@ def _cpc_usd(rec, campo="subtotal"):
     return round(v, 2)
 
 def _cpc_estatus_efectivo(rec):
-    """Vencida es un estatus calculado, no almacenado."""
+    """Vencida y Pago parcial son estatus calculados, no almacenados."""
     if rec.get("estatus") == "Pendiente" and rec.get("fecha_vencimiento"):
         try:
             if datetime.date.fromisoformat(rec["fecha_vencimiento"]) < datetime.date.today():
                 return "Vencida"
         except Exception:
             pass
+    if rec.get("estatus") == "Pendiente" and rec.get("pagos"):
+        return "Pago parcial"
     return rec.get("estatus", "Pendiente")
 
 def _cpc_facturado_por_cpo(excluir_id=None):
@@ -18174,6 +18284,242 @@ def _cpc_validar_cfdi(cfdi):
         avisos.append("No se validó el emisor: falta configurar la variable RFC_EMPRESA en el servidor.")
     return errores, avisos
 
+# ══════════════════════════════════════════════════════════════════
+#  rev109 — Verificación del CFDI ante el SAT y cobranza (pagos parciales y REP)
+# ══════════════════════════════════════════════════════════════════
+SAT_CONSULTA_URL = "https://consultaqr.facturaelectronica.sat.gob.mx/ConsultaCFDIService.svc"
+
+def _sat_verificar(rfc_emisor, rfc_receptor, total, uuid):
+    """Consulta pública del SAT (la misma de 'Verificación de CFDI'): no requiere
+    credenciales. Regresa {estado: Vigente|Cancelado|No Encontrado|Error, ...}."""
+    ahora = datetime.datetime.now().isoformat(timespec="seconds")
+    mock = _os.environ.get("SAT_VERIFICACION_MOCK")            # solo pruebas: {"UUID": "Cancelado", ...}
+    if mock:
+        try:
+            m = json.loads(mock); est = m.get(str(uuid).upper()) or m.get("*") or "Vigente"
+            return {"estado": est, "es_cancelable": "", "estatus_cancelacion": "", "fecha": ahora, "fuente": "mock"}
+        except Exception:
+            pass
+    try:
+        tt = f"{float(total or 0):017.6f}"
+    except (TypeError, ValueError):
+        tt = "0000000000.000000"
+    expr = f"?re={_html.escape(str(rfc_emisor or ''))}&amp;rr={_html.escape(str(rfc_receptor or ''))}&amp;tt={tt}&amp;id={_html.escape(str(uuid or '').upper())}"
+    body = ('<?xml version="1.0" encoding="utf-8"?>'
+            '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tem="http://tempuri.org/">'
+            f'<soap:Body><tem:Consulta><tem:expresionImpresa><![CDATA[{expr.replace("&amp;", "&")}]]></tem:expresionImpresa></tem:Consulta></soap:Body></soap:Envelope>')
+    try:
+        r = _requests.post(SAT_CONSULTA_URL, data=body.encode("utf-8"), timeout=12,
+                           headers={"Content-Type": "text/xml; charset=utf-8", "SOAPAction": "http://tempuri.org/IConsultaCFDIService/Consulta"})
+        if r.status_code != 200:
+            return {"estado": "Error", "error": f"El SAT respondió {r.status_code}", "fecha": ahora}
+        txt = r.text
+        def tag(n):
+            m = re.search(rf"<(?:\w+:)?{n}>(.*?)</(?:\w+:)?{n}>", txt, re.S)
+            return (m.group(1).strip() if m else "")
+        est = tag("Estado") or "Error"
+        return {"estado": est, "codigo": tag("CodigoEstatus"), "es_cancelable": tag("EsCancelable"),
+                "estatus_cancelacion": tag("EstatusCancelacion"), "fecha": ahora}
+    except Exception as e:
+        print(f"[SAT] consulta CFDI {uuid}: {e}")
+        corto = "tiempo de espera agotado" if "timed out" in str(e).lower() or "timeout" in str(e).lower() else "sin conexión con el servicio del SAT"
+        return {"estado": "Error", "error": corto, "fecha": ahora}
+
+def _cpc_saldo(rec, al=None):
+    """Saldo por cobrar = total − pagos (hasta la fecha `al`, si se indica)."""
+    pag = 0.0
+    for p in rec.get("pagos") or []:
+        if al:
+            try:
+                if datetime.date.fromisoformat(str(p.get("fecha"))[:10]) > al: continue
+            except ValueError:
+                pass
+        pag += float(p.get("monto") or 0)
+    return round(float(rec.get("total") or 0) - pag, 2)
+
+def _cpc_aplicar_pagos(rec):
+    """Estatus según los pagos: saldo 0 → Pagada (fecha del último pago)."""
+    if rec.get("estatus") == "Cancelada": return
+    pagos = rec.get("pagos") or []
+    if pagos and _cpc_saldo(rec) <= 0.01:
+        rec["estatus"] = "Pagada"
+        rec["fecha_pago"] = max(str(p.get("fecha") or "")[:10] for p in pagos)
+    elif rec.get("estatus") == "Pagada" and _cpc_saldo(rec) > 0.01:
+        rec["estatus"] = "Pendiente"; rec["fecha_pago"] = None
+
+def _cpc_verificar_y_aplicar(rec):
+    """Verifica la CPC ante el SAT; si está cancelada allá, se cancela aquí."""
+    cf = rec.get("cfdi") or {}
+    if not cf.get("uuid"): return None
+    v = _sat_verificar(cf.get("rfc_emisor"), cf.get("rfc_receptor"), cf.get("total") or rec.get("total"), cf.get("uuid"))
+    rec["sat"] = v
+    if v.get("estado") == "Cancelado" and rec.get("estatus") != "Cancelada":
+        rec["estatus"] = "Cancelada"; rec["fecha_pago"] = None
+        _cpc_hist(rec, "Cancelada por el SAT", f"El CFDI {cf.get('uuid')} aparece cancelado ante el SAT ({v.get('estatus_cancelacion') or 'cancelado'})")
+    return v
+
+def _cpc_verificar_pendientes(limite=200, user="sistema"):
+    """Verifica ante el SAT las facturas Pendientes con CFDI. Regresa resumen."""
+    res = {"verificadas": 0, "canceladas": [], "errores": 0}
+    with _cpc_candado():
+        for y in cpc_available_years():
+            recs = cpc_load(y); cambio = False
+            for r in recs:
+                if res["verificadas"] >= limite: break
+                if r.get("estatus") != "Pendiente" or not (r.get("cfdi") or {}).get("uuid"): continue
+                antes = r.get("estatus")
+                v = _cpc_verificar_y_aplicar(r); res["verificadas"] += 1; cambio = True
+                if v and v.get("estado") == "Error": res["errores"] += 1
+                if antes != r.get("estatus"): res["canceladas"].append(r.get("id"))
+            if cambio: cpc_save(y, recs)
+    try: _kpi_snap_set("config:cpc_sat_ult", {"fecha": datetime.datetime.now().isoformat(timespec="seconds"), **res, "por": user})
+    except Exception: pass
+    return res
+
+def _cpc_verificacion_diaria():
+    """Una vez al día (la dispara la primera consulta del módulo): verifica pendientes."""
+    try:
+        ult = (_kpi_snap_get("config:cpc_sat_ult").get("config:cpc_sat_ult") or {}).get("fecha")
+        if ult and datetime.datetime.fromisoformat(ult) > datetime.datetime.now() - datetime.timedelta(hours=24): return
+        _kpi_snap_set("config:cpc_sat_ult", {"fecha": datetime.datetime.now().isoformat(timespec="seconds"), "en_curso": True})
+        _thr_cache.Thread(target=_cpc_verificar_pendientes, daemon=True).start()
+    except Exception as e:
+        print(f"[CPC] verificación diaria: {e}")
+
+@app.route("/api/cpc/<cpc_id>/verificar-sat", methods=["POST"])
+def api_cpc_verificar_sat(cpc_id):
+    if not can("view", "fin-cpc"): return jsonify({"error": "Sin permiso"}), 403
+    with _cpc_candado():
+        y, recs, i = _cpc_buscar(cpc_id)
+        if i is None: return jsonify({"error": "CPC no encontrada"}), 404
+        if not (recs[i].get("cfdi") or {}).get("uuid"): return jsonify({"error": "La factura no tiene CFDI cargado"}), 400
+        antes = recs[i].get("estatus")
+        v = _cpc_verificar_y_aplicar(recs[i]); cpc_save(y, recs)
+    return jsonify({"ok": True, "sat": v, "cancelada": antes != recs[i].get("estatus"), "record": recs[i]})
+
+@app.route("/api/cpc/verificar-sat-pendientes", methods=["POST"])
+def api_cpc_verificar_pendientes():
+    if not can("create", "fin-cpc"): return jsonify({"error": "Sin permiso"}), 403
+    return jsonify({"ok": True, **_cpc_verificar_pendientes(user=session.get("user", ""))})
+
+# ── Cobranza ──
+@app.route("/api/cpc/<cpc_id>/pagos", methods=["POST"])
+def api_cpc_agregar_pago(cpc_id):
+    if not can("create", "fin-cpc"): return jsonify({"error": "Sin permiso"}), 403
+    d = request.json or {}
+    try: monto = round(float(d.get("monto")), 2)
+    except (TypeError, ValueError): return jsonify({"error": "Monto inválido"}), 400
+    if monto <= 0: return jsonify({"error": "El monto debe ser mayor a cero"}), 400
+    fecha = str(d.get("fecha") or datetime.date.today().isoformat())[:10]
+    try: datetime.date.fromisoformat(fecha)
+    except ValueError: return jsonify({"error": "Fecha inválida"}), 400
+    with _cpc_candado():
+        y, recs, i = _cpc_buscar(cpc_id)
+        if i is None: return jsonify({"error": "CPC no encontrada"}), 404
+        rec = recs[i]
+        if rec.get("estatus") == "Cancelada": return jsonify({"error": "La factura está cancelada"}), 400
+        saldo = _cpc_saldo(rec)
+        if monto > saldo + 0.01 and not d.get("confirmar_exceso"):
+            return jsonify({"exceso": round(monto - saldo, 2), "saldo": saldo,
+                            "error": f"El pago (${monto:,.2f}) es mayor al saldo de la factura (${saldo:,.2f})"}), 409
+        pago = {"id": f"PG-{len(rec.get('pagos') or []) + 1:03d}-{secrets.token_hex(2)}", "fecha": fecha, "monto": monto,
+                "forma": (d.get("forma") or "").strip()[:40], "referencia": (d.get("referencia") or "").strip()[:80],
+                "rep": d.get("rep") or None, "usuario": session.get("user", ""), "registrado": datetime.datetime.now().isoformat(timespec="seconds")}
+        rec.setdefault("pagos", []).append(pago)
+        _cpc_aplicar_pagos(rec)
+        _cpc_hist(rec, "Pago", f"{fecha} · {rec.get('moneda') or 'USD'} {monto:,.2f}" + (f" · {pago['forma']}" if pago["forma"] else "") + (f" · REP {pago['rep'].get('uuid')}" if pago.get("rep") else "") + f" · saldo {_cpc_saldo(rec):,.2f}")
+        cpc_save(y, recs)
+    return jsonify({"ok": True, "record": rec, "saldo": _cpc_saldo(rec)})
+
+@app.route("/api/cpc/<cpc_id>/pagos/<pago_id>", methods=["DELETE"])
+def api_cpc_borrar_pago(cpc_id, pago_id):
+    if not can("delete", "fin-cpc"): return jsonify({"error": "Sin permiso"}), 403
+    with _cpc_candado():
+        y, recs, i = _cpc_buscar(cpc_id)
+        if i is None: return jsonify({"error": "CPC no encontrada"}), 404
+        rec = recs[i]
+        p = next((x for x in rec.get("pagos") or [] if x.get("id") == pago_id), None)
+        if not p: return jsonify({"error": "Pago no encontrado"}), 404
+        rec["pagos"] = [x for x in rec["pagos"] if x is not p]
+        _cpc_aplicar_pagos(rec)
+        _cpc_hist(rec, "Pago eliminado", f"{p.get('fecha')} · {p.get('monto'):,.2f} · saldo {_cpc_saldo(rec):,.2f}")
+        cpc_save(y, recs)
+    return jsonify({"ok": True, "record": rec})
+
+PAGOS_NS = {"pago20": "http://www.sat.gob.mx/Pagos20", "pago10": "http://www.sat.gob.mx/Pagos"}
+
+def _parse_rep(raw):
+    """Complemento de pago (CFDI tipo P): pagos y documentos relacionados (facturas)."""
+    cfdi = _parse_cfdi_xml(raw)
+    if (cfdi.get("tipo_comprobante") or "").upper() != "P":
+        raise ValueError("El XML no es un complemento de pago (CFDI tipo P)")
+    root = ET.fromstring(raw)
+    pagos = root.findall(".//pago20:Pago", PAGOS_NS) or root.findall(".//pago10:Pago", PAGOS_NS)
+    apps = []
+    for pg in pagos:
+        fecha = (pg.get("FechaPago") or "")[:10]
+        forma = pg.get("FormaDePagoP") or ""
+        for dr in list(pg):
+            if not dr.tag.endswith("DoctoRelacionado"): continue
+            try: imp = float(dr.get("ImpPagado") or 0)
+            except ValueError: imp = 0.0
+            apps.append({"uuid_factura": (dr.get("IdDocumento") or "").upper(), "fecha": fecha, "monto": round(imp, 2),
+                         "moneda": dr.get("MonedaDR") or pg.get("MonedaP") or "", "parcialidad": dr.get("NumParcialidad") or "",
+                         "saldo_anterior": dr.get("ImpSaldoAnt"), "saldo_insoluto": dr.get("ImpSaldoInsoluto"), "forma": forma})
+    return cfdi, apps
+
+@app.route("/api/cpc/parse-rep", methods=["POST"])
+def api_cpc_parse_rep():
+    """Lee un complemento de pago (REP) y dice a qué facturas CPC se aplica."""
+    if not can("create", "fin-cpc"): return jsonify({"error": "Sin permiso"}), 403
+    f = request.files.get("file")
+    if not f: return jsonify({"error": "No se recibió el XML"}), 400
+    raw = f.read()
+    try: cfdi, apps = _parse_rep(raw)
+    except ValueError as e: return jsonify({"error": str(e)}), 400
+    if RFC_EMPRESA and (cfdi.get("rfc_emisor") or "").upper() not in RFC_EMPRESA:
+        return jsonify({"error": f"El emisor del complemento ({cfdi.get('rfc_emisor')}) no es la empresa"}), 400
+    por_uuid = {(c.get("cfdi") or {}).get("uuid", "").upper(): c for c in cpc_all_records() if (c.get("cfdi") or {}).get("uuid")}
+    for a in apps:
+        c = por_uuid.get(a["uuid_factura"])
+        a["cpc_id"] = c.get("id") if c else None
+        a["saldo_cpc"] = _cpc_saldo(c) if c else None
+        a["ya_aplicado"] = bool(c and any(((p.get("rep") or {}).get("uuid") or "").upper() == cfdi["uuid"] for p in c.get("pagos") or []))
+    _guardar_cfdi_xml(cfdi, raw)
+    rep_info = {k: cfdi.get(k) for k in ("uuid", "serie", "folio", "fecha", "rfc_emisor", "rfc_receptor", "nombre_receptor")}
+    return jsonify({"rep": rep_info, "aplicaciones": apps})
+
+@app.route("/api/cpc/aplicar-rep", methods=["POST"])
+def api_cpc_aplicar_rep():
+    """Registra como pagos las aplicaciones de un REP a sus facturas CPC (una vez por REP y factura)."""
+    if not can("create", "fin-cpc"): return jsonify({"error": "Sin permiso"}), 403
+    d = request.json or {}
+    rep = d.get("rep") or {}
+    if not rep.get("uuid"): return jsonify({"error": "Falta el complemento"}), 400
+    hechos, omitidos = [], []
+    with _cpc_candado():
+        for a in d.get("aplicaciones") or []:
+            if not a.get("cpc_id"): omitidos.append({"uuid": a.get("uuid_factura"), "motivo": "sin factura CPC con ese UUID"}); continue
+            y, recs, i = _cpc_buscar(a["cpc_id"])
+            if i is None: omitidos.append({"uuid": a.get("uuid_factura"), "motivo": "factura no encontrada"}); continue
+            rec = recs[i]
+            if any(((p.get("rep") or {}).get("uuid") or "").upper() == rep["uuid"].upper() for p in rec.get("pagos") or []):
+                omitidos.append({"cpc": rec["id"], "motivo": "este complemento ya estaba aplicado"}); continue
+            if rec.get("estatus") == "Cancelada":
+                omitidos.append({"cpc": rec["id"], "motivo": "factura cancelada"}); continue
+            monto = round(float(a.get("monto") or 0), 2)
+            if monto <= 0: omitidos.append({"cpc": rec["id"], "motivo": "monto 0"}); continue
+            pago = {"id": f"PG-{len(rec.get('pagos') or []) + 1:03d}-{secrets.token_hex(2)}", "fecha": a.get("fecha") or datetime.date.today().isoformat(),
+                    "monto": monto, "forma": f"REP {a.get('forma') or ''}".strip(), "referencia": f"Parcialidad {a.get('parcialidad') or ''}".strip(),
+                    "rep": {"uuid": rep["uuid"], "serie": rep.get("serie"), "folio": rep.get("folio")},
+                    "usuario": session.get("user", ""), "registrado": datetime.datetime.now().isoformat(timespec="seconds")}
+            rec.setdefault("pagos", []).append(pago)
+            _cpc_aplicar_pagos(rec)
+            _cpc_hist(rec, "Pago (REP)", f"{pago['fecha']} · {monto:,.2f} · REP {rep['uuid']} · saldo {_cpc_saldo(rec):,.2f}")
+            cpc_save(y, recs)
+            hechos.append({"cpc": rec["id"], "monto": monto, "saldo": _cpc_saldo(rec), "estatus": rec.get("estatus")})
+    return jsonify({"ok": True, "aplicados": hechos, "omitidos": omitidos})
+
 @app.route("/api/cpc", methods=["GET"])
 def api_get_cpc():
     if not can("view", "fin-cpc"): return jsonify({"error": "Sin permiso"}), 403
@@ -18182,7 +18528,12 @@ def api_get_cpc():
     for r in records:
         r["estatus_efectivo"] = _cpc_estatus_efectivo(r)
         r["total_usd"] = _cpc_usd(r, "total")
-    return jsonify({"records": records, "years": cpc_available_years() or [CURRENT_YEAR], "rfc_configurado": bool(RFC_EMPRESA)})
+        r["saldo"] = _cpc_saldo(r)                                   # rev109
+        tc = float(r.get("tipo_cambio") or 0)
+        r["saldo_usd"] = (round(r["saldo"] / tc, 2) if tc > 0 else None) if (r.get("moneda") or "USD") == "MXN" else r["saldo"]
+    _cpc_verificacion_diaria()
+    ult = (_kpi_snap_get("config:cpc_sat_ult").get("config:cpc_sat_ult") or {}) if (_orm and _orm.DB_ENABLED) else {}
+    return jsonify({"records": records, "years": cpc_available_years() or [CURRENT_YEAR], "rfc_configurado": bool(RFC_EMPRESA), "sat_ult": ult})
 
 @app.route("/api/cpc/parse-cfdi", methods=["POST"])
 def api_cpc_parse_cfdi():
@@ -18198,6 +18549,13 @@ def api_cpc_parse_cfdi():
             return jsonify({"error": str(ve)}), 400
         errores, avisos = _cpc_validar_cfdi(cfdi)
         if errores: return jsonify({"error": " ".join(errores)}), 400
+        if cfdi.get("uuid"):                                     # rev109: estatus ante el SAT
+            sat = _sat_verificar(cfdi.get("rfc_emisor"), cfdi.get("rfc_receptor"), cfdi.get("total"), cfdi.get("uuid"))
+            if sat.get("estado") == "Cancelado":
+                return jsonify({"error": f"El CFDI {cfdi['uuid']} está CANCELADO ante el SAT; no se puede registrar como factura."}), 400
+            cfdi["_sat"] = sat
+            if sat.get("estado") == "Error": avisos.append("No se pudo verificar ante el SAT (" + (sat.get("error") or "sin respuesta") + "). Se puede verificar después desde la factura.")
+            elif sat.get("estado") == "No Encontrado": avisos.append("El SAT no encontró este CFDI (puede tardar unas horas en aparecer después del timbrado). Verifícalo después.")
         ya_usado = _cfdi_uuid_ya_procesado_cpc(cfdi["uuid"])
         cfdi["_ya_procesado"] = bool(ya_usado)
         cfdi["_folio_previo"] = ya_usado
@@ -18281,8 +18639,10 @@ def _cpc_sobre_facturacion(rec):
     return None
 
 def _cpc_hist(rec, accion, detalle=""):
+    try: usuario = session.get("user", "")
+    except RuntimeError: usuario = "sistema"          # rev109: verificación automática (sin petición)
     rec.setdefault("historial", []).append({"fecha": datetime.datetime.now().isoformat(timespec="seconds"),
-                                            "usuario": session.get("user", ""), "accion": accion, "detalle": detalle})
+                                            "usuario": usuario, "accion": accion, "detalle": detalle})
 
 @app.route("/api/cpc", methods=["POST"])
 def api_create_cpc():
@@ -18308,6 +18668,7 @@ def api_create_cpc():
             if sobre and not data.get("confirmar_sobrefacturacion"):
                 return jsonify({"sobre_facturacion": sobre, "error": f"Con esta factura, la CPO {sobre['cpo']} quedaría facturada de más por ${sobre['exceso']:,.2f} USD"}), 409
             rec["id"] = _doc_next_number("CPC"); rec["year"] = year
+            if cfdi and cfdi.get("_sat"): rec["sat"] = cfdi.pop("_sat")              # rev109
             _cpc_hist(rec, "Alta", f"{rec['moneda']} {rec['total']:,.2f}" + (f" · sobre-facturación confirmada (+${sobre['exceso']:,.2f} USD)" if sobre else ""))
             records = cpc_load(year); records.append(rec); cpc_save(year, records)
         return jsonify({"ok": True, "record": rec})
@@ -18329,8 +18690,16 @@ def api_update_cpc(cpc_id):
                 nuevo = data["estatus"]
                 if nuevo not in ("Pendiente", "Pagada", "Cancelada"):
                     return jsonify({"error": "Estatus inválido"}), 400
+                if nuevo == "Pagada" and antes.get("estatus") != "Pagada" and _cpc_saldo(rec) > 0.01:
+                    # rev109: marcar Pagada registra un pago por el saldo pendiente (la cobranza cuadra)
+                    f_pago = (data.get("fecha_pago") or datetime.date.today().isoformat())[:10]
+                    rec["pagos"] = list(rec.get("pagos") or []) + [{"id": f"PG-{len(rec.get('pagos') or []) + 1:03d}-{secrets.token_hex(2)}",
+                        "fecha": f_pago, "monto": _cpc_saldo(rec), "forma": "Marcada como pagada", "referencia": "", "rep": None,
+                        "usuario": session.get("user", ""), "registrado": datetime.datetime.now().isoformat(timespec="seconds")}]
                 rec["estatus"] = nuevo
                 rec["fecha_pago"] = (data.get("fecha_pago") or datetime.date.today().isoformat()) if nuevo == "Pagada" else None
+                if nuevo == "Pendiente" and antes.get("estatus") == "Pagada" and rec.get("pagos"):
+                    return jsonify({"error": "Para regresar una factura pagada a Pendiente, elimina el pago correspondiente en Cobranza."}), 400
             sobre = _cpc_sobre_facturacion(rec)
             if sobre and not data.get("confirmar_sobrefacturacion") and (
                     rec.get("cpo_id") != antes.get("cpo_id") or _cpc_usd(rec) != _cpc_usd(antes) or antes.get("estatus") == "Cancelada"):

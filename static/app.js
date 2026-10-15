@@ -6752,6 +6752,7 @@ async function dbRepararEsquema(){
 }
 
 async function loadAdminUsers() {
+  respaldoInfo();                                           // rev110
   try {
     const d = await fetch('/api/admin/users').then(r=>r.json());
     if (d.error) { toast(d.error,'er'); return; }
@@ -18306,6 +18307,8 @@ async function loadCPC(){
   try{
     const d=await fetch('/api/cpc?year='+year).then(r=>r.json());
     cpcRecords=d.records||[];
+    const su=d.sat_ult||{}; const el=document.getElementById('cpc-sat-ult');
+    if(el) el.textContent = su.fecha ? `Última verificación SAT: ${String(su.fecha).replace('T',' ').slice(0,16)}${su.en_curso?' (en curso)':su.verificadas!=null?` · ${su.verificadas} revisadas${(su.canceladas||[]).length?` · ${su.canceladas.length} cancelada(s)`:''}`:''}` : 'Sin verificaciones ante el SAT aún';
     cpcYears=d.years&&d.years.length?d.years:[new Date().getFullYear()];
     const cur=yearSel.value;
     yearSel.innerHTML=cpcYears.map(y=>`<option value="${y}">${y}</option>`).join('');
@@ -18320,6 +18323,7 @@ function cpcEstatusBadge(est){
   if(est==='Pagada') return '<span class="badge b-yes">Pagada</span>';
   if(est==='Vencida') return '<span class="badge b-toappr">Vencida</span>';
   if(est==='Cancelada') return '<span class="badge" style="background:rgba(0,0,0,.08);color:var(--muted)">Cancelada</span>';
+  if(est==='Pago parcial') return '<span class="badge" style="background:rgba(37,105,160,.12);color:#1d4ed8">Pago parcial</span>';
   return '<span class="badge b-wip">Pendiente</span>';
 }
 
@@ -18344,7 +18348,8 @@ function cpcRender(){
       <td>${esc(r.fecha_vencimiento||'—')}</td>
       <td style="text-align:right;font-family:'DM Mono',monospace;font-weight:600">${cpcFmt(r.total)} <span style="font-size:10px;color:var(--muted)">${esc(r.moneda||'USD')}</span></td>
       <td style="text-align:right;font-family:'DM Mono',monospace;color:var(--muted2)">${r.total_usd==null?'<span title="Sin tipo de cambio" style="color:var(--amber)">s/TC</span>':cpcFmt(r.total_usd)}</td>
-      <td>${cpcEstatusBadge(r.estatus_efectivo)}</td>
+      <td style="text-align:right;font-family:'DM Mono',monospace;${r.estatus==='Cancelada'?'color:var(--muted)':r.saldo>0.01?'font-weight:600':'color:#1f8a4c'}">${r.estatus==='Cancelada'?'—':cpcFmt(r.saldo)}</td>
+      <td>${cpcEstatusBadge(r.estatus_efectivo)}${cpcSatMini(r)}</td>
       <td><button class="fi-del" style="font-size:13px" title="Ver PDF" onclick="event.stopPropagation();window.open('/api/cpc/${encodeURIComponent(r.id)}/pdf?year=${r.year}','_blank')">Ver PDF</button></td>
       <td>${r.estatus==='Pagada'?'<span style="font-size:10px;color:var(--muted)" title="Las facturas pagadas no se eliminan: se cancelan">—</span>':`<button class="fi-del" style="font-size:13px" title="Eliminar" onclick="event.stopPropagation();cpcQuickDelete('${r.id}',${r.year})">Eliminar</button>`}</td>
     </tr>`).join('');
@@ -18352,11 +18357,11 @@ function cpcRender(){
 
   const pendientes=cpcRecords.filter(r=>{
     const ef=r.estatus_efectivo||r.estatus;
-    return ef==='Pendiente'||ef==='Vencida';
+    return ef==='Pendiente'||ef==='Vencida'||ef==='Pago parcial';
   });
   // rev108: por cobrar separado por moneda, más el equivalente en USD
   const porMon = {USD:0, MXN:0}; let usd = 0, sinTc = 0;
-  pendientes.forEach(r=>{ porMon[(r.moneda||'USD')] = (porMon[(r.moneda||'USD')]||0) + (r.total||0); if(r.total_usd==null) sinTc++; else usd += r.total_usd; });
+  pendientes.forEach(r=>{ porMon[(r.moneda||'USD')] = (porMon[(r.moneda||'USD')]||0) + (r.saldo ?? r.total ?? 0); if(r.saldo_usd==null) sinTc++; else usd += r.saldo_usd; });   // rev109: saldo, no total
   document.getElementById('cpc-total').innerHTML = cpcFmt(usd) + ' <span style="font-size:11px;color:var(--muted)">USD equiv.</span>'
     + `<div style="font-size:11px;color:var(--muted2);font-weight:400">USD ${cpcFmt(porMon.USD)} · MXN ${cpcFmt(porMon.MXN)}${sinTc?` · ${sinTc} sin TC`:''}</div>`;
 }
@@ -18380,6 +18385,7 @@ function cpcOpenNew(){
   document.getElementById('cpc-fecha-factura').value=new Date().toISOString().slice(0,10);
   document.getElementById('cpc-moneda').value='USD'; document.getElementById('cpc-tc').value=''; cpcOnMoneda();   // rev108
   document.getElementById('cpc-hist-box').style.display='none';
+  document.getElementById('cpc-sat-box').style.display='none'; document.getElementById('cpc-cobranza-box').style.display='none';   // rev109
   loadCpoSaldos();
   document.getElementById('mo-cpc-new').classList.add('on');
 }
@@ -18413,6 +18419,7 @@ function cpcOpenEdit(id){
   hb.style.display = hs.length ? '' : 'none';
   document.getElementById('cpc-hist').innerHTML = hs.slice().reverse().map(h=>`<div style="border-top:1px solid var(--border);padding:3px 0"><b>${esc(h.accion)}</b> · ${esc(String(h.fecha).replace('T',' '))} · ${esc(h.usuario||'')}<div style="color:var(--muted2)">${esc(h.detalle||'')}</div></div>`).join('');
   document.getElementById('cpc-notas').value=r.notas||'';
+  cpcCobranzaRender(r);                                              // rev109
   document.getElementById('cpc-estatus').value=r.estatus||'Pendiente';
   cpcOnEstatusChange();
   document.getElementById('cpc-fecha-pago').value=r.fecha_pago||'';
@@ -19406,4 +19413,135 @@ function cpcOnMoneda(){
   const m = document.getElementById('cpc-moneda').value;
   document.getElementById('cpc-tc-field').style.display = m==='MXN' ? '' : 'none';
   document.querySelectorAll('#mo-cpc-new .cpc-mon').forEach(e=>e.textContent=m);
+}
+
+
+// ════════════════════════════════════════════════════════
+//  rev109 — CPC: verificación ante el SAT y cobranza
+// ════════════════════════════════════════════════════════
+function cpcSatTxt(sat){
+  if(!sat) return '<span style="color:var(--muted)">Sin verificar</span>';
+  const f = String(sat.fecha||'').replace('T',' ').slice(0,16);
+  if(sat.estado==='Vigente') return `<span style="color:#1f8a4c;font-weight:600">✓ Vigente</span> <span style="color:var(--muted);font-size:11px">${esc(f)}</span>`;
+  if(sat.estado==='Cancelado') return `<span style="color:var(--red);font-weight:700">✕ Cancelado ante el SAT</span> <span style="color:var(--muted);font-size:11px">${esc(f)}</span>`;
+  if(sat.estado==='No Encontrado') return `<span style="color:var(--amber)">? No encontrado en el SAT</span> <span style="color:var(--muted);font-size:11px">${esc(f)}</span>`;
+  return `<span style="color:var(--amber)">⚠ No se pudo verificar</span> <span style="color:var(--muted);font-size:11px">${esc(sat.error||'')} ${esc(f)}</span>`;
+}
+function cpcSatMini(r){
+  if(!(r.cfdi||{}).uuid) return '';
+  const s = r.sat; const t = !s ? ['○','Sin verificar ante el SAT','var(--muted)'] : s.estado==='Vigente' ? ['✓','Vigente ante el SAT','#1f8a4c'] : s.estado==='Cancelado' ? ['✕','Cancelado ante el SAT','var(--red)'] : ['?','No verificado / no encontrado en el SAT','var(--amber)'];
+  return ` <span title="${t[1]}" style="font-size:11px;color:${t[2]};font-weight:700">SAT ${t[0]}</span>`;
+}
+function cpcCobranzaRender(r){
+  const satBox = document.getElementById('cpc-sat-box'), cob = document.getElementById('cpc-cobranza-box');
+  satBox.style.display = (r.cfdi||{}).uuid ? '' : 'none';
+  document.getElementById('cpc-sat-estado').innerHTML = cpcSatTxt(r.sat);
+  cob.style.display = '';
+  const pagos = r.pagos||[], mon = r.moneda||'USD';
+  const saldo = r.saldo ?? (Number(r.total||0) - pagos.reduce((a,p)=>a+Number(p.monto||0),0));
+  document.getElementById('cpc-saldo-txt').innerHTML = r.estatus==='Cancelada' ? '<span style="color:var(--muted)">Factura cancelada</span>'
+    : `Total ${cpcFmt(r.total)} ${mon} · Cobrado ${cpcFmt(Number(r.total||0)-saldo)} · <b style="color:${saldo>0.01?'var(--red)':'#1f8a4c'}">Saldo ${cpcFmt(saldo)} ${mon}</b>`;
+  const puedeBorrar = !USER_PERMS || USER_PERMS.is_admin || ((USER_PERMS.permissions||{})['fin-cpc']==='full');
+  document.getElementById('cpc-pagos-lista').innerHTML = pagos.length ? `<table style="width:100%;border-collapse:collapse">${pagos.map(p=>`<tr style="border-top:1px solid var(--border)">
+      <td style="padding:3px 4px">${esc(p.fecha)}</td><td style="padding:3px 4px;text-align:right;font-family:'DM Mono',monospace;font-weight:600">${cpcFmt(p.monto)}</td>
+      <td style="padding:3px 4px;color:var(--muted2)">${esc(p.forma||'')}${p.referencia?' · '+esc(p.referencia):''}${p.rep?` · <span title="Complemento de pago">REP ${esc(p.rep.serie||'')}${esc(p.rep.folio||'')}</span>`:''}</td>
+      <td style="padding:3px 4px;color:var(--muted);font-size:10px">${esc(p.usuario||'')}</td>
+      <td style="padding:3px 4px;text-align:right">${puedeBorrar?`<button class="fi-del" style="font-size:10px" onclick="cpcBorrarPago('${esc(p.id)}')">✕</button>`:''}</td></tr>`).join('')}</table>`
+    : '<div style="color:var(--muted)">Sin pagos registrados</div>';
+  const form = document.getElementById('cpc-pago-form');
+  form.style.display = (r.estatus==='Cancelada' || saldo<=0.01) ? 'none' : 'flex';
+  document.getElementById('cpc-pg-fecha').value = new Date().toISOString().slice(0,10);
+  document.getElementById('cpc-pg-monto').value = saldo>0 ? saldo.toFixed(2) : '';
+  document.getElementById('cpc-pg-ref').value = '';
+}
+async function cpcRefrescarActual(rec){
+  await loadCPC();
+  const r = rec || cpcRecords.find(x=>x.id===cpcCurrentId);
+  if(r){ const full = cpcRecords.find(x=>x.id===r.id) || r; cpcOpenEdit(full.id); }
+}
+async function cpcAgregarPago(){
+  const body = {fecha: document.getElementById('cpc-pg-fecha').value, monto: document.getElementById('cpc-pg-monto').value,
+                forma: document.getElementById('cpc-pg-forma').value, referencia: document.getElementById('cpc-pg-ref').value};
+  let r = await apiCall('POST', `/cpc/${encodeURIComponent(cpcCurrentId)}/pagos`, body);
+  if(r.exceso){
+    if(!confirm(`El pago es mayor al saldo de la factura por ${cpcFmt(r.exceso)}.\n¿Registrarlo de todos modos?`)) return;
+    r = await apiCall('POST', `/cpc/${encodeURIComponent(cpcCurrentId)}/pagos`, {...body, confirmar_exceso:true});
+  }
+  if(r.error){ toast(r.error,'er'); return; }
+  toast(`Pago registrado · saldo ${cpcFmt(r.saldo)}` + (r.record.estatus==='Pagada'?' · factura PAGADA':''),'ok',4000);
+  await cpcRefrescarActual();
+}
+async function cpcBorrarPago(pid){
+  if(!confirm('¿Eliminar este pago? El saldo de la factura aumenta.')) return;
+  const r = await apiCall('DELETE', `/cpc/${encodeURIComponent(cpcCurrentId)}/pagos/${encodeURIComponent(pid)}`);
+  if(r.error){ toast(r.error,'er'); return; }
+  toast('Pago eliminado','if'); await cpcRefrescarActual();
+}
+async function cpcVerificarSAT(){
+  document.getElementById('cpc-sat-estado').innerHTML = '<span style="color:var(--muted)">Consultando al SAT…</span>';
+  const r = await apiCall('POST', `/cpc/${encodeURIComponent(cpcCurrentId)}/verificar-sat`, {});
+  if(r.error){ toast(r.error,'er'); document.getElementById('cpc-sat-estado').innerHTML = '—'; return; }
+  if(r.cancelada) alert('⚠ El CFDI aparece CANCELADO ante el SAT. La factura se marcó como Cancelada (queda en la bitácora).');
+  else toast('Estatus SAT: ' + (r.sat.estado||'—'), r.sat.estado==='Vigente'?'ok':'if');
+  await cpcRefrescarActual();
+}
+async function cpcVerificarPendientes(){
+  if(!confirm('Se consultará ante el SAT el estatus de todas las facturas pendientes con CFDI. Las que aparezcan canceladas se marcarán como Canceladas. ¿Continuar?')) return;
+  toast('Consultando al SAT…','if',3000);
+  const r = await apiCall('POST', '/cpc/verificar-sat-pendientes', {});
+  if(r.error){ toast(r.error,'er'); return; }
+  alert(`Verificación ante el SAT\n\nFacturas revisadas: ${r.verificadas}\nCanceladas ante el SAT (marcadas como Canceladas): ${r.canceladas.length}${r.canceladas.length?'\n  '+r.canceladas.join(', '):''}\nSin respuesta del SAT: ${r.errores}`);
+  loadCPC();
+}
+let _cpcRep = null;
+async function cpcRepCargar(input){
+  const f = input.files[0]; input.value=''; if(!f) return;
+  const fd = new FormData(); fd.append('file', f);
+  const d = await fetch('/api/cpc/parse-rep', {method:'POST', body: fd}).then(r=>r.json()).catch(e=>({error:e.message}));
+  if(d.error){ toast(d.error,'er'); return; }
+  _cpcRep = d;
+  const ok = d.aplicaciones.filter(a=>a.cpc_id && !a.ya_aplicado);
+  document.getElementById('cpc-rep-body').innerHTML = `<div style="font-size:12px;margin-bottom:10px">REP <b>${esc(d.rep.serie||'')}${esc(d.rep.folio||'')}</b> · UUID <span style="font-family:'DM Mono',monospace">${esc(d.rep.uuid)}</span> · ${esc(d.rep.nombre_receptor||'')} · ${esc(String(d.rep.fecha||'').slice(0,10))}</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr>${['Factura (UUID)','CPC','Fecha de pago','Monto','Parcialidad','Saldo CPC','Resultado'].map(h=>`<th style="text-align:left;padding:4px 6px;cursor:default">${h}</th>`).join('')}</tr></thead>
+    <tbody>${d.aplicaciones.map(a=>`<tr style="border-top:1px solid var(--border)">
+      <td style="padding:4px 6px;font-family:'DM Mono',monospace;font-size:10px">${esc(a.uuid_factura)}</td><td style="padding:4px 6px;font-family:'DM Mono',monospace">${esc(a.cpc_id||'—')}</td>
+      <td style="padding:4px 6px">${esc(a.fecha)}</td><td style="padding:4px 6px;text-align:right">${cpcFmt(a.monto)} ${esc(a.moneda||'')}</td><td style="padding:4px 6px">${esc(a.parcialidad||'')}</td>
+      <td style="padding:4px 6px;text-align:right">${a.saldo_cpc==null?'—':cpcFmt(a.saldo_cpc)}</td>
+      <td style="padding:4px 6px">${!a.cpc_id?'<span style="color:var(--amber)">No hay factura con ese UUID</span>':a.ya_aplicado?'<span style="color:var(--muted)">Ya aplicado</span>':'<span style="color:#1f8a4c">Se registrará</span>'}</td></tr>`).join('')}</tbody></table>`;
+  document.getElementById('cpc-rep-btn').disabled = !ok.length;
+  document.getElementById('mo-cpc-rep').classList.add('on');
+}
+async function cpcRepAplicar(){
+  if(!_cpcRep) return;
+  const r = await apiCall('POST', '/cpc/aplicar-rep', {rep: _cpcRep.rep, aplicaciones: _cpcRep.aplicaciones});
+  if(r.error){ toast(r.error,'er'); return; }
+  closeMo('mo-cpc-rep');
+  toast(`${r.aplicados.length} pago(s) registrados${r.omitidos.length?` · ${r.omitidos.length} omitido(s)`:''}`,'ok',5000);
+  loadCPC();
+}
+
+
+// ════════════════════════════════════════════════════════
+//  rev110 — Respaldo de archivos del volumen
+// ════════════════════════════════════════════════════════
+function respaldoTam(b){ b=Number(b||0); if(b<1024) return b+' B'; if(b<1048576) return (b/1024).toFixed(1)+' KB'; if(b<1073741824) return (b/1048576).toFixed(1)+' MB'; return (b/1073741824).toFixed(2)+' GB'; }
+async function respaldoInfo(){
+  const box = document.getElementById('resp-info'); if(!box) return;
+  try{
+    const d = await fetch('/api/admin/respaldo-archivos/info').then(r=>r.json());
+    if(d.error){ box.innerHTML = `<span style="color:var(--muted)">${esc(d.error)}</span>`; return; }
+    const u = d.ultimo;
+    box.innerHTML = `<div style="margin-bottom:6px"><b>${d.archivos.toLocaleString('es-MX')}</b> archivo(s) · <b>${respaldoTam(d.bytes)}</b> en <code>${esc(d.data_dir)}</code>
+        ${d.disco?` · volumen: ${respaldoTam(d.disco.usado)} usados de ${respaldoTam(d.disco.total)} (${Math.round(d.disco.usado/d.disco.total*100)}%)`:''}</div>
+      <table style="width:100%;border-collapse:collapse;font-size:11.5px">${d.grupos.map(g=>`<tr style="border-top:1px solid var(--border)">
+        <td style="padding:3px 4px">${esc(g.descripcion)}</td><td style="padding:3px 4px;text-align:right">${g.archivos.toLocaleString('es-MX')}</td>
+        <td style="padding:3px 4px;text-align:right;font-family:'DM Mono',monospace">${respaldoTam(g.bytes)}</td></tr>`).join('')}</table>
+      <div style="font-size:11px;color:var(--muted2);margin-top:6px">${u?`Último respaldo descargado: ${esc(String(u.fecha).replace('T',' ').slice(0,16))} por ${esc(u.usuario||'')} (${(u.archivos||0).toLocaleString('es-MX')} archivos${u.solo_documentos?', solo documentos':''})`:'Aún no se ha descargado ningún respaldo de archivos.'}</div>`;
+  }catch(e){ box.textContent = 'No se pudo leer el resumen: ' + e.message; }
+}
+function respaldoDescargar(solo){
+  toast('Preparando el ZIP… la descarga empezará en unos segundos (puede tardar si hay muchos archivos).','if',6000);
+  const a = document.createElement('a'); a.href = '/api/admin/respaldo-archivos' + (solo ? '?solo=' + solo : '');
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(respaldoInfo, 8000);
 }
