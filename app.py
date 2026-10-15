@@ -18524,7 +18524,11 @@ def api_cpc_aplicar_rep():
 def api_get_cpc():
     if not can("view", "fin-cpc"): return jsonify({"error": "Sin permiso"}), 403
     year = int(request.args.get("year", CURRENT_YEAR))
-    records = cpc_load(year)
+    fq = re.sub(r"[\s\-_/]+", "", str(request.args.get("folio") or "")).upper()
+    if fq:   # rev112: búsqueda por Serie/Folio en TODOS los años
+        records = [c for c in cpc_all_records() if fq in _cpc_folio_clave(c)]
+    else:
+        records = cpc_load(year)
     for r in records:
         r["estatus_efectivo"] = _cpc_estatus_efectivo(r)
         r["total_usd"] = _cpc_usd(r, "total")
@@ -18590,10 +18594,16 @@ def api_cpo_saldos():
     out.sort(key=lambda c: (c["saldo"] <= 0.005, -(c["year"] or 0), c["id"] or ""))
     return jsonify(out)
 
+def _cpc_folio_clave(rec):
+    """rev112: clave Serie+Folio normalizada (sin espacios ni guiones, en mayúsculas)."""
+    return re.sub(r"[\s\-_/]+", "", f"{rec.get('serie') or ''}{rec.get('folio') or ''}").upper()
+
 def _cpc_campos(data, rec):
     """Aplica campos editables; regresa error o None."""
     for k in ["job", "customer", "fecha_factura", "fecha_vencimiento", "notas"]:
         if k in data: rec[k] = (data[k] or "").strip()
+    for k in ("serie", "folio"):                                       # rev112
+        if k in data: rec[k] = str(data[k] or "").strip().upper()[:40]
     rec["job"] = (rec.get("job") or "").upper()
     if "cpo_id" in data: rec["cpo_id"] = (data["cpo_id"] or "").strip() or None
     for k in ["subtotal", "iva", "isr_retenido", "iva_retenido"]:
@@ -18618,11 +18628,17 @@ def _cpc_campos(data, rec):
         if not fx: return "La factura es en MXN y no hay tipo de cambio registrado para su fecha: captúralo."
         rec["tipo_cambio"] = round(float(fx), 4)
     if rec["moneda"] == "USD": rec["tipo_cambio"] = None
-    if not rec.get("job") or not rec.get("customer") or not rec.get("fecha_factura"):
-        return "Completa Job, Cliente y Fecha de Factura"
+    if not rec.get("customer") or not rec.get("fecha_factura"):          # rev111: el Job es opcional
+        return "Completa Cliente y Fecha de Factura"
     try: datetime.date.fromisoformat(rec["fecha_factura"][:10])
     except ValueError: return "Fecha de factura inválida"
     return None
+
+def _cpc_folio_duplicado(rec):
+    """Otras facturas (no canceladas) con la misma Serie+Folio."""
+    k = _cpc_folio_clave(rec)
+    if not k: return []
+    return [c.get("id") for c in cpc_all_records() if c.get("id") != rec.get("id") and c.get("estatus") != "Cancelada" and _cpc_folio_clave(c) == k]
 
 def _cpc_sobre_facturacion(rec):
     """Aviso si con esta factura lo facturado (sin IVA, USD) pasa del valor de la CPO."""
@@ -18656,6 +18672,9 @@ def api_create_cpc():
         rec = {"cfdi": cfdi, "estatus": "Pendiente", "fecha_pago": None,
                "created_by": session.get("user", ""), "created_at": datetime.datetime.now().isoformat()}
         if cfdi and not data.get("moneda"): data["moneda"] = (cfdi.get("moneda") or "MXN").upper()
+        if cfdi:                                                       # rev112: serie/folio del CFDI si no se capturaron
+            if not data.get("serie"): data["serie"] = cfdi.get("serie") or ""
+            if not data.get("folio"): data["folio"] = cfdi.get("folio") or ""
         if cfdi and cfdi.get("tipo_cambio") and data.get("tipo_cambio") in (None, ""): data["tipo_cambio"] = cfdi["tipo_cambio"]
         err = _cpc_campos(data, rec)
         if err: return jsonify({"error": err}), 400
@@ -18664,6 +18683,9 @@ def api_create_cpc():
             if cfdi and cfdi.get("uuid"):
                 dup = _cfdi_uuid_ya_procesado_cpc(cfdi["uuid"])
                 if dup: return jsonify({"error": f"Ese CFDI (UUID {cfdi['uuid']}) ya fue registrado en {dup}"}), 400
+            dupf = _cpc_folio_duplicado(rec)
+            if dupf and not data.get("confirmar_folio_duplicado"):
+                return jsonify({"folio_duplicado": dupf, "error": f"La Serie/Folio {rec.get('serie','')}{rec.get('folio','')} ya está registrada en {', '.join(dupf)}"}), 409
             sobre = _cpc_sobre_facturacion(rec)
             if sobre and not data.get("confirmar_sobrefacturacion"):
                 return jsonify({"sobre_facturacion": sobre, "error": f"Con esta factura, la CPO {sobre['cpo']} quedaría facturada de más por ${sobre['exceso']:,.2f} USD"}), 409
@@ -18700,11 +18722,15 @@ def api_update_cpc(cpc_id):
                 rec["fecha_pago"] = (data.get("fecha_pago") or datetime.date.today().isoformat()) if nuevo == "Pagada" else None
                 if nuevo == "Pendiente" and antes.get("estatus") == "Pagada" and rec.get("pagos"):
                     return jsonify({"error": "Para regresar una factura pagada a Pendiente, elimina el pago correspondiente en Cobranza."}), 400
+            if _cpc_folio_clave(rec) != _cpc_folio_clave(antes):
+                dupf = _cpc_folio_duplicado(rec)
+                if dupf and not data.get("confirmar_folio_duplicado"):
+                    return jsonify({"folio_duplicado": dupf, "error": f"La Serie/Folio {rec.get('serie','')}{rec.get('folio','')} ya está registrada en {', '.join(dupf)}"}), 409
             sobre = _cpc_sobre_facturacion(rec)
             if sobre and not data.get("confirmar_sobrefacturacion") and (
                     rec.get("cpo_id") != antes.get("cpo_id") or _cpc_usd(rec) != _cpc_usd(antes) or antes.get("estatus") == "Cancelada"):
                 return jsonify({"sobre_facturacion": sobre, "error": f"Con este cambio, la CPO {sobre['cpo']} quedaría facturada de más por ${sobre['exceso']:,.2f} USD"}), 409
-            cambios = [k for k in ("job", "customer", "cpo_id", "fecha_factura", "fecha_vencimiento", "subtotal", "iva", "isr_retenido",
+            cambios = [k for k in ("serie", "folio", "job", "customer", "cpo_id", "fecha_factura", "fecha_vencimiento", "subtotal", "iva", "isr_retenido",
                                    "iva_retenido", "total", "moneda", "tipo_cambio", "estatus", "fecha_pago") if rec.get(k) != antes.get(k)]
             if cambios: _cpc_hist(rec, "Cambio", ", ".join(f"{k}: {antes.get(k)} → {rec.get(k)}" for k in cambios))
             rec["updated_by"] = session.get("user", ""); rec["updated_at"] = datetime.datetime.now().isoformat()
@@ -18751,6 +18777,7 @@ def api_cpc_pdf(cpc_id):
                 ("Estatus", _cpc_estatus_efectivo(rec))]
         if cfdi.get("uuid"):
             meta += [("UUID CFDI", cfdi.get("uuid", "")), ("RFC Receptor", cfdi.get("rfc_receptor", ""))]
+        if rec.get("serie") or rec.get("folio"): meta += [("Serie / Folio", f"{rec.get('serie') or ''} {rec.get('folio') or ''}".strip())]   # rev112
         meta += [("Moneda", rec.get("moneda") or "USD")] + ([("Tipo de cambio", f"{rec.get('tipo_cambio')}")] if rec.get("tipo_cambio") else [])
         meta += [("Subtotal", f"${rec.get('subtotal',0):,.2f}"), ("IVA", f"${rec.get('iva',0):,.2f}")]
         if rec.get("isr_retenido") or rec.get("iva_retenido"):
@@ -21217,6 +21244,8 @@ def _cpc_migrar_moneda():
             for y in cpc_available_years():
                 recs = cpc_load(y); n = 0
                 for r in recs:
+                    if (r.get("cfdi") or {}) and not r.get("serie") and not r.get("folio") and ((r["cfdi"].get("serie") or r["cfdi"].get("folio"))):
+                        r["serie"] = str(r["cfdi"].get("serie") or "").upper(); r["folio"] = str(r["cfdi"].get("folio") or "").upper(); n += 1   # rev112
                     if r.get("moneda"): continue
                     m = ((r.get("cfdi") or {}).get("moneda") or "USD").upper()
                     r["moneda"] = "MXN" if m == "MXN" else "USD"

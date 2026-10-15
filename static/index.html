@@ -5648,6 +5648,11 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
           <input type="text" id="cpc-gs" placeholder="CPC, Job, Cliente, UUID…" oninput="cpcRender()">
         </div>
       </div>
+      <div class="fg"><label>Serie / Folio <span style="opacity:.6;text-transform:none;letter-spacing:0">(todos los años)</span></label>
+        <div class="sw"><span class="si">⌕</span>
+          <input type="text" id="cpc-folio-q" placeholder="ej. A 77, A77" oninput="cpcFolioBuscar()" style="font-family:'DM Mono',monospace;text-transform:uppercase">
+        </div>
+      </div>
       <div class="fg"><label>Año</label><select id="cpc-year" onchange="loadCPC()"></select></div>
       <div class="fg"><label>Estatus</label>
         <select id="cpc-estatus-flt" onchange="cpcRender()">
@@ -5680,7 +5685,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
     <div style="overflow-x:auto;flex:1">
       <table class="tbl" style="width:100%">
         <thead><tr>
-          <th>CPC</th><th>Job</th><th>CPO</th><th>Cliente</th>
+          <th>CPC</th><th>Serie / Folio</th><th>Job</th><th>CPO</th><th>Cliente</th>
           <th>Fecha Factura</th><th>Vencimiento</th>
           <th style="text-align:right">Total</th><th style="text-align:right">Equiv. USD</th><th style="text-align:right">Saldo</th><th>Estatus</th><th>PDF</th><th>Acciones</th>
         </tr></thead>
@@ -5728,7 +5733,9 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
         </div>
       </div>
       <div class="fr" id="cpc-job-field">
-        <div class="fi"><label>Job *</label><input type="text" id="cpc-job" placeholder="ej. 652-50" style="color:var(--gold);font-family:'DM Mono',monospace;font-weight:600"></div>
+        <div class="fi" style="flex:0 0 110px"><label>Serie</label><input type="text" id="cpc-serie" maxlength="25" oninput="this.value=this.value.toUpperCase()" style="font-family:'DM Mono',monospace"></div>
+        <div class="fi" style="flex:0 0 150px"><label>Folio</label><input type="text" id="cpc-folio" maxlength="40" oninput="this.value=this.value.toUpperCase()" style="font-family:'DM Mono',monospace"></div>
+        <div class="fi"><label>Job <span style="opacity:.6;text-transform:none;letter-spacing:0">(opcional)</span></label><input type="text" id="cpc-job" placeholder="ej. 652-50" style="color:var(--gold);font-family:'DM Mono',monospace;font-weight:600"></div>
         <div class="fi"><label>Cliente *</label><input type="text" id="cpc-cliente" placeholder="ej. GRUPO ANTOLIN"></div>
       </div>
       <div class="fr">

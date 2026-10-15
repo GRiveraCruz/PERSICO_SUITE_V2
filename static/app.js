@@ -18307,6 +18307,8 @@ async function loadCPC(){
   try{
     const d=await fetch('/api/cpc?year='+year).then(r=>r.json());
     cpcRecords=d.records||[];
+    _cpcAnio = cpcRecords;                                         // rev112
+    if(typeof _cpcFolioQ!=='undefined' && _cpcFolioQ) cpcFolioBuscar();
     const su=d.sat_ult||{}; const el=document.getElementById('cpc-sat-ult');
     if(el) el.textContent = su.fecha ? `Última verificación SAT: ${String(su.fecha).replace('T',' ').slice(0,16)}${su.en_curso?' (en curso)':su.verificadas!=null?` · ${su.verificadas} revisadas${(su.canceladas||[]).length?` · ${su.canceladas.length} cancelada(s)`:''}`:''}` : 'Sin verificaciones ante el SAT aún';
     cpcYears=d.years&&d.years.length?d.years:[new Date().getFullYear()];
@@ -18334,13 +18336,15 @@ function cpcRender(){
   if(q) rows=rows.filter(r=>
     (r.id||'').toLowerCase().includes(q) || (r.job||'').toLowerCase().includes(q) ||
     (r.cpo_id||'').toLowerCase().includes(q) || (r.customer||'').toLowerCase().includes(q) ||
-    ((r.cfdi||{}).uuid||'').toLowerCase().includes(q));
+    ((r.cfdi||{}).uuid||'').toLowerCase().includes(q) ||
+    (`${r.serie||''}${r.folio||''}`).toLowerCase().replace(/[\s\-_/]/g,'').includes(q.replace(/[\s\-_/]/g,'')));
   if(estF) rows=rows.filter(r=>r.estatus_efectivo===estF);
   rows.sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||''));
 
   document.getElementById('cpc-tb').innerHTML=rows.map(r=>`
     <tr onclick="cpcOpenEdit('${r.id}')" style="cursor:pointer;${r.estatus==='Cancelada'?'opacity:.55':''}">
       <td style="font-family:'DM Mono',monospace;color:var(--gold);font-weight:700">${esc(r.id)}</td>
+      <td style="font-family:'DM Mono',monospace">${esc([r.serie,r.folio].filter(Boolean).join(' ')||'—')}${_cpcFolioQ && r.year!=null?` <span style="font-size:9.5px;color:var(--muted)">${r.year}</span>`:''}</td>
       <td style="font-family:'DM Mono',monospace;color:var(--amber)">${esc(r.job||'—')}</td>
       <td style="font-family:'DM Mono',monospace">${esc(r.cpo_id||'—')}</td>
       <td style="color:var(--muted2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.customer||'—')}</td>
@@ -18352,8 +18356,8 @@ function cpcRender(){
       <td>${cpcEstatusBadge(r.estatus_efectivo)}${cpcSatMini(r)}</td>
       <td><button class="fi-del" style="font-size:13px" title="Ver PDF" onclick="event.stopPropagation();window.open('/api/cpc/${encodeURIComponent(r.id)}/pdf?year=${r.year}','_blank')">Ver PDF</button></td>
       <td>${r.estatus==='Pagada'?'<span style="font-size:10px;color:var(--muted)" title="Las facturas pagadas no se eliminan: se cancelan">—</span>':`<button class="fi-del" style="font-size:13px" title="Eliminar" onclick="event.stopPropagation();cpcQuickDelete('${r.id}',${r.year})">Eliminar</button>`}</td>
-    </tr>`).join('');
-  document.getElementById('cpc-count').textContent=`${rows.length} de ${cpcRecords.length} registros`;
+    </tr>`).join('') || `<tr><td colspan="13" style="text-align:center;padding:26px;color:var(--muted)">${_cpcFolioQ?'Ninguna factura con esa Serie / Folio en ningún año':'Sin facturas'}</td></tr>`;
+  document.getElementById('cpc-count').textContent = _cpcFolioQ ? `${rows.length} factura(s) con Serie/Folio "${_cpcFolioQ}" (todos los años)` : `${rows.length} de ${cpcRecords.length} registros`;
 
   const pendientes=cpcRecords.filter(r=>{
     const ef=r.estatus_efectivo||r.estatus;
@@ -18384,6 +18388,7 @@ function cpcOpenNew(){
   document.getElementById('cpc-iva-ret').value=0;
   document.getElementById('cpc-fecha-factura').value=new Date().toISOString().slice(0,10);
   document.getElementById('cpc-moneda').value='USD'; document.getElementById('cpc-tc').value=''; cpcOnMoneda();   // rev108
+  document.getElementById('cpc-serie').value=''; document.getElementById('cpc-folio').value='';   // rev112
   document.getElementById('cpc-hist-box').style.display='none';
   document.getElementById('cpc-sat-box').style.display='none'; document.getElementById('cpc-cobranza-box').style.display='none';   // rev109
   loadCpoSaldos();
@@ -18405,6 +18410,8 @@ function cpcOpenEdit(id){
   loadCpoSaldos(r.cpo_id);
 
   document.getElementById('cpc-job').value=r.job||'';
+  document.getElementById('cpc-serie').value=r.serie||((r.cfdi||{}).serie)||'';     // rev112
+  document.getElementById('cpc-folio').value=r.folio||((r.cfdi||{}).folio)||'';
   document.getElementById('cpc-cliente').value=r.customer||'';
   document.getElementById('cpc-fecha-factura').value=r.fecha_factura||'';
   document.getElementById('cpc-fecha-venc').value=r.fecha_vencimiento||'';
@@ -18502,6 +18509,8 @@ function cpcRenderCFDI(cfdi){
     document.getElementById('cpc-isr-ret').value=cfdi.isr_retenido||0;
     document.getElementById('cpc-total-input').value=cfdi.total||0;
     document.getElementById('cpc-moneda').value=(cfdi.moneda||'MXN').toUpperCase()==='USD'?'USD':'MXN';
+    document.getElementById('cpc-serie').value=(cfdi.serie||'').toUpperCase();      // rev112
+    document.getElementById('cpc-folio').value=(cfdi.folio||'').toUpperCase();
     if(cfdi.tipo_cambio) document.getElementById('cpc-tc').value=cfdi.tipo_cambio;
     cpcOnMoneda();
     if((cfdi._avisos||[]).length) matchEl.innerHTML += `<div style="color:var(--amber);font-size:11px;margin-top:3px">${cfdi._avisos.map(esc).join('<br>')}</div>`;
@@ -18517,7 +18526,7 @@ async function cpcSave(){
   const job=document.getElementById('cpc-job').value.trim();
   const cliente=document.getElementById('cpc-cliente').value.trim();
   const fechaFactura=document.getElementById('cpc-fecha-factura').value;
-  if(!job||!cliente||!fechaFactura){ toast('Completa Job, Cliente y Fecha de Factura','er'); return; }
+  if(!cliente||!fechaFactura){ toast('Completa Cliente y Fecha de Factura','er'); return; }   // rev111: Job opcional
   if(usarCpo && !cpoId){ toast('Selecciona una CPO','er'); return; }
 
   const payload={
@@ -18530,6 +18539,7 @@ async function cpcSave(){
     notas:document.getElementById('cpc-notas').value,
     cfdi:cpcCurrentCFDI,
     moneda:document.getElementById('cpc-moneda').value,                      // rev108
+    serie:document.getElementById('cpc-serie').value.trim(), folio:document.getElementById('cpc-folio').value.trim(),   // rev112
     tipo_cambio:document.getElementById('cpc-moneda').value==='MXN' ? (document.getElementById('cpc-tc').value||null) : null,
   };
   try{
@@ -18540,6 +18550,12 @@ async function cpcSave(){
       payload.fecha_pago=document.getElementById('cpc-fecha-pago').value||null;
     }
     r = await enviar();
+    // rev112: Serie/Folio ya registrada → confirmar
+    if(r.folio_duplicado){
+      if(!confirm(`⚠ ${r.error}.\n\n¿Guardar de todos modos?`)) return;
+      payload.confirmar_folio_duplicado = true;
+      r = await enviar();
+    }
     // rev108: sobre-facturación de la CPO → confirmar
     if(r.sobre_facturacion){
       const x = r.sobre_facturacion;
@@ -19544,4 +19560,22 @@ function respaldoDescargar(solo){
   const a = document.createElement('a'); a.href = '/api/admin/respaldo-archivos' + (solo ? '?solo=' + solo : '');
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(respaldoInfo, 8000);
+}
+
+
+// rev112: búsqueda por Serie/Folio en todos los años
+let _cpcFolioQ = '', _cpcFolioT = null, _cpcAnio = null;
+function cpcFolioBuscar(){
+  clearTimeout(_cpcFolioT);
+  _cpcFolioT = setTimeout(async ()=>{
+    const q = (document.getElementById('cpc-folio-q').value||'').trim();
+    _cpcFolioQ = q;
+    if(!q){ await loadCPC(); return; }
+    try{
+      const d = await fetch('/api/cpc?folio='+encodeURIComponent(q)).then(r=>r.json());
+      if(d.error){ toast(d.error,'er'); return; }
+      cpcRecords = d.records || [];
+      cpcRender();
+    }catch(e){ toast('No se pudo buscar: '+e.message,'er'); }
+  }, 350);
 }
