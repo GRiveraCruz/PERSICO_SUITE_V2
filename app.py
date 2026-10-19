@@ -16843,8 +16843,9 @@ def api_create_ingreso():
             if not ing_items:
                 return jsonify({"error": "Ningún item con cantidad > 0"}), 400
 
+            ingresos = ingreso_load()
             rec = {
-                "id":         _doc_next_number("WI"),
+                "id":         _folio_libre("WI", {str(r.get("id") or "") for r in ingresos}),   # rev113
                 "tipo":       tipo,
                 "po_number":  po_num,
                 "recibe":     session.get("user",""),   # always the logged user
@@ -16853,7 +16854,6 @@ def api_create_ingreso():
                 "fecha":      now[:10],
                 "created_at": now,
             }
-            ingresos = ingreso_load()
             ingresos.append(rec)
             ingreso_save(ingresos)
 
@@ -19418,6 +19418,64 @@ def _doc_counter_load():
         except: pass
     return {}
 
+# ── rev113: folios que ya existen ─────────────────────────────────────────────
+#  Si el contador de folios quedó por debajo del último folio usado (registros importados,
+#  migraciones o un contador reiniciado), el siguiente folio choca con uno existente y el
+#  guardado falla (IntegrityError en record_id único). Se evita en dos niveles:
+#  1) _folio_libre: salta los folios que ya existen y adelanta el contador;
+#  2) al arrancar, cada contador se adelanta al folio más alto que ya existe.
+def _contador_al_menos(prefix, n):
+    """Sube el contador de `prefix` a por lo menos n (nunca lo baja)."""
+    if not n: return
+    if _orm and _orm.DB_ENABLED:
+        from sqlalchemy import text
+        with _orm.engine.begin() as conn:
+            conn.execute(text("""
+                INSERT INTO doc_counters (prefix, data) VALUES (:p, jsonb_build_object('n', CAST(:n AS int)))
+                ON CONFLICT (prefix) DO UPDATE
+                SET data = jsonb_set(doc_counters.data, '{n}', to_jsonb(GREATEST(COALESCE((doc_counters.data->>'n')::int, 0), CAST(:n AS int)))),
+                    updated_at = now()"""), {"p": prefix, "n": int(n)})
+        return
+    with _doc_lock:
+        p = Path(DOC_COUNTERS_FILE); counters = {}
+        if p.exists():
+            try: counters = json.loads(p.read_text(encoding="utf-8"))
+            except Exception: counters = {}
+        if int(counters.get(prefix, 0) or 0) < int(n):
+            counters[prefix] = int(n); p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(json.dumps(counters, ensure_ascii=False, indent=2), encoding="utf-8")
+
+def _folio_libre(prefix, existentes, width=10):
+    """Siguiente folio que NO esté en `existentes`."""
+    usados = {str(x).upper() for x in existentes if x}
+    for _ in range(1000):
+        f = _doc_next_number(prefix, width)
+        if f.upper() not in usados: return f
+        print(f"[FOLIOS] {f} ya existía; se salta")
+        nums = [int(m.group(1)) for x in usados for m in [re.match(rf"^{re.escape(prefix)}-(\d+)$", x)] if m]
+        if nums: _contador_al_menos(prefix, max(nums))
+    raise RuntimeError(f"No se encontró un folio libre para {prefix}")
+
+def _sincronizar_contadores():
+    """Al arrancar: cada contador queda al menos en el folio más alto ya usado."""
+    fuentes = {
+        "WI": lambda: ingreso_load(), "WO": lambda: salida_load(), "PO": lambda: gpo_load(),
+        "RA": lambda: reassign_load(), "CPC": lambda: cpc_all_records(), "CPP": lambda: cpp_load(),
+        "PAY": lambda: pago_load(), "REC": lambda: rec_load(), "PUR": lambda: pur_load(),
+        "SM": lambda: movimiento_load(), "ET": lambda: esquemas_load(),
+        "CPO": lambda: [c for y in (cpo_available_years() or [CURRENT_YEAR]) for c in cpo_load(y)],
+    }
+    ajustes = []
+    for pref, carga in fuentes.items():
+        try:
+            txt = json.dumps(carga() or [], ensure_ascii=False, default=str)
+            nums = [int(x) for x in re.findall(rf'"{re.escape(pref)}-(\d+)"', txt)]
+            if nums:
+                _contador_al_menos(pref, max(nums)); ajustes.append(f"{pref}≥{max(nums)}")
+        except Exception as e:
+            print(f"[FOLIOS] {pref}: {e}")
+    if ajustes: print("[FOLIOS] contadores revisados: " + ", ".join(ajustes))
+
 def _doc_next_number(prefix: str, width: int = 10) -> str:
     """Regresa el siguiente folio secuencial, ej. WI-0000000001.
     Con base de datos: usa INSERT...ON CONFLICT...RETURNING de PostgreSQL,
@@ -21258,6 +21316,12 @@ def _cpc_migrar_moneda():
     except Exception as e:
         print(f"[CPC] migración de moneda: {e}")
 _cpc_migrar_moneda()
+
+# rev113: contadores de folios al día con los folios ya usados
+try:
+    _sincronizar_contadores()
+except Exception as _e:
+    print(f"[FOLIOS] sincronización: {_e}")
 
 # rev92: KPIs por default para toda la empresa + foto del valor de inventarios del día
 try:
