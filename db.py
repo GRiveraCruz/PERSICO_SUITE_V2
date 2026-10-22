@@ -220,6 +220,13 @@ class KpiSnapshot(Base, JSONBMixin):
     clave = Column(String, unique=True, index=True)
 
 
+class PisoEnsamble(Base, JSONBMixin):
+    """rev115: piso de ensamble — espacio que ocupa cada máquina/Job (y la configuración
+    de la planta en el registro pid='__config__')."""
+    __tablename__ = "piso_ensamble"
+    pid = Column(String, unique=True, index=True)
+
+
 class TipoPuesto(Base, JSONBMixin):
     """rev77: tipo de puesto con su jornada semanal (hora de entrada y salida por día).
     Cada perfil de puesto elige un tipo; las personas lo heredan por su perfil."""

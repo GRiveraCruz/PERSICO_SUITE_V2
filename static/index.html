@@ -574,6 +574,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
         <button onclick="switchMenu('ops-ot','ng-ops')">Tareas Asignadas</button>
         <button onclick="switchMenu('ops-op','ng-ops')">Órdenes de Producción</button>
         <button onclick="switchMenu('ops-os','ng-ops')">Órdenes de Servicio</button>
+        <button onclick="switchMenu('ops-piso','ng-ops')">Piso de ensamble</button>
       </div>
     </div>
 
@@ -892,6 +893,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
       <button class="btn-new" style="background:rgba(255,193,7,.1);border:1px solid var(--amber);color:var(--amber)" onclick="gpoModOpenModal()">Modificar Orden Existente</button>
       <button class="btn-new" style="background:rgba(72,199,142,.08);border:1px solid var(--green);color:var(--green)" onclick="gpoSplitOpenModal()">Dividir PO SAE</button>
       <button class="btn-new" onclick="poOpenImport()">Cargar Excel</button>
+      <button class="btn-sec" onclick="window.location.href='/api/po/template'" title="Plantilla con los campos que lee 'Cargar Excel'">⬇ Descargar plantilla Excel</button>
       <button class="btn-sec" onclick="saeDuplicadosAbrir()" title="No. de PO de SAE registrados en más de una orden">🔎 Duplicados SAE</button>
       <button class="btn-sec btn-export" onclick="poExportCSV()">Exportar CSV</button>
     </div>
@@ -3554,6 +3556,58 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
     </div>
     <div class="mf"><button class="btn btn-s" onclick="closeMo('mo-req-op')">Cancelar</button>
       <button class="btn btn-p" id="btn-req-op-go" onclick="reqCrearOP()">Crear Orden de Producción</button></div>
+  </div>
+</div>
+
+<!-- ══ MODULE: Piso de ensamble (rev115) ══ -->
+<div class="module" id="mod-ops-piso">
+  <div class="main-content" style="overflow-y:auto">
+    <div class="bar-top"><h1>🏗 Piso de ensamble</h1>
+      <button class="btn-reload" onclick="pisoCargar()" style="margin-left:auto">Recargar</button></div>
+    <div style="padding:20px 24px;max-width:1300px">
+      <div id="piso-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px"></div>
+      <div id="piso-barra" style="margin-bottom:20px"></div>
+
+      <div style="background:var(--card,#fff);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:18px">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--red);margin-bottom:10px">Espacio disponible de ensamble en la planta</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+          <div class="fi" style="margin:0;flex:0 0 180px"><label>Espacio total disponible (m²)</label><input type="number" id="piso-total" min="0" step="0.1" placeholder="ej. 1200"></div>
+          <div style="font-size:11px;color:var(--muted);padding-bottom:9px">o</div>
+          <div class="fi" style="margin:0;flex:0 0 130px"><label>Largo del área (m)</label><input type="number" id="piso-largo" min="0" step="0.01" oninput="pisoCalcTotal()"></div>
+          <div class="fi" style="margin:0;flex:0 0 130px"><label>Ancho del área (m)</label><input type="number" id="piso-ancho" min="0" step="0.01" oninput="pisoCalcTotal()"></div>
+          <div class="fi" style="margin:0;flex:1 1 220px"><label>Notas</label><input id="piso-notas" placeholder="ej. Nave 2, sin pasillos"></div>
+          <button class="btn-new piso-edit" onclick="pisoGuardarConfig()" style="width:auto;padding:9px 18px">Guardar</button>
+        </div>
+        <div id="piso-cfg-info" style="font-size:10.5px;color:var(--muted);margin-top:6px"></div>
+      </div>
+
+      <!-- rev116: croquis a escala -->
+      <div style="background:var(--card,#fff);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:18px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--red)">Croquis del piso</div>
+          <span style="font-size:11px;color:var(--muted)">Cuadrícula de 5 m · letras a lo largo, números a lo ancho · la coordenada ubica la esquina inferior izquierda de cada máquina</span>
+          <label style="margin-left:auto;font-size:11px;display:flex;gap:5px;align-items:center;text-transform:none;letter-spacing:0;font-weight:400"><input type="checkbox" id="piso-ver-fuera" onchange="pisoPlano()"> Mostrar también las que no están en piso</label>
+          <button class="btn-reload" onclick="pisoDescargarSVG()" style="font-size:11px;padding:4px 10px">⬇ SVG</button>
+        </div>
+        <div id="piso-plano" style="width:100%;overflow:auto"></div>
+        <div id="piso-avisos" style="font-size:11.5px;margin-top:8px"></div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--red)">Máquinas / Jobs en el piso</div>
+        <span id="piso-sug" style="font-size:11px"></span>
+        <button class="btn-new piso-edit" onclick="pisoNuevo()" style="width:auto;padding:7px 14px;margin-left:auto">+ Agregar máquina / Job</button>
+      </div>
+      <div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px">
+        <table class="tbl" style="width:100%;table-layout:fixed">
+          <colgroup><col style="width:8%"><col style="width:15%"><col style="width:6%"><col style="width:6%"><col style="width:7%"><col style="width:6%"><col style="width:6%"><col style="width:4%"><col style="width:9%"><col style="width:4%"><col style="width:9%"><col style="width:9%"><col style="width:8%"><col style="width:3%"></colgroup>
+          <thead><tr><th>Job</th><th>Máquina / descripción</th><th style="text-align:right">Largo (m)</th><th style="text-align:right">Ancho (m)</th>
+            <th style="text-align:right">Área (m²)</th><th style="text-align:right">m² en Config. Proyecto</th><th title="Celda de 5 m: letra (largo) + número (ancho)">Coordenada</th><th title="Girar 90°: el largo de la máquina queda a lo ancho de la planta">Girar</th><th title="Desplazamiento dentro de la celda, en metros (X a lo largo, Y a lo ancho)">Desp. X / Y (m)</th><th>En piso</th><th>Entrada</th><th>Salida</th><th>Notas</th><th></th></tr></thead>
+          <tbody id="piso-tb"></tbody>
+        </table>
+      </div>
+      <div style="font-size:10.5px;color:var(--muted);margin-top:8px">El área se calcula sola con largo × ancho (si capturas ambos); si no, captura el área directa. Solo cuentan en el espacio requerido las que están marcadas "En piso". Largo y ancho se usarán para el plano gráfico.</div>
+    </div>
   </div>
 </div>
 
@@ -7092,7 +7146,8 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
     <div class="mb2">
       <p style="font-size:12px;color:var(--muted2);margin-bottom:14px;line-height:1.6">
         Sube el archivo <b style="color:var(--text)">PURCHASE_ORDERS_YYYY.xlsx</b> con las columnas estándar del sistema.<br>
-        Columnas requeridas: <code style="color:var(--red)">Clave</code> · <code style="color:var(--red)">Nombre</code> · <code style="color:var(--red)">Subtotal</code> · <code style="color:var(--red)">Estatus</code>
+        Columnas requeridas: <code style="color:var(--red)">Clave</code> · <code style="color:var(--red)">Nombre</code> · <code style="color:var(--red)">Subtotal</code> · <code style="color:var(--red)">Estatus</code><br>
+        <a href="/api/po/template" style="font-size:12px;color:var(--red);font-weight:600">⬇ Descargar la plantilla de Excel</a> con todos los campos e instrucciones.
       </p>
       <div class="fr">
         <div class="fi"><label>Año destino</label><select id="po-imp-year"></select></div>

@@ -2240,10 +2240,10 @@ def _catalog_path(name):
     return p / f"{name}.json"
 
 _CATALOG_MODEL = {"areas": ("nombre", "nombre"), "perfiles": ("pid", "pid"), "tipos_puesto": ("tpid", "tpid"),
-                  "kpi_asignaciones": ("kid", "kid")}  # name -> (campo_json, columna_modelo)
+                  "kpi_asignaciones": ("kid", "kid"), "piso_ensamble": ("pid", "pid")}  # name -> (campo_json, columna_modelo)
 def _catalog_modelo(name):
     return {"areas": _orm.Area, "perfiles": _orm.Perfil, "tipos_puesto": _orm.TipoPuesto,
-            "kpi_asignaciones": _orm.KpiAsignacion}[name]
+            "kpi_asignaciones": _orm.KpiAsignacion, "piso_ensamble": _orm.PisoEnsamble}[name]
 
 def _load_catalog(name):
     if _orm and _orm.DB_ENABLED and name in _CATALOG_MODEL:
@@ -5757,6 +5757,131 @@ def api_get_po():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# ── rev117: reparar los renglones de POs generadas que se perdieron ───────────────
+def _ipo_reparar_gpo(aplicar=True):
+    """Para cada PO generada (no cancelada), revisa que la lista de Purchase Orders tenga
+    un renglón por partida. Agrega los que falten (no modifica los existentes).
+    Regresa [{po, year, agregados: [part_number…], subtotal_agregado}]."""
+    reporte = []
+    gpos = gpo_load()
+    por_anio = {}
+    for g in gpos:
+        if g.get("status") in ("Cancelada",): continue
+        try: y = int(str(g.get("created_at") or CURRENT_YEAR)[:4])
+        except ValueError: y = CURRENT_YEAR
+        por_anio.setdefault(y, []).append(g)
+    norm = lambda x: str(x or "").upper().replace("PO#", "PO-").replace("PO_", "PO-")
+    for y, lista in por_anio.items():
+        recs = po_load(y); cambio = False
+        for g in lista:
+            pn = norm(g.get("po_number"))
+            filas = [r for r in recs if norm(r.get("gpo_number") or r.get("clave")) == pn]
+            disponibles = [(str(r.get("part_number") or "").upper(), str(r.get("entregar_a") or "").upper()) for r in filas]
+            faltan = []
+            for it in g.get("items") or []:
+                k = (str(it.get("part_number") or "").upper(), str(it.get("job") or "").upper())
+                if k in disponibles: disponibles.remove(k)
+                else: faltan.append(it)
+            if not faltan: continue
+            moneda = g.get("moneda") or "USD"; fx = float(g.get("fx_rate") or 1) or 1
+            estatus = {"Entregada": "Recepcionada"}.get(g.get("status"), g.get("status") or "Emitida")
+            plantilla = filas[0] if filas else {}
+            agregados, sub_tot = [], 0.0
+            for it in faltan:
+                if g.get("status") == "Cierre Anticipado":
+                    sub = round(float(it.get("quantity_delivered") or 0) * float(it.get("unit_price") or 0), 2)
+                else:
+                    sub = round(float(it.get("total") or (float(it.get("quantity") or 0) * float(it.get("unit_price") or 0))), 2)
+                recs.append({
+                    "clave": pn, "fecha_doc": str(g.get("created_at") or "")[:10], "entregar_a": it.get("job") or g.get("job") or "",
+                    "nombre": g.get("supplier_name") or plantilla.get("nombre", ""), "subtotal": sub, "moneda": moneda,
+                    "tipo_cambio": fx if moneda == "MXN" else 1.0, "subtotal_mxn": sub if moneda == "MXN" else round(sub * float(plantilla.get("tipo_cambio") or 1), 2),
+                    "estatus": plantilla.get("estatus") or estatus, "descuento_financiero": 0, "pct_descuento": 0,
+                    "fecha_recepcion": plantilla.get("fecha_recepcion", ""), "gpo_number": pn, "gpo_pdf": not filas and not agregados,
+                    "cpo": g.get("cpo") or plantilla.get("cpo", ""), "po_sae": g.get("po_sae") or plantilla.get("po_sae"),
+                    "part_number": it.get("part_number"), "description": it.get("description"), "quantity": it.get("quantity"),
+                    "unit_price": it.get("unit_price"), "_reparado_rev117": datetime.datetime.now().isoformat(timespec="seconds")})
+                agregados.append(it.get("part_number")); sub_tot += sub; cambio = True
+            reporte.append({"po": pn, "year": y, "agregados": agregados, "subtotal_agregado": round(sub_tot, 2), "moneda": moneda})
+        if cambio and aplicar:
+            po_save(y, recs)
+    return reporte
+
+@app.route("/api/po/reparar-gpo", methods=["GET", "POST"])
+def api_po_reparar_gpo():
+    """GET: qué falta (sin cambiar nada). POST: agrega los renglones faltantes."""
+    if not is_admin(): return jsonify({"error": "Solo el administrador"}), 403
+    with lock:
+        rep_ = _ipo_reparar_gpo(aplicar=request.method == "POST")
+    return jsonify({"ok": True, "aplicado": request.method == "POST", "ordenes": rep_,
+                    "renglones": sum(len(r["agregados"]) for r in rep_)})
+
+@app.route("/api/po/template", methods=["GET"])
+def api_po_template():
+    """rev114: plantilla de Excel para "Cargar Excel" de Purchase Orders, con los mismos
+    encabezados que lee la importación (/api/po/import)."""
+    if not (can("view", "po") or is_admin()): return jsonify({"error": "Sin permiso"}), 403
+    from openpyxl.worksheet.datavalidation import DataValidation
+    from openpyxl.comments import Comment
+    cols = [  # (encabezado exacto que reconoce la importación, ancho, obligatoria, nota)
+        ("Clave", 10, True, "Número de la orden (solo números). Es la llave: al importar en modo Acumular, una Clave que ya existe se ACTUALIZA."),
+        ("Fecha de documento", 16, False, "Fecha de la orden (AAAA-MM-DD o fecha de Excel)."),
+        ("Entregar a", 14, False, "Job al que se entrega / carga la orden (ej. 652-50)."),
+        ("Nombre", 34, True, "Nombre del proveedor."),
+        ("Subtotal", 14, True, "Subtotal de la orden en su moneda, sin impuestos."),
+        ("Tipo de cambio", 13, False, "Pesos por dólar. Déjalo en 1 si la orden es en pesos o si no aplica."),
+        ("Estatus", 16, True, "Emitida, Recepcionada, Parcial, Cancelada o Cierre Anticipado."),
+        ("Descuento financiero", 18, False, "Monto del descuento financiero (opcional)."),
+        ("Porcentaje de descuento", 20, False, "Porcentaje del descuento financiero (opcional)."),
+        ("Fecha de recepción", 16, False, "Fecha en que se recibió el material (opcional)."),
+    ]
+    wb = openpyxl.Workbook()
+    ws = wb.active; ws.title = "PURCHASE_ORDERS"
+    rojo, azul = PatternFill("solid", fgColor="C8102E"), PatternFill("solid", fgColor="1F3864")
+    for i, (h, w, req, nota) in enumerate(cols, start=1):
+        c = ws.cell(row=1, column=i, value=h)
+        c.font = Font(bold=True, color="FFFFFF"); c.fill = rojo if req else azul
+        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        c.comment = Comment(("OBLIGATORIA. " if req else "Opcional. ") + nota, "Persico Suite")
+        ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+    ws.row_dimensions[1].height = 30
+    ejemplo = [17441, datetime.date.today(), "652-50", "PROVEEDOR EJEMPLO S.A. DE C.V.", 15230.50, 1, "Emitida", None, None, None]
+    for i, v in enumerate(ejemplo, start=1):
+        c = ws.cell(row=2, column=i, value=v); c.font = Font(italic=True, color="888888")
+        if isinstance(v, datetime.date): c.number_format = "YYYY-MM-DD"
+    for r in range(2, 502):
+        ws.cell(row=r, column=2).number_format = "YYYY-MM-DD"; ws.cell(row=r, column=10).number_format = "YYYY-MM-DD"
+        ws.cell(row=r, column=5).number_format = "#,##0.00"; ws.cell(row=r, column=8).number_format = "#,##0.00"
+    dv = DataValidation(type="list", formula1='"Emitida,Recepcionada,Parcial,Cancelada,Cierre Anticipado"', allow_blank=True)
+    dv.error = "Elige un estatus de la lista"; dv.errorTitle = "Estatus"
+    ws.add_data_validation(dv); dv.add("G2:G501")
+    dvc = DataValidation(type="whole", operator="greaterThan", formula1="0", allow_blank=True)
+    dvc.error = "La Clave debe ser un número entero"; dvc.errorTitle = "Clave"
+    ws.add_data_validation(dvc); dvc.add("A2:A501")
+    ws.freeze_panes = "A2"
+    wi = wb.create_sheet("INSTRUCCIONES")
+    lineas = [
+        ("Plantilla para Compras ▸ Purchase Orders ▸ Cargar Excel", True),
+        ("", False),
+        ("1. Llena la hoja PURCHASE_ORDERS: un renglón por orden. Borra el renglón de ejemplo (gris) antes de cargar.", False),
+        ("2. Columnas en ROJO = obligatorias (Clave, Nombre, Subtotal, Estatus). En AZUL = opcionales.", False),
+        ("3. No cambies los encabezados: la importación los reconoce por su nombre exacto.", False),
+        ("4. Clave: solo números. Las claves no numéricas se rechazan y se reportan al terminar.", False),
+        ("5. Al cargar, elige el AÑO destino y el modo:", False),
+        ("   • Acumular: agrega las claves nuevas y ACTUALIZA las que ya existen en ese año.", False),
+        ("   • Reemplazar todo: borra las órdenes del año y deja solo las del archivo.", False),
+        ("6. Subtotal sin impuestos. Tipo de cambio = pesos por dólar (1 si no aplica).", False),
+        ("", False),
+        ("Las órdenes generadas en la Suite (Generar Orden de Compra) NO necesitan cargarse con esta plantilla.", False),
+    ]
+    for i, (t, b) in enumerate(lineas, start=1):
+        c = wi.cell(row=i, column=1, value=t); c.font = Font(bold=b, size=13 if b else 11, color="C8102E" if b else "000000")
+    wi.column_dimensions["A"].width = 110
+    wb.active = 0
+    buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+    return send_file(buf, as_attachment=True, download_name="PURCHASE_ORDERS_PLANTILLA.xlsx",
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
 @app.route("/api/po/import", methods=["POST"])
 def api_import_po_excel():
     """
@@ -5844,18 +5969,20 @@ def api_import_po_excel():
             return jsonify({"error": "No se encontraron registros válidos en el archivo"}), 400
 
         with lock:
+            existing = po_load(year)
+            # rev117: los renglones de las POs generadas en la Suite (gpo_number) y los
+            # divididos (_split_origin) NUNCA se tocan desde el Excel. Antes, el modo
+            # Acumular indexaba por Clave y dejaba un solo renglón por PO generada con
+            # varios ítems (todas sus partidas comparten la Clave PO-…), y Reemplazar las
+            # borraba todas.
+            protegidos = [r for r in existing if r.get("gpo_number") or r.get("_split_origin")]
+            de_excel   = [r for r in existing if not (r.get("gpo_number") or r.get("_split_origin"))]
             if mode == "replace":
-                final = imported
+                final = imported + protegidos
             else:
-                existing = po_load(year)
-                # Preserve split records (they share a clave but are distinct)
-                # Merge: imported records update by clave, but don't touch _split_origin records
-                split_records  = [r for r in existing if r.get("_split_origin")]
-                normal_records = [r for r in existing if not r.get("_split_origin")]
-                existing_map   = {str(r["clave"]): r for r in normal_records}
-                for rec in imported:
-                    existing_map[str(rec["clave"])] = rec
-                final = list(existing_map.values()) + split_records
+                claves_nuevas = {str(rec["clave"]) for rec in imported}
+                conservados = [r for r in de_excel if str(r.get("clave")) not in claves_nuevas]
+                final = conservados + imported + protegidos
             po_save(year, final)
 
         return jsonify({
@@ -8629,6 +8756,177 @@ def api_dashboard_engineering():
         return jsonify({"error": str(e)}), 500
 
 # ══════════════════════════════════════════════════════════════════
+#  rev115 — OPERACIONES ▸ PISO DE ENSAMBLE
+#  Espacio total disponible de la planta vs. espacio requerido por las máquinas/Jobs.
+#  Cada renglón guarda largo y ancho (para el plano gráfico futuro) y el área en m²
+#  (largo × ancho, o capturada directo).
+# ══════════════════════════════════════════════════════════════════
+def _piso_num(v, nombre):
+    if v in (None, ""): return None
+    try:
+        f = round(float(v), 3)
+    except (TypeError, ValueError):
+        raise ValueError(f"{nombre} debe ser un número")
+    if f < 0: raise ValueError(f"{nombre} no puede ser negativo")
+    return f
+
+# rev116: croquis — coordenadas por cuadrícula de 5 m: letras a lo LARGO (A=0–5 m, B=5–10 m…)
+# y números a lo ANCHO (1=0–5 m, 2=5–10 m…). La coordenada ubica la esquina inferior izquierda
+# de la máquina en la esquina inferior izquierda de esa celda (+ desplazamiento opcional).
+PISO_CELDA_M = 5.0
+
+def _piso_letras(n):
+    """0 → A, 25 → Z, 26 → AA…"""
+    s_ = ""; n += 1
+    while n > 0:
+        n, r = divmod(n - 1, 26); s_ = chr(65 + r) + s_
+    return s_
+
+def _piso_coord_xy(coord):
+    m = re.match(r"^\s*([A-Za-z]{1,2})\s*(\d{1,3})\s*$", str(coord or ""))
+    if not m: return None
+    letras, num = m.group(1).upper(), int(m.group(2))
+    if num < 1: return None
+    idx = 0
+    for ch in letras: idx = idx * 26 + (ord(ch) - 64)
+    return ((idx - 1) * PISO_CELDA_M, (num - 1) * PISO_CELDA_M)
+
+def _piso_area(it):
+    if it.get("largo_m") and it.get("ancho_m"): return round(it["largo_m"] * it["ancho_m"], 2)
+    return round(float(it.get("area_m2") or 0), 2)
+
+def _piso_estado():
+    recs = _load_catalog("piso_ensamble") or []
+    cfg = next((r for r in recs if r.get("pid") == "__config__"), {}) or {}
+    items = [r for r in recs if r.get("pid") != "__config__"]
+    # m² capturados en Configurar Proyecto (referencia)
+    cfg_m2 = {}
+    try:
+        for c in projcfg_load():
+            for j in c.get("jobs") or []:
+                jn = str(j.get("job_number") or "").strip().upper()
+                if jn and j.get("espacio_requerido") not in (None, ""): cfg_m2[jn] = float(j["espacio_requerido"])
+    except Exception:
+        pass
+    jobs = {str(j.get("job_number") or "").upper(): j for j in scan_jobs()}
+    for it in items:
+        it["area_calc"] = _piso_area(it)
+        xy = _piso_coord_xy(it.get("coord"))                      # rev116: posición en el croquis
+        if xy and it.get("largo_m") and it.get("ancho_m"):
+            w, h = (it["ancho_m"], it["largo_m"]) if it.get("rot") else (it["largo_m"], it["ancho_m"])
+            it["pos"] = {"x": round(xy[0] + float(it.get("off_x") or 0), 3), "y": round(xy[1] + float(it.get("off_y") or 0), 3), "w": w, "h": h}
+        else:
+            it["pos"] = None
+        jn = str(it.get("job") or "").upper()
+        it["m2_config"] = cfg_m2.get(jn)
+        j = jobs.get(jn) or {}
+        it["job_info"] = {"customer": j.get("customer"), "description": j.get("description"), "status": j.get("status")} if j else None
+    disponible = float(cfg.get("total_m2") or 0)
+    requerido = round(sum(it["area_calc"] for it in items if it.get("en_piso", True)), 2)
+    en_lista = {str(it.get("job") or "").upper() for it in items}
+    sugerencias = [{"job": jn, "m2": m2, "customer": (jobs.get(jn) or {}).get("customer"), "description": (jobs.get(jn) or {}).get("description"),
+                    "status": (jobs.get(jn) or {}).get("status")}
+                   for jn, m2 in sorted(cfg_m2.items()) if jn not in en_lista and m2 > 0]
+    return {"config": {k: cfg.get(k) for k in ("total_m2", "largo_m", "ancho_m", "notas", "actualizado", "actualizado_por")},
+            "items": sorted(items, key=lambda x: (not x.get("en_piso", True), str(x.get("job") or ""))),
+            "resumen": {"disponible": round(disponible, 2), "requerido": requerido, "diferencia": round(disponible - requerido, 2),
+                        "ocupacion_pct": round(requerido / disponible * 100, 1) if disponible else None,
+                        "en_piso": sum(1 for it in items if it.get("en_piso", True)), "total": len(items)},
+            "sugerencias": sugerencias}
+
+@app.route("/api/piso-ensamble", methods=["GET"])
+def api_piso_get():
+    if not can("view", "ops-piso"): return jsonify({"error": "Sin permiso"}), 403
+    return jsonify(_piso_estado())
+
+@app.route("/api/piso-ensamble/config", methods=["PUT"])
+def api_piso_config():
+    if not can("create", "ops-piso"): return jsonify({"error": "Sin permiso"}), 403
+    d = request.json or {}
+    try:
+        largo, ancho = _piso_num(d.get("largo_m"), "El largo"), _piso_num(d.get("ancho_m"), "El ancho")
+        total = _piso_num(d.get("total_m2"), "El espacio disponible")
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    if total is None and largo and ancho: total = round(largo * ancho, 2)
+    with lock:
+        recs = _load_catalog("piso_ensamble") or []
+        cfg = next((r for r in recs if r.get("pid") == "__config__"), None)
+        if cfg is None:
+            cfg = {"pid": "__config__"}; recs.append(cfg)
+        cfg.update(total_m2=total, largo_m=largo, ancho_m=ancho, notas=(d.get("notas") or "").strip()[:300],
+                   actualizado=datetime.datetime.now().isoformat(timespec="minutes"), actualizado_por=session.get("user", ""))
+        _save_catalog("piso_ensamble", recs)
+    return jsonify({"ok": True, **_piso_estado()})
+
+@app.route("/api/piso-ensamble/items", methods=["POST"])
+def api_piso_item():
+    """Alta o cambio (con pid) de una máquina/Job en el piso."""
+    if not can("create", "ops-piso"): return jsonify({"error": "Sin permiso"}), 403
+    d = request.json or {}
+    job = re.sub(r"\s+", "", str(d.get("job") or "")).upper()
+    desc = (d.get("descripcion") or "").strip()[:120]
+    if not job and not desc: return jsonify({"error": "Captura el Job o una descripción de la máquina"}), 400
+    try:
+        largo, ancho = _piso_num(d.get("largo_m"), "El largo"), _piso_num(d.get("ancho_m"), "El ancho")
+        area = _piso_num(d.get("area_m2"), "El área")
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    if largo and ancho: area = round(largo * ancho, 2)
+    if not area: return jsonify({"error": "Captura el área en m², o el largo y el ancho"}), 400
+    with lock:
+        recs = _load_catalog("piso_ensamble") or []
+        pid = d.get("pid")
+        it = next((r for r in recs if r.get("pid") == pid), None) if pid else None
+        if it is None:
+            n = len(recs) + 1; usados = {r.get("pid") for r in recs}
+            while f"PE-{n:04d}" in usados: n += 1
+            it = {"pid": f"PE-{n:04d}", "creado": datetime.datetime.now().isoformat(timespec="minutes"), "creado_por": session.get("user", "")}
+            recs.append(it)
+        coord = re.sub(r"\s+", "", str(d.get("coord") or "")).upper()
+        if coord and not _piso_coord_xy(coord):
+            return jsonify({"error": f"Coordenada inválida: {coord}. Usa letra(s) y número, ej. B3"}), 400
+        try:
+            off_x, off_y = _piso_num(d.get("off_x"), "El desplazamiento X"), _piso_num(d.get("off_y"), "El desplazamiento Y")
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        it.update(coord=coord or None, rot=bool(d.get("rot")), off_x=off_x, off_y=off_y)
+        it.update(job=job, descripcion=desc, largo_m=largo, ancho_m=ancho, area_m2=area, en_piso=bool(d.get("en_piso", True)),
+                  fecha_entrada=(d.get("fecha_entrada") or "")[:10] or None, fecha_salida=(d.get("fecha_salida") or "")[:10] or None,
+                  notas=(d.get("notas") or "").strip()[:300],
+                  actualizado=datetime.datetime.now().isoformat(timespec="minutes"), actualizado_por=session.get("user", ""))
+        _save_catalog("piso_ensamble", recs)
+    return jsonify({"ok": True, "item": it, **_piso_estado()})
+
+@app.route("/api/piso-ensamble/items/<pid>", methods=["DELETE"])
+def api_piso_item_del(pid):
+    if not can("delete", "ops-piso"): return jsonify({"error": "Sin permiso"}), 403
+    if pid == "__config__": return jsonify({"error": "No se puede eliminar"}), 400
+    with lock:
+        recs = [r for r in (_load_catalog("piso_ensamble") or []) if r.get("pid") != pid]
+        _save_catalog("piso_ensamble", recs)
+    return jsonify({"ok": True, **_piso_estado()})
+
+@app.route("/api/piso-ensamble/importar-config", methods=["POST"])
+def api_piso_importar():
+    """Agrega los Jobs que tienen 'Espacio requerido' en Configurar Proyecto y aún no están en la lista."""
+    if not can("create", "ops-piso"): return jsonify({"error": "Sin permiso"}), 403
+    est = _piso_estado()
+    sel = set((request.json or {}).get("jobs") or [s_["job"] for s_ in est["sugerencias"]])
+    nuevos = [s_ for s_ in est["sugerencias"] if s_["job"] in sel]
+    with lock:
+        recs = _load_catalog("piso_ensamble") or []
+        usados = {r.get("pid") for r in recs}; n = len(recs) + 1
+        for s_ in nuevos:
+            while f"PE-{n:04d}" in usados: n += 1
+            usados.add(f"PE-{n:04d}")
+            recs.append({"pid": f"PE-{n:04d}", "job": s_["job"], "descripcion": (s_.get("description") or "")[:120], "largo_m": None, "ancho_m": None,
+                         "area_m2": s_["m2"], "en_piso": True, "notas": "Importado de Configurar Proyecto",
+                         "creado": datetime.datetime.now().isoformat(timespec="minutes"), "creado_por": session.get("user", "")})
+        _save_catalog("piso_ensamble", recs)
+    return jsonify({"ok": True, "agregados": len(nuevos), **_piso_estado()})
+
+# ══════════════════════════════════════════════════════════════════
 #  KPIs DEL PERSONAL (rev84)
 #  Cada KPI se asigna a una persona con una meta. El valor se calcula con los datos de la
 #  Suite; la persona se reconoce por los "identificadores" de la asignación: los nombres
@@ -10076,7 +10374,7 @@ MODULES = [
     "personal-areas", "personal-tipos-puesto", "personal-perfiles", "personal-listado",
     "rrhh-kpis",
     # Operaciones
-    "ops-capacidad", "ops-ot", "ops-op", "ops-os",
+    "ops-capacidad", "ops-ot", "ops-op", "ops-os", "ops-piso",
 ]
 
 # Levels: "none" | "view" | "create" | "full"
@@ -10549,6 +10847,7 @@ MODULOS_HEREDAN = {"projconfig-dashboard": "projconfig", "projconfig-presupuesto
                    "projconfig-cambios": "projconfig", "projconfig-documentos": "projconfig",
                    "personal-tipos-puesto": "personal-perfiles",
                    "rrhh-kpis": "personal-listado",
+                   "ops-piso": "ops-capacidad",     # rev115: Piso de ensamble toma el nivel de Capacidad
                    "fin-cpc": "fin-cpp"}           # rev104: CPC toma el nivel de CPP mientras no se fije
 
 def nivel_heredado(info, mod):
@@ -21316,6 +21615,15 @@ def _cpc_migrar_moneda():
     except Exception as e:
         print(f"[CPC] migración de moneda: {e}")
 _cpc_migrar_moneda()
+
+# rev117: renglones de POs generadas que el "Cargar Excel" había borrado
+try:
+    with lock:
+        _rep117 = _ipo_reparar_gpo(aplicar=True)
+    if _rep117:
+        print(f"[POs] Renglones restaurados en {len(_rep117)} PO(s) generada(s): " + ", ".join(f"{r['po']} (+{len(r['agregados'])})" for r in _rep117))
+except Exception as _e:
+    print(f"[POs] reparación de renglones: {_e}")
 
 # rev113: contadores de folios al día con los folios ya usados
 try:
