@@ -10393,7 +10393,7 @@ MODULES = [
     "projconfig-dashboard", "projconfig-presupuesto", "projconfig-timing",
     "projconfig-abiertos", "projconfig-cambios", "projconfig-documentos",
     # Finanzas
-    "fin-recepciones", "fin-procesarcompra", "fin-cpp", "fin-pagos", "fin-esquemas",
+    "fin-recepciones", "fin-procesarcompra", "fin-cpp", "fin-pagos", "fin-esquemas", "fin-datos-fiscales",
     # Recursos Humanos
     "rrhh-asistencia", "rrhh-vacaciones", "rrhh-permisos", "rrhh-salario", "rrhh-sueldos", "rrhh-nomina",
     "personal-areas", "personal-tipos-puesto", "personal-perfiles", "personal-listado",
@@ -10872,7 +10872,8 @@ MODULOS_HEREDAN = {"projconfig-dashboard": "projconfig", "projconfig-presupuesto
                    "projconfig-cambios": "projconfig", "projconfig-documentos": "projconfig",
                    "personal-tipos-puesto": "personal-perfiles",
                    "rrhh-kpis": "personal-listado",
-                   "ops-piso": "ops-capacidad",     # rev115: Piso de ensamble toma el nivel de Capacidad
+                   "ops-piso": "ops-capacidad",
+                   "fin-datos-fiscales": "fin-esquemas",   # rev119: Datos fiscales toma el nivel de Esquemas Tributarios     # rev115: Piso de ensamble toma el nivel de Capacidad
                    "fin-cpc": "fin-cpp"}           # rev104: CPC toma el nivel de CPP mientras no se fije
 
 def nivel_heredado(info, mod):
@@ -15908,6 +15909,86 @@ def api_gpo_lookup(po_number):
         return jsonify({"error": f"No se pudo leer la orden: {e}"}), 500
 
 
+# ══════════════════════════════════════════════════════════════════
+#  rev119 — FINANZAS ▸ DATOS FISCALES de la empresa
+#  Se usan en los encabezados de los PDF (órdenes de compra, recepciones, documentos de
+#  Finanzas, reporte ejecutivo) y el RFC en la validación de CFDI propios (CPC / REP).
+# ══════════════════════════════════════════════════════════════════
+DATOS_FISCALES_DEFAULT = {
+    "razon_social": "PERSICO MÉXICO S.A. DE C.V.", "nombre_comercial": "Persico México", "rfc": "",
+    "regimen_fiscal": "", "calle": "", "num_ext": "", "num_int": "", "colonia": "", "municipio": "",
+    "estado": "", "cp": "", "pais": "México", "telefono": "", "email": "", "sitio_web": "",
+}
+_DF_ARCHIVO = Path(_DATA) / "FINANZAS" / "datos_fiscales.json"
+_df_cache = {"t": 0, "v": None}
+
+def _datos_fiscales():
+    import time as _t
+    if _df_cache["v"] is not None and _t.time() - _df_cache["t"] < 30: return _df_cache["v"]
+    d = None
+    try:
+        if _orm and _orm.DB_ENABLED:
+            d = _kpi_snap_get("config:datos_fiscales").get("config:datos_fiscales")
+        elif _DF_ARCHIVO.exists():
+            d = json.loads(_DF_ARCHIVO.read_text(encoding="utf-8"))
+    except Exception as e:
+        print(f"[DATOS FISCALES] {e}")
+    v = dict(DATOS_FISCALES_DEFAULT, **(d or {}))
+    if not d: v["_defaults"] = True
+    _df_cache.update(t=_t.time(), v=v)
+    return v
+
+def _df_domicilio(d):
+    l1 = " ".join(x for x in [d.get("calle"), d.get("num_ext") and f"{d['num_ext']}", d.get("num_int") and f"Int. {d['num_int']}"] if x)
+    l1 = ", ".join(x for x in [l1, d.get("colonia")] if x)
+    l2 = ", ".join(x for x in [d.get("municipio"), d.get("estado")] if x)
+    l2 = " ".join(x for x in [l2, d.get("cp") and f"C.P. {d['cp']}"] if x)
+    return l1, l2
+
+def _empresa_html(compacto=False):
+    """Bloque de la empresa para los encabezados de PDF."""
+    d = _datos_fiscales(); e = _html.escape
+    if compacto:
+        lugar = ", ".join(x for x in [d.get("municipio"), d.get("estado")] if x)
+        return e(d.get("razon_social") or "") + (f" · {e(lugar)}" if lugar else "")
+    l1, l2 = _df_domicilio(d)
+    tel = " · ".join(x for x in [d.get("telefono") and f"Tel. {d['telefono']}", d.get("email")] if x)
+    lineas = [f'<div class="company-name">{e(d.get("razon_social") or "")}</div>']
+    if d.get("rfc"): lineas.append(f"RFC: {e(d['rfc'])}" + (f" · Régimen {e(d['regimen_fiscal'])}" if d.get("regimen_fiscal") else ""))
+    if l1: lineas.append(e(l1))
+    l2t = " · ".join(x for x in [l2, tel] if x)
+    if l2t: lineas.append(e(l2t))
+    return lineas[0] + "\n      " + "<br>\n      ".join(lineas[1:])
+
+@app.route("/api/finanzas/datos-fiscales", methods=["GET"])
+def api_datos_fiscales_get():
+    if not session.get("user"): return jsonify({"error": "No autenticado"}), 401
+    d = _datos_fiscales()
+    return jsonify({"datos": {k: d.get(k, "") for k in DATOS_FISCALES_DEFAULT}, "configurado": not d.get("_defaults"),
+                    "puede_editar": can("create", "fin-datos-fiscales") or is_admin(),
+                    "actualizado": d.get("_actualizado"), "actualizado_por": d.get("_actualizado_por"),
+                    "rfc_variable": sorted(_RFC_EMPRESA_ENV)})
+
+@app.route("/api/finanzas/datos-fiscales", methods=["PUT"])
+def api_datos_fiscales_put():
+    if not (can("create", "fin-datos-fiscales") or is_admin()): return jsonify({"error": "Sin permiso"}), 403
+    b = request.json or {}
+    d = {k: str(b.get(k) or "").strip()[:200] for k in DATOS_FISCALES_DEFAULT}
+    d["rfc"] = re.sub(r"\s+", "", d["rfc"]).upper()
+    if not d["razon_social"]: return jsonify({"error": "La razón social es obligatoria"}), 400
+    if d["rfc"] and not re.match(r"^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$", d["rfc"]):
+        return jsonify({"error": "El RFC no tiene un formato válido (12 caracteres para persona moral, 13 para física)"}), 400
+    if d["cp"] and not re.match(r"^\d{5}$", d["cp"]): return jsonify({"error": "El código postal debe tener 5 dígitos"}), 400
+    if d["email"] and not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", d["email"]): return jsonify({"error": "Correo inválido"}), 400
+    d["_actualizado"] = datetime.datetime.now().isoformat(timespec="minutes"); d["_actualizado_por"] = session.get("user", "")
+    if _orm and _orm.DB_ENABLED:
+        _kpi_snap_set("config:datos_fiscales", d)
+    else:
+        _DF_ARCHIVO.parent.mkdir(parents=True, exist_ok=True)
+        _DF_ARCHIVO.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
+    _df_cache.update(t=0, v=None)
+    return jsonify({"ok": True, "datos": d})
+
 @app.route("/api/gpo/<po_number>/pdf")
 def api_gpo_pdf(po_number):
     try:
@@ -15989,10 +16070,7 @@ def api_gpo_pdf(po_number):
   <div>
     {logo_tag}
     <div class="company-block" style="margin-top:8px">
-      <div class="company-name">PERSICO MÉXICO S.A. DE C.V.</div>
-      RFC: PME200101AB1<br>
-      Blvd. Forjadores de Puebla 3120, Parque Industrial<br>
-      Puebla, Pue. C.P. 72070 · Tel. (222) 000-0000
+      {_empresa_html()}
     </div>
   </div>
   <div>
@@ -17951,10 +18029,7 @@ def api_recepcion_pdf(rec_number):
   <div>
     {logo_tag}
     <div class="company-block" style="margin-top:8px">
-      <div class="company-name">PERSICO MÉXICO S.A. DE C.V.</div>
-      RFC: PME200101AB1<br>
-      Blvd. Forjadores de Puebla 3120, Parque Industrial<br>
-      Puebla, Pue. C.P. 72070 · Tel. (222) 000-0000
+      {_empresa_html()}
     </div>
   </div>
   <div>
@@ -18391,7 +18466,7 @@ def _ledger_pdf_html(titulo, folio, fecha, meta_fields, monto, footer_ref):
 </head>
 <body>
 <div class="header">
-  <div class="company-name">PERSICO MÉXICO S.A. DE C.V.</div>
+  <div class="company-name">{_html.escape(_datos_fiscales().get("razon_social") or "")}</div>
   <div>
     <div class="pur-num-label">{titulo}</div>
     <div class="pur-num">{folio}</div>
@@ -18536,7 +18611,21 @@ def _cpc_estatus_efectivo(rec):
 #  · validación del CFDI: emisor = la empresa (RFC_EMPRESA) y tipo de comprobante Ingreso
 #  · cambio de año al corregir la fecha de factura; aviso de sobre-facturación
 #  · una factura Pagada no se elimina (se cancela); bitácora de cambios y de bajas
-RFC_EMPRESA = {x.strip().upper() for x in _os.environ.get("RFC_EMPRESA", "").split(",") if x.strip()}
+_RFC_EMPRESA_ENV = {x.strip().upper() for x in _os.environ.get("RFC_EMPRESA", "").split(",") if x.strip()}
+class _RfcEmpresa:
+    """rev119: RFC(s) de la empresa = variable RFC_EMPRESA + el RFC de Finanzas ▸ Datos fiscales."""
+    def _set(self):
+        r = set(_RFC_EMPRESA_ENV)
+        try:
+            rfc = (_datos_fiscales().get("rfc") or "").strip().upper()
+            if rfc and not _datos_fiscales().get("_defaults"): r.add(rfc)
+        except Exception:
+            pass
+        return r
+    def __bool__(self): return bool(self._set())
+    def __contains__(self, x): return x in self._set()
+    def __iter__(self): return iter(self._set())
+RFC_EMPRESA = _RfcEmpresa()
 
 from contextlib import contextmanager
 @contextmanager
@@ -18605,7 +18694,7 @@ def _cpc_validar_cfdi(cfdi):
         if (cfdi.get("rfc_emisor") or "").upper() not in RFC_EMPRESA:
             errores.append(f"El emisor del CFDI ({cfdi.get('rfc_emisor')} · {cfdi.get('nombre_emisor')}) no es la empresa. ¿Es la factura de un proveedor?")
     else:
-        avisos.append("No se validó el emisor: falta configurar la variable RFC_EMPRESA en el servidor.")
+        avisos.append("No se validó el emisor: captura el RFC de la empresa en Finanzas ▸ Datos fiscales.")
     return errores, avisos
 
 # ══════════════════════════════════════════════════════════════════
@@ -20655,7 +20744,7 @@ td{{padding:5px 8px;border-bottom:1px solid #ebebeb}}tr:nth-child(even) td{{back
 @media print{{body{{padding:10px 12px}}}}
 </style></head><body>
 <div class="header">
-  <div>{logo_tag}<div style="margin-top:6px;font-size:10px;color:#555">PERSICO MÉXICO S.A. DE C.V. · Puebla, Pue.</div></div>
+  <div>{logo_tag}<div style="margin-top:6px;font-size:10px;color:#555">{_empresa_html(compacto=True)}</div></div>
   <div style="text-align:right">
     <div style="font-size:18px;font-weight:900;color:#c8102e">Reporte Ejecutivo</div>
     <div style="font-size:13px;font-weight:700;margin-top:2px">Job: {job_number}</div>

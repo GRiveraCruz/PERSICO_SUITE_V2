@@ -121,6 +121,7 @@ function switchMenu(mod, groupId) {
   if(mod==='personal-tipos-puesto') { setTimeout(loadTiposPuesto,100); }
   if(mod==='rrhh-kpis') { setTimeout(kpiCargar,100); }
   if(mod==='ops-piso') { setTimeout(pisoCargar,100); }
+  if(mod==='fin-datos-fiscales') { setTimeout(dfCargar,100); }
   if(mod==='personal-listado') { setTimeout(loadPersonal,100); }
   if(mod==='consignacion') { setTimeout(loadCsg,50); }
   if(mod==='apartados') { setTimeout(loadApartados,50); }   // antes solo se cargaba al abrir la suite
@@ -5975,9 +5976,9 @@ let USER_PERMS = null;
 
 // rev77: módulos que heredan el nivel de otro mientras el administrador no les fije uno
 const MODULOS_HEREDAN = {'projconfig-dashboard':'projconfig','projconfig-presupuesto':'projconfig','projconfig-timing':'projconfig',
-  'projconfig-abiertos':'projconfig','projconfig-cambios':'projconfig','projconfig-documentos':'projconfig','personal-tipos-puesto':'personal-perfiles','rrhh-kpis':'personal-listado','fin-cpc':'fin-cpp','ops-piso':'ops-capacidad'};
+  'projconfig-abiertos':'projconfig','projconfig-cambios':'projconfig','projconfig-documentos':'projconfig','personal-tipos-puesto':'personal-perfiles','rrhh-kpis':'personal-listado','fin-cpc':'fin-cpp','ops-piso':'ops-capacidad','fin-datos-fiscales':'fin-esquemas'};
 const MODULE_LABELS = {
-  'compras-requisicion':'Requisición de Compra', 'fin-cpc':'Cuentas por Cobrar (CPC)',
+  'compras-requisicion':'Requisición de Compra', 'fin-cpc':'Cuentas por Cobrar (CPC)', 'fin-datos-fiscales':'Datos fiscales',
   // Proyectos
   'jobs':'Job Register', 'pt':'PT Numbers', 'sv':'SV Numbers',
   'rates':'Hourly Rates', 'quotes':'Quote Register',
@@ -6034,7 +6035,7 @@ const MODULE_GROUPS = [
   { label: '✈ Servicio',             mods: ['viaticos','gastos-viaje','envios'] },
   { label: '⚙ Configurar Proyecto',   mods: ['projconfig','projconfig-dashboard','projconfig-presupuesto','projconfig-timing','projconfig-abiertos','projconfig-cambios','projconfig-documentos'] },
   { label: '📊 Control de Costo',     mods: ['wh','report','multirpt','fx'] },
-  { label: '💹 Finanzas',             mods: ['fin-recepciones','fin-procesarcompra','fin-cpp','fin-cpc','fin-pagos','fin-esquemas'] },
+  { label: '💹 Finanzas',             mods: ['fin-recepciones','fin-procesarcompra','fin-cpp','fin-cpc','fin-pagos','fin-esquemas','fin-datos-fiscales'] },
   { label: '🧑‍💼 Recursos Humanos',    mods: ['rrhh-asistencia','rrhh-vacaciones','rrhh-permisos','rrhh-salario','rrhh-sueldos','rrhh-nomina','personal-areas','personal-tipos-puesto','personal-perfiles','personal-listado'] },
   { label: '📈 Management',          mods: ['rrhh-kpis'] },
   { label: '🏭 Operaciones',           mods: ['ops-capacidad','ops-ot','ops-op','ops-os','ops-piso'] },
@@ -6281,6 +6282,7 @@ function applyPermsToDom(d) {
     'fin-procesarcompra': ["switchMenu('fin-procesarcompra'"],
     'fin-cpp':            ["switchMenu('fin-cpp'"],
     'fin-cpc':            ["switchMenu('fin-cpc'"],
+    'fin-datos-fiscales': ["switchMenu('fin-datos-fiscales'"],
     'compras-requisicion':["switchMenu('requisicion'"],
     'fin-pagos':          ["switchMenu('fin-pagos'"],
     'fin-esquemas':       ["switchMenu('fin-esquemas'"],
@@ -19774,3 +19776,32 @@ function pisoDescargarSVG(){
   setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
 }
 window.addEventListener('resize', () => { if(document.getElementById('mod-ops-piso')?.classList.contains('on')) pisoPlano(); });
+
+
+// ════════════════════════════════════════════════════════
+//  rev119 — Finanzas ▸ Datos fiscales
+// ════════════════════════════════════════════════════════
+const DF_CAMPOS = ['razon_social','nombre_comercial','rfc','regimen_fiscal','calle','num_ext','num_int','colonia','municipio','estado','cp','pais','telefono','email','sitio_web'];
+async function dfCargar(){
+  const d = await fetch('/api/finanzas/datos-fiscales').then(r=>r.json());
+  if(d.error){ toast(d.error,'er'); return; }
+  DF_CAMPOS.forEach(k=>{ const el=document.getElementById('df-'+k); if(el){ el.value = d.datos[k]||''; el.disabled = !d.puede_editar; el.oninput = dfPreview; } });
+  document.getElementById('df-guardar').style.display = d.puede_editar ? '' : 'none';
+  document.getElementById('df-info').textContent = d.configurado ? `Actualizado ${String(d.actualizado||'').replace('T',' ')} por ${d.actualizado_por||''}` : 'Aún no se han capturado: los PDF usan datos genéricos.';
+  dfPreview();
+}
+function dfPreview(){
+  const v = k => (document.getElementById('df-'+k)?.value||'').trim();
+  const l1 = [[v('calle'), v('num_ext'), v('num_int') && 'Int. '+v('num_int')].filter(Boolean).join(' '), v('colonia')].filter(Boolean).join(', ');
+  const l2 = [[v('municipio'), v('estado')].filter(Boolean).join(', '), v('cp') && 'C.P. '+v('cp')].filter(Boolean).join(' ');
+  const tel = [v('telefono') && 'Tel. '+v('telefono'), v('email')].filter(Boolean).join(' · ');
+  document.getElementById('df-preview').innerHTML = `<img src="/static/persico_logo.webp" style="height:28px;margin-bottom:10px" onerror="this.style.display='none'">
+    <div style="font-size:15px;font-weight:800">${esc(v('razon_social'))}</div>
+    <div style="font-size:11px;color:#444;line-height:1.6">${v('rfc')?`RFC: ${esc(v('rfc').toUpperCase())}${v('regimen_fiscal')?' · Régimen '+esc(v('regimen_fiscal')):''}<br>`:''}${l1?esc(l1)+'<br>':''}${esc([l2, tel].filter(Boolean).join(' · '))}</div>`;
+}
+async function dfGuardar(){
+  const body = {}; DF_CAMPOS.forEach(k=>{ body[k] = document.getElementById('df-'+k).value; });
+  const r = await apiCall('PUT','/finanzas/datos-fiscales', body);
+  if(r.error){ toast(r.error,'er'); return; }
+  toast('Datos fiscales guardados ✓ — los PDF nuevos ya los usan','ok',4000); dfCargar();
+}
