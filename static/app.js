@@ -3868,7 +3868,7 @@ function poRender(){
     const sameClaveIdx = rows.slice(0, rowI).filter(x=>(x.clave||x.gpo_number)===(r.clave||r.gpo_number)).length;
 
     // PDF: GPO-generated records use gpo PDF, IPO-only records use IPO PDF endpoint
-    const pdfBtn = r.gpo_pdf && r.gpo_number
+    const pdfBtn = r.gpo_number                                   /* rev118: cualquier renglón de una PO generada abre su PDF completo */
       ? `<button onclick="window.open('/api/gpo/${esc(r.gpo_number)}/pdf','_blank')" class="btn-reload" style="font-size:10px;padding:3px 8px">PDF</button>`
       : (r.part_number || r._split_origin)
       ? `<button onclick="window.open('/api/po/${poActiveYear}/pdf/${esc(r.clave||r.gpo_number)}?idx=${sameClaveIdx}','_blank')" class="btn-reload" style="font-size:10px;padding:3px 8px">PDF</button>`

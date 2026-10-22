@@ -5803,8 +5803,33 @@ def _ipo_reparar_gpo(aplicar=True):
                     "unit_price": it.get("unit_price"), "_reparado_rev117": datetime.datetime.now().isoformat(timespec="seconds")})
                 agregados.append(it.get("part_number")); sub_tot += sub; cambio = True
             reporte.append({"po": pn, "year": y, "agregados": agregados, "subtotal_agregado": round(sub_tot, 2), "moneda": moneda})
-        if cambio and aplicar:
-            po_save(y, recs)
+        # rev118: los renglones de cada PO generada quedan JUNTOS (en el lugar de su primer
+        # renglón y en el orden de sus partidas) y uno solo abre el PDF de la orden completa.
+        # Antes, los restaurados quedaban al final de la lista y no se veían junto a su PO.
+        orden_items = {norm(g.get("po_number")): [(str(it.get("part_number") or "").upper(), str(it.get("job") or "").upper())
+                                                   for it in g.get("items") or []] for g in lista}
+        nuevo, vistos, reagrupado = [], set(), False
+        grupos = {}
+        for r in recs:
+            k = norm(r.get("gpo_number")) if r.get("gpo_number") else None
+            if k: grupos.setdefault(k, []).append(r)
+        for r in recs:
+            k = norm(r.get("gpo_number")) if r.get("gpo_number") else None
+            if not k: nuevo.append(r); continue
+            if k in vistos: continue
+            vistos.add(k)
+            filas = grupos[k]
+            ref = orden_items.get(k, [])
+            pos = lambda x: (ref.index((str(x.get("part_number") or "").upper(), str(x.get("entregar_a") or "").upper()))
+                             if (str(x.get("part_number") or "").upper(), str(x.get("entregar_a") or "").upper()) in ref else len(ref))
+            filas_ord = sorted(filas, key=pos)
+            pdf_ok = [i == 0 for i in range(len(filas_ord))]
+            for f_, flag in zip(filas_ord, pdf_ok):
+                if bool(f_.get("gpo_pdf")) != flag: f_["gpo_pdf"] = flag; reagrupado = True
+            nuevo.extend(filas_ord)
+        if [id(x) for x in nuevo] != [id(x) for x in recs]: reagrupado = True
+        if (cambio or reagrupado) and aplicar:
+            po_save(y, nuevo)
     return reporte
 
 @app.route("/api/po/reparar-gpo", methods=["GET", "POST"])
