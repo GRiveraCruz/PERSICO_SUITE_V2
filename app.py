@@ -8971,6 +8971,9 @@ KPI_CATALOGO = [
     {"k": "pos_recibidas", "nombre": "POs received by month", "nombre_es": "Índice de POs recibidas",
      "periodo": "mensual", "unidad": "POs", "sentido": "mayor", "alcances": ["global", "persona"], "fuente": "Customer POs (PM)",
      "formula": "Customer POs de revenue recibidas en el mes (fecha de la PO). También se informa el monto."},
+    {"k": "ingresos_cpo", "nombre": "Monthly sales (Customer POs)", "nombre_es": "Ingresos mensuales por órdenes de compra de cliente",
+     "periodo": "mensual", "unidad": "$", "sentido": "mayor", "alcances": ["global", "persona"], "fuente": "Ventas ▸ CPO (revenue)",
+     "formula": "Suma del valor de las Customer POs de revenue con fecha en el mes. No cuentan las que tienen \"TBD\" en el número de orden (pedido aún sin PO formal). Por persona: las CPO donde es PM."},
     {"k": "margen_proyectos", "nombre": "Avg. gross margin per project", "nombre_es": "Margen de ganancia promedio de proyectos asignados",
      "periodo": "proyecto", "unidad": "%", "sentido": "mayor", "alcances": ["global", "persona"], "fuente": "Jobs donde es PM",
      "formula": "Margen de cada Job cerrado en el año: resultado operativo ÷ Internal Target; si el Job no tiene Internal Target, (revenue − costo) ÷ revenue. El valor del KPI es el promedio de sus Jobs."},
@@ -9404,7 +9407,8 @@ def api_kpis_resultados(_asign=None, _anio=None):
         fin_mes = lambda y, m: (datetime.date(y + (m == 12), m % 12 + 1, 1) - datetime.timedelta(days=1))
         # ── Datos comunes, cargados solo si algún KPI los necesita
         quotes = read_quote_records() if necesita & {"cotizaciones_creadas", "aceptacion_cotizaciones"} else []
-        cpos = cpo_load(anio) if "pos_recibidas" in necesita else []
+        # rev120: CPOs de todos los años (una CPO capturada en otro año puede tener fecha de este año)
+        cpos = [c for y in (cpo_available_years() or [anio]) for c in cpo_load(y)] if necesita & {"pos_recibidas", "ingresos_cpo"} else []
         jobs = scan_jobs() if necesita & {"margen_proyectos", "entrega_tiempo", "ahorro_compras", "eficiencia_horas"} else []
         cfg_job = _cfg_por_job() if jobs else {}
         tf_cfg = {}
@@ -9518,6 +9522,22 @@ def api_kpis_resultados(_asign=None, _anio=None):
                     futuro = datetime.date(anio, m, 1) > hoy
                     periodos.append({"p": f"{anio}-{m:02d}", "valor": None if futuro else len(sel),
                                      "extra": f"${sum(float(c.get('value') or 0) for c in sel):,.0f}" if sel else ""})
+            elif a["kpi"] == "ingresos_cpo":
+                # rev120: monto mensual de CPO de revenue; las que dicen TBD en el número no cuentan
+                es_tbd = lambda c: "TBD" in str(c.get("po_number") or "").upper()
+                tot_anio = tbd_n = 0; tbd_monto = 0.0
+                for m in range(1, 13):
+                    del_mes = [c for c in cpos if fd(c.get("date")) and fd(c["date"]).year == anio and fd(c["date"]).month == m
+                               and "REVENUE" in str(c.get("type_name") or "01_REVENUE").upper() and es(c.get("pm"))]
+                    sel = [c for c in del_mes if not es_tbd(c)]
+                    tbd = [c for c in del_mes if es_tbd(c)]
+                    monto = round(sum(float(c.get("value") or 0) for c in sel), 2)
+                    futuro = datetime.date(anio, m, 1) > hoy
+                    tbd_n += len(tbd); tbd_monto += sum(float(c.get("value") or 0) for c in tbd)
+                    if not futuro: tot_anio += monto
+                    periodos.append({"p": f"{anio}-{m:02d}", "valor": None if futuro else monto,
+                                     "extra": (f"{len(sel)} CPO" + (f" · {len(tbd)} TBD excluida(s) por ${sum(float(c.get('value') or 0) for c in tbd):,.0f}" if tbd else "")) if (sel or tbd) else ""})
+                nota = f"Total del año ${tot_anio:,.0f}" + (f" · {tbd_n} CPO con TBD excluida(s) (${tbd_monto:,.0f})" if tbd_n else "")
             elif a["kpi"] == "margen_proyectos":
                 # rev87: un valor por Job (cerrado en el año), en lugar de un promedio por trimestre
                 vals = []
