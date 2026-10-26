@@ -227,6 +227,12 @@ class PisoEnsamble(Base, JSONBMixin):
     pid = Column(String, unique=True, index=True)
 
 
+class OrdenCobro(Base, JSONBMixin):
+    """rev121: orden de cobro generada al cumplirse un hito (milestone) de pago de un Job."""
+    __tablename__ = "ordenes_cobro"
+    oid = Column(String, unique=True, index=True)
+
+
 class TipoPuesto(Base, JSONBMixin):
     """rev77: tipo de puesto con su jornada semanal (hora de entrada y salida por día).
     Cada perfil de puesto elige un tipo; las personas lo heredan por su perfil."""

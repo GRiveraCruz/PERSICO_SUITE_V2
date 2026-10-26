@@ -122,6 +122,9 @@ function switchMenu(mod, groupId) {
   if(mod==='rrhh-kpis') { setTimeout(kpiCargar,100); }
   if(mod==='ops-piso') { setTimeout(pisoCargar,100); }
   if(mod==='fin-datos-fiscales') { setTimeout(dfCargar,100); }
+  if(mod==='fin-ordenes-cobro') { setTimeout(ocCargar,100); }
+  if(mod==='mgmt-income-forecast') { setTimeout(ifCargar,100); }
+  if(mod==='fin-prog-pagos') { setTimeout(ppCargar,100); }
   if(mod==='personal-listado') { setTimeout(loadPersonal,100); }
   if(mod==='consignacion') { setTimeout(loadCsg,50); }
   if(mod==='apartados') { setTimeout(loadApartados,50); }   // antes solo se cargaba al abrir la suite
@@ -5976,9 +5979,9 @@ let USER_PERMS = null;
 
 // rev77: módulos que heredan el nivel de otro mientras el administrador no les fije uno
 const MODULOS_HEREDAN = {'projconfig-dashboard':'projconfig','projconfig-presupuesto':'projconfig','projconfig-timing':'projconfig',
-  'projconfig-abiertos':'projconfig','projconfig-cambios':'projconfig','projconfig-documentos':'projconfig','personal-tipos-puesto':'personal-perfiles','rrhh-kpis':'personal-listado','fin-cpc':'fin-cpp','ops-piso':'ops-capacidad','fin-datos-fiscales':'fin-esquemas'};
+  'projconfig-abiertos':'projconfig','projconfig-cambios':'projconfig','projconfig-documentos':'projconfig','personal-tipos-puesto':'personal-perfiles','rrhh-kpis':'personal-listado','fin-cpc':'fin-cpp','ops-piso':'ops-capacidad','fin-datos-fiscales':'fin-esquemas','fin-ordenes-cobro':'fin-cpc','mgmt-income-forecast':'fin-cpc','fin-prog-pagos':'fin-cpp'};
 const MODULE_LABELS = {
-  'compras-requisicion':'Requisición de Compra', 'fin-cpc':'Cuentas por Cobrar (CPC)', 'fin-datos-fiscales':'Datos fiscales',
+  'compras-requisicion':'Requisición de Compra', 'fin-cpc':'Cuentas por Cobrar (CPC)', 'fin-datos-fiscales':'Datos fiscales', 'fin-ordenes-cobro':'Órdenes de cobro', 'mgmt-income-forecast':'Management — Income Forecast', 'fin-prog-pagos':'Programación de pagos',
   // Proyectos
   'jobs':'Job Register', 'pt':'PT Numbers', 'sv':'SV Numbers',
   'rates':'Hourly Rates', 'quotes':'Quote Register',
@@ -6035,9 +6038,9 @@ const MODULE_GROUPS = [
   { label: '✈ Servicio',             mods: ['viaticos','gastos-viaje','envios'] },
   { label: '⚙ Configurar Proyecto',   mods: ['projconfig','projconfig-dashboard','projconfig-presupuesto','projconfig-timing','projconfig-abiertos','projconfig-cambios','projconfig-documentos'] },
   { label: '📊 Control de Costo',     mods: ['wh','report','multirpt','fx'] },
-  { label: '💹 Finanzas',             mods: ['fin-recepciones','fin-procesarcompra','fin-cpp','fin-cpc','fin-pagos','fin-esquemas','fin-datos-fiscales'] },
+  { label: '💹 Finanzas',             mods: ['fin-recepciones','fin-procesarcompra','fin-cpp','fin-prog-pagos','fin-cpc','fin-ordenes-cobro','fin-pagos','fin-esquemas','fin-datos-fiscales'] },
   { label: '🧑‍💼 Recursos Humanos',    mods: ['rrhh-asistencia','rrhh-vacaciones','rrhh-permisos','rrhh-salario','rrhh-sueldos','rrhh-nomina','personal-areas','personal-tipos-puesto','personal-perfiles','personal-listado'] },
-  { label: '📈 Management',          mods: ['rrhh-kpis'] },
+  { label: '📈 Management',           mods: ['rrhh-kpis','mgmt-income-forecast'] },
   { label: '🏭 Operaciones',           mods: ['ops-capacidad','ops-ot','ops-op','ops-os','ops-piso'] },
 ];
 
@@ -6283,6 +6286,9 @@ function applyPermsToDom(d) {
     'fin-cpp':            ["switchMenu('fin-cpp'"],
     'fin-cpc':            ["switchMenu('fin-cpc'"],
     'fin-datos-fiscales': ["switchMenu('fin-datos-fiscales'"],
+    'fin-ordenes-cobro':  ["switchMenu('fin-ordenes-cobro'"],
+    'mgmt-income-forecast': ["switchMenu('mgmt-income-forecast'"],
+    'fin-prog-pagos':     ["switchMenu('fin-prog-pagos'"],
     'compras-requisicion':["switchMenu('requisicion'"],
     'fin-pagos':          ["switchMenu('fin-pagos'"],
     'fin-esquemas':       ["switchMenu('fin-esquemas'"],
@@ -10510,6 +10516,7 @@ function provOpenPanel(clave) {
   document.getElementById('pp-clas').textContent   = r.clasificacion||'—';
   document.getElementById('pp-fpago').textContent  = r.forma_pago||'—';
   document.getElementById('pp-tpago').textContent  = r.terminos_pago||'—';
+  document.getElementById('pp-dias').textContent   = r.dias_credito!=null && r.dias_credito!=='' ? `${r.dias_credito} días` : '—';
   document.getElementById('pp-moneda').textContent = r.moneda||'—';
   document.getElementById('pp-fult').textContent   = r.fecha_ultima_compra||'—';
   document.getElementById('prov-dp').textContent   = `Documentos — ${r.nombre}`;
@@ -10570,7 +10577,7 @@ function provOpenNew() {
   provEditClave = null;
   document.getElementById('prov-new-title').textContent = 'Nuevo Proveedor';
   document.getElementById('btn-prov-del').style.display = 'none';
-  ['pn-nombre','pn-rfc','pn-tel','pn-calle','pn-ni','pn-ne','pn-clas','pn-tpago'].forEach(id=>document.getElementById(id).value='');
+  ['pn-nombre','pn-rfc','pn-tel','pn-calle','pn-ni','pn-ne','pn-clas','pn-tpago','pn-dias'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('pn-clave').value  = '';
   document.getElementById('pn-fult').value   = '';
   document.getElementById('pn-est').value    = 'Activo';
@@ -10594,6 +10601,7 @@ function provOpenEdit(clave) {
   document.getElementById('pn-ne').value      = r.num_exterior||'';
   document.getElementById('pn-clas').value    = r.clasificacion||'';
   document.getElementById('pn-tpago').value   = r.terminos_pago||'';
+  document.getElementById('pn-dias').value    = r.dias_credito ?? '';                       // rev123
   document.getElementById('pn-fult').value    = r.fecha_ultima_compra||'';
   document.getElementById('pn-est').value     = r.estatus||'Activo';
   document.getElementById('pn-moneda').value  = r.moneda||'MXN';
@@ -10636,6 +10644,7 @@ async function saveProveedor() {
     fecha_ultima_compra:document.getElementById('pn-fult').value,
     forma_pago:  document.getElementById('pn-fpago').value,
     terminos_pago:document.getElementById('pn-tpago').value.trim(),
+    dias_credito: document.getElementById('pn-dias').value,                                 // rev123
     moneda:      document.getElementById('pn-moneda').value,
   };
   try {
@@ -11694,12 +11703,14 @@ function pcRenderJobs(jobDetails, savedRows) {
           <div style="text-align:right"><div style="font-size:9px;color:var(--muted);text-transform:uppercase">Delta vs Internal Target</div>
             <div id="pc-delta-${idx}" style="font-family:'DM Mono',monospace;font-weight:700;font-size:13px">—</div></div>
         </div>
+        ${pcTerminosPagoHTML(j, saved, idx)}
       </div>
     </div>`;
   }).join('');
 
   // Initial calc for saved rows
   jobDetails.forEach((_,idx) => pcCalc(idx));
+  jobDetails.forEach((_,idx) => pcTerminosTotales(idx));          // rev121
   pcApplyProjconfigFieldPerms();
 }
 
@@ -11812,6 +11823,12 @@ function pcRenderResumenAreas() {
 
 async function pcSave() {
   if(!pcCurrentPTSV) return;
+  // rev122: los milestones de pago de cada Job no pueden pasar del 100 %
+  const _exceso = pcJobRows.map((j,idx)=>({job:j.job_number, suma: pcTerminosLeer(idx).reduce((a,m)=>a+(Number(m.porcentaje)||0),0), idx})).filter(x=>x.suma>100.0001);
+  if(_exceso.length){
+    toast(`La suma de los términos de pago pasa del 100 %: ${_exceso.map(x=>`${x.job} (${x.suma.toLocaleString('es-MX',{maximumFractionDigits:2})} %)`).join(', ')}. Corrígelo para guardar.`,'er',7000);
+    pcSwitchTab('presupuesto'); if(typeof pcJobTabSel==='function') pcJobTabSel(_exceso[0].idx); return;
+  }
   const _malas = pcFechasInvalidasTiming();
   if(_malas.length && !confirm(`El Timing tiene ${_malas.length} fecha(s) no válida(s):\n\n${_malas.map(m=>`• ${m.actividad} — ${m.campo}: ${m.valor}`).join('\n')}\n\nRevisa el año (4 dígitos). ¿Guardar de todos modos?`)) { pcSwitchTab('timing'); return; }
   const jobsData = pcJobRows.map((j,idx) => {
@@ -11852,6 +11869,7 @@ async function pcSave() {
       runoff_cliente:         f('runoff_cliente'),
       fecha_envio:            f('fecha_envio'),
       espacio_requerido:      (()=>{ const v = parseFloat(f('espacio_requerido')); return isNaN(v) ? null : v; })(),   // rev100: m² en piso
+      terminos_pago:          pcTerminosLeer(idx),                                      // rev121: hitos de pago
       markup_pct:             markupPct,
       monto_markup:           montoMarkup,
       presupuesto_operativo:  presOperativo,
@@ -17637,11 +17655,13 @@ function cppRender() {
       <td>${esc(r.factura||'—')}</td>
       <td style="color:var(--muted2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.supplier_name||'—')}</td>
       <td style="text-align:right;font-family:'DM Mono',monospace;color:${r.monto<0?'var(--red)':'var(--green)'}">${fmt(r.monto)}</td>
-      <td>${esc(r.fecha||'—')}</td>
+      <td>${esc(r.fecha_factura||r.fecha||'—')}</td>
+      <td title="${r.dias_credito_efectivo!=null?`${r.dias_credito_efectivo} días (${r.dias_origen==='CPP'?'de esta CPP':'del proveedor'})${r.fecha_vencimiento_manual?' · fecha manual':''}`:'Sin días de crédito'}" style="${r.estatus_pago==='Vencido'?'color:var(--red);font-weight:700':''}">${r.fecha_vencimiento||'<span style="color:var(--muted)">—</span>'}${r.estatus_pago==='Vencido'?`<div style="font-size:9.5px">${r.dias_vencido} d vencida</div>`:''}</td>
+      <td>${r.fecha_programada?`${esc(r.fecha_programada)}<div style="font-size:9.5px;color:var(--muted)">${esc(r.semana_programada||'')}</div>`:'<span style="color:var(--muted)">—</span>'}${!pagado && permCanCreate('fin-cpp')?` <button class="fi-del" style="font-size:10px;color:var(--muted2)" onclick="cppProgAbrir('${esc(r.cpp_number)}')">Programar</button>`:''}</td>
       <td style="color:var(--muted2)">${esc(r.usuario||'—')}</td>
       <td>${pagado
         ? '<span style="font-size:10px;color:var(--green);font-weight:700">✓ Pagado</span>'
-        : '<span style="font-size:10px;color:var(--amber)">Pendiente</span>'}</td>
+        : `<span style="font-size:10px;font-weight:700;color:${{'Vencido':'var(--red)','Programado':'#1d4ed8','Por vencer':'var(--amber)'}[r.estatus_pago]||'var(--muted2)'}">${esc(r.estatus_pago||'Pendiente')}</span>`}</td>
       <td><button class="fi-del" style="font-size:13px" title="Ver PDF" onclick="window.open('/api/cpp/${encodeURIComponent(r.cpp_number)}/pdf','_blank')">Ver PDF</button></td>
     </tr>`;
   }).join('');
@@ -18393,6 +18413,7 @@ function cpcOpenNew(){
   document.getElementById('cpc-fecha-factura').value=new Date().toISOString().slice(0,10);
   document.getElementById('cpc-moneda').value='USD'; document.getElementById('cpc-tc').value=''; cpcOnMoneda();   // rev108
   document.getElementById('cpc-serie').value=''; document.getElementById('cpc-folio').value='';   // rev112
+  window._cpcOrdenCobro = null;                                                                    // rev121
   document.getElementById('cpc-hist-box').style.display='none';
   document.getElementById('cpc-sat-box').style.display='none'; document.getElementById('cpc-cobranza-box').style.display='none';   // rev109
   loadCpoSaldos();
@@ -18544,6 +18565,7 @@ async function cpcSave(){
     cfdi:cpcCurrentCFDI,
     moneda:document.getElementById('cpc-moneda').value,                      // rev108
     serie:document.getElementById('cpc-serie').value.trim(), folio:document.getElementById('cpc-folio').value.trim(),   // rev112
+    orden_cobro_id: cpcCurrentId ? undefined : (window._cpcOrdenCobro || undefined),                                   // rev121
     tipo_cambio:document.getElementById('cpc-moneda').value==='MXN' ? (document.getElementById('cpc-tc').value||null) : null,
   };
   try{
@@ -18783,8 +18805,8 @@ function pagosRender() {
       <td>${esc(r.fecha||'—')}</td>
       <td style="color:var(--muted2)">${esc(r.usuario||'—')}</td>
       <td>${r.confirmado
-        ? '<span style="font-size:10px;color:var(--green);font-weight:700">✓ Confirmado</span>'
-        : `<button class="btn btn-s" style="font-size:10px;padding:5px 10px" onclick="pagoConfirmar('${esc(r.pago_number)}')">Confirmar Pago</button>`}</td>
+        ? `<span style="font-size:10px;color:var(--green);font-weight:700">✓ Confirmado</span>${r.fecha_pago?`<div style="font-size:9.5px;color:var(--muted)">pagado ${esc(r.fecha_pago)}</div>`:''}`
+        : `${r.programado?`<div style="font-size:10px;color:#1d4ed8;font-weight:700;margin-bottom:3px">📅 Programado ${esc(r.fecha_programada||'')}</div>`:''}<button class="btn btn-s" style="font-size:10px;padding:5px 10px" onclick="pagoConfirmar('${esc(r.pago_number)}')">Confirmar Pago</button>`}</td>
       <td><button class="fi-del" style="font-size:13px" title="Ver PDF" onclick="window.open('/api/pagos/${encodeURIComponent(r.pago_number)}/pdf','_blank')">Ver PDF</button></td>
     </tr>`).join('');
   document.getElementById('pag-count').textContent = `${rows.length} de ${pagosData.length} registros`;
@@ -19804,4 +19826,386 @@ async function dfGuardar(){
   const r = await apiCall('PUT','/finanzas/datos-fiscales', body);
   if(r.error){ toast(r.error,'er'); return; }
   toast('Datos fiscales guardados ✓ — los PDF nuevos ya los usan','ok',4000); dfCargar();
+}
+
+
+// ════════════════════════════════════════════════════════
+//  rev121 — Términos de pago (hitos) por Job y órdenes de cobro
+// ════════════════════════════════════════════════════════
+function pcTerminosPagoHTML(j, saved, idx){
+  const ms = saved.terminos_pago || [];
+  return `<div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--red)">Términos de pago</div>
+      <span id="pc-tp-suma-${idx}" style="font-size:11px;color:var(--muted2)"></span>
+      <button type="button" class="btn-reload pc-tp-edit" onclick="pcTerminoAgregar(${idx})" style="margin-left:auto;font-size:11px;padding:4px 12px">+ Milestone</button>
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px" id="pc-tp-tb-${idx}" data-revenue="${Number(j.revenue||0)}">
+      <thead><tr style="background:rgba(0,0,0,.035)">
+        <th style="text-align:left;padding:5px 6px;cursor:default">Milestone</th><th style="text-align:right;padding:5px 6px;width:90px;cursor:default">% de cobro</th>
+        <th style="text-align:right;padding:5px 6px;width:120px;cursor:default" title="% × revenue del Job. La orden de cobro calcula el monto sobre la CPO que se elija">Monto estimado</th><th style="padding:5px 6px;width:140px;cursor:default">Fecha estimada</th>
+        <th style="padding:5px 6px;width:110px;cursor:default" title="Días naturales de crédito del pago después del milestone (NET30, NET60, NET90…)">Vencimiento (días)</th>
+        <th style="padding:5px 6px;width:90px;text-align:center;cursor:default">Cumplido</th><th style="padding:5px 6px;width:230px;cursor:default">Orden de cobro</th><th style="width:30px"></th></tr></thead>
+      <tbody>${ms.map(m=>pcTerminoFila(idx, m)).join('')}</tbody>
+    </table>
+    ${ms.length?'':`<div class="pc-tp-vacio" style="font-size:11px;color:var(--muted);padding:6px">Sin milestones de pago. Agrega los hitos (ej. anticipo, aceptación en planta, run-off) con su porcentaje.</div>`}
+  </div>`;
+}
+function pcTerminoFila(idx, m){
+  const mid = m.mid || ('M' + Date.now().toString(36) + Math.random().toString(36).slice(2,6));
+  const tieneOrden = !!m.orden_cobro, dis = tieneOrden ? 'disabled' : '';
+  const inp = 'width:100%;box-sizing:border-box;padding:4px 6px;border:1px solid var(--border);border-radius:5px;background:var(--inp);font-size:12px';
+  return `<tr data-mid="${esc(mid)}" data-orden="${esc(m.orden_cobro||'')}" data-fcumplido="${esc(m.fecha_cumplido||'')}" style="border-top:1px solid var(--border)">
+    <td style="padding:3px 6px"><input class="pc-tp-f" data-k="nombre" value="${esc(m.nombre||'')}" placeholder="ej. Anticipo / Aceptación en planta" ${dis} style="${inp}"></td>
+    <td style="padding:3px 6px"><input class="pc-tp-f" data-k="porcentaje" type="number" min="0" max="100" step="0.01" value="${m.porcentaje ?? ''}" ${dis} oninput="pcTerminosTotales(${idx})" style="${inp};text-align:right"></td>
+    <td class="pc-tp-monto" style="padding:3px 6px;text-align:right;font-family:'DM Mono',monospace">—</td>
+    <td style="padding:3px 6px"><input class="pc-tp-f" data-k="fecha_estimada" type="date" value="${esc(m.fecha_estimada||'')}" style="${inp}"></td>
+    <td style="padding:3px 6px"><div style="display:flex;align-items:center;gap:4px"><span style="font-size:10px;color:var(--muted)">NET</span><input class="pc-tp-f" data-k="dias_vencimiento" type="number" min="0" max="365" step="1" value="${m.dias_vencimiento ?? ''}" placeholder="30" ${dis} style="${inp};text-align:right"></div></td>
+    <td style="padding:3px 6px;text-align:center"><input class="pc-tp-f" data-k="cumplido" type="checkbox" ${m.cumplido?'checked':''} ${dis} onchange="pcTerminoCumplido(this, ${idx})"></td>
+    <td style="padding:3px 6px">${tieneOrden
+      ? `<a href="/api/ordenes-cobro/${encodeURIComponent(m.orden_cobro)}/pdf" target="_blank" style="font-family:'DM Mono',monospace;color:var(--gold);font-weight:700">${esc(m.orden_cobro)}</a> <span style="font-size:10px;color:var(--muted)">generada</span>`
+      : `<button type="button" class="btn-new pc-tp-gen" onclick="pcOrdenCobroAbrir(${idx}, this)" ${m.cumplido?'':'disabled'} style="width:auto;padding:5px 10px;font-size:10.5px" title="${m.cumplido?'':'Marca el milestone como cumplido'}">Generar orden de cobro</button>`}</td>
+    <td>${tieneOrden?'':`<button type="button" class="fi-del pc-tp-edit" onclick="this.closest('tr').remove();pcTerminosTotales(${idx})" title="Quitar">✕</button>`}</td></tr>`;
+}
+function pcTerminoAgregar(idx){
+  const tb = document.querySelector(`#pc-tp-tb-${idx} tbody`); if(!tb) return;
+  tb.insertAdjacentHTML('beforeend', pcTerminoFila(idx, {}));
+  const v = tb.closest('div').parentElement.querySelector('.pc-tp-vacio'); if(v) v.remove();
+  pcTerminosTotales(idx);
+}
+function pcTerminoCumplido(el, idx){
+  const tr = el.closest('tr');
+  tr.dataset.fcumplido = el.checked ? (tr.dataset.fcumplido || new Date().toISOString().slice(0,10)) : '';
+  const b = tr.querySelector('.pc-tp-gen'); if(b){ b.disabled = !el.checked; b.title = el.checked ? 'Guarda la configuración y genera la orden' : 'Marca el milestone como cumplido'; }
+}
+function pcTerminosLeer(idx){
+  return [...document.querySelectorAll(`#pc-tp-tb-${idx} tbody tr`)].map(tr=>{
+    const g = k => tr.querySelector(`.pc-tp-f[data-k="${k}"]`);
+    const pct = parseFloat(g('porcentaje').value);
+    const dv = parseInt(g('dias_vencimiento').value, 10);
+    return { mid: tr.dataset.mid, nombre: g('nombre').value.trim(), porcentaje: isNaN(pct) ? null : pct, fecha_estimada: g('fecha_estimada').value || null,
+             dias_vencimiento: isNaN(dv) ? null : dv,
+             cumplido: g('cumplido').checked, fecha_cumplido: tr.dataset.fcumplido || null, orden_cobro: tr.dataset.orden || null };
+  }).filter(m => m.nombre || m.porcentaje != null);
+}
+function pcTerminosTotales(idx){
+  const tb = document.getElementById(`pc-tp-tb-${idx}`); if(!tb) return;
+  const rev = Number(tb.dataset.revenue||0); let tot = 0;
+  tb.querySelectorAll('tbody tr').forEach(tr=>{ const p = parseFloat(tr.querySelector('.pc-tp-f[data-k="porcentaje"]').value)||0; tot += p;
+    tr.querySelector('.pc-tp-monto').textContent = rev ? '$' + (rev*p/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—'; });
+  tb.querySelectorAll('.pc-tp-f[data-k="porcentaje"]').forEach(i=>{ i.style.borderColor = tot>100.0001 ? 'var(--red)' : ''; i.style.background = tot>100.0001 ? 'rgba(200,16,46,.07)' : ''; });
+  const el = document.getElementById(`pc-tp-suma-${idx}`);
+  if(el) el.innerHTML = tot ? `Suma <b style="color:${Math.abs(tot-100)<0.01?'#1f8a4c':tot>100?'var(--red)':'var(--amber)'}">${tot.toLocaleString('es-MX',{maximumFractionDigits:2})} %</b>${Math.abs(tot-100)<0.01?'':tot>100?' · ⛔ pasa del 100 %: no se podrá guardar':' · falta '+(100-tot).toLocaleString('es-MX',{maximumFractionDigits:2})+' %'}` : '';
+}
+// ── Modal: generar orden de cobro ──
+let _ocCtx = null;
+async function pcOrdenCobroAbrir(idx, btn){
+  const tr = btn.closest('tr'), job = pcJobRows[idx]?.job_number, ptsv = pcCurrentPTSV;
+  const nombre = tr.querySelector('.pc-tp-f[data-k="nombre"]').value.trim(), pct = parseFloat(tr.querySelector('.pc-tp-f[data-k="porcentaje"]').value)||0;
+  if(!nombre || !pct){ toast('Captura el nombre y el porcentaje del milestone','er'); return; }
+  // el hito debe estar guardado (y cumplido) en el servidor
+  const cfg = (await fetch('/api/projconfig').then(r=>r.json())).records?.find(r=>String(r.ptsv).toUpperCase()===String(ptsv).toUpperCase());
+  const jg = cfg?.jobs?.find(x=>String(x.job_number).toUpperCase()===String(job).toUpperCase());
+  const mg = jg?.terminos_pago?.find(m=>m.mid===tr.dataset.mid);
+  if(!mg || !mg.cumplido){ toast('Primero guarda la configuración del proyecto con el milestone marcado como cumplido','er',5000); return; }
+  const cpos = await fetch('/api/ordenes-cobro/cpos?job='+encodeURIComponent(job)).then(r=>r.json());
+  if(!Array.isArray(cpos) || !cpos.length){ toast(`El Job ${job} no tiene una CPO de revenue registrada`,'er',5000); return; }
+  _ocCtx = {idx, tr, job, ptsv, mid: tr.dataset.mid, nombre, pct, cpos, dias: mg.dias_vencimiento};
+  const sel = document.getElementById('oc-cpo');
+  sel.innerHTML = cpos.map(c=>`<option value="${esc(c.id)}">${esc(c.id)} · PO ${esc(c.po_number||'')} · $${Number(c.value).toLocaleString('en-US',{minimumFractionDigits:2})}${c.tbd?' · ⚠ TBD':''}</option>`).join('');
+  document.getElementById('oc-job').textContent = job;
+  document.getElementById('oc-hito').textContent = `${nombre} · ${pct.toLocaleString('es-MX',{maximumFractionDigits:2})} %` + (mg.dias_vencimiento!=null ? ` · NET${mg.dias_vencimiento}` : ' · sin días de vencimiento');
+  document.getElementById('oc-archivo').value = '';
+  document.querySelectorAll('input[name="oc-iva"]').forEach(r=>r.checked=false);
+  document.getElementById('oc-notas').value = '';
+  ocCalc();
+  document.getElementById('mo-orden-cobro').classList.add('on');
+}
+function ocCalc(){
+  if(!_ocCtx) return;
+  const c = _ocCtx.cpos.find(x=>x.id===document.getElementById('oc-cpo').value) || {value:0};
+  const sub = Math.round(c.value*_ocCtx.pct)/100, iva = document.querySelector('input[name="oc-iva"]:checked')?.value==='si' ? Math.round(sub*16)/100 : 0;
+  const f = v => '$'+v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  document.getElementById('oc-montos').innerHTML = `<div style="color:var(--muted2);margin-bottom:4px">${_ocCtx.pct.toLocaleString('es-MX',{maximumFractionDigits:2})} % de la CPO ${esc(c.id||'')} (${f(c.value)})</div>Subtotal <b>${f(sub)}</b> · IVA ${f(iva)} · <b style="color:var(--red)">Total ${f(sub+iva)} USD</b>${c.tbd?'<div style="color:var(--amber);margin-top:4px">⚠ La CPO tiene número TBD (pedido sin PO formal)</div>':''}`;
+}
+async function ocGenerar(){
+  const file = document.getElementById('oc-archivo').files[0];
+  const iva = document.querySelector('input[name="oc-iva"]:checked')?.value;
+  if(!file){ toast('Adjunta la evidencia de aceptación o entrega','er'); return; }
+  if(!iva){ toast('Indica si la facturación requiere IVA','er'); return; }
+  const fd = new FormData();
+  fd.append('ptsv', _ocCtx.ptsv); fd.append('job', _ocCtx.job); fd.append('mid', _ocCtx.mid);
+  fd.append('cpo_id', document.getElementById('oc-cpo').value); fd.append('requiere_iva', iva); fd.append('notas', document.getElementById('oc-notas').value);
+  fd.append('archivo', file);
+  const btn = document.getElementById('oc-btn'); btn.disabled = true; btn.textContent = 'Generando…';
+  try{
+    const r = await fetch('/api/ordenes-cobro', {method:'POST', body: fd}); const d = await r.json();
+    if(!r.ok) throw new Error(d.error||'No se pudo generar');
+    // el renglón queda ligado a la orden (para que un guardado posterior la conserve)
+    _ocCtx.tr.dataset.orden = d.orden.oid;
+    _ocCtx.tr.outerHTML = pcTerminoFila(_ocCtx.idx, {..._ocCtx, nombre:_ocCtx.nombre, porcentaje:_ocCtx.pct, cumplido:true, orden_cobro:d.orden.oid, dias_vencimiento:_ocCtx.dias,
+      fecha_estimada: _ocCtx.tr.querySelector('.pc-tp-f[data-k="fecha_estimada"]').value, fecha_cumplido: d.orden.hito.fecha_cumplido});
+    pcTerminosTotales(_ocCtx.idx);
+    closeMo('mo-orden-cobro');
+    toast(`Orden de cobro ${d.orden.oid} generada — ya está en Finanzas ▸ Órdenes de cobro`,'ok',5000);
+  }catch(e){ toast(e.message,'er',6000); }
+  finally{ btn.disabled = false; btn.textContent = 'Generar orden de cobro'; }
+}
+
+// ── Finanzas ▸ Órdenes de cobro ──
+let _ocLista = [];
+async function ocCargar(){
+  try{ _ocLista = await fetch('/api/ordenes-cobro').then(r=>r.json()); if(_ocLista.error) throw new Error(_ocLista.error); }
+  catch(e){ document.getElementById('oc-tb').innerHTML = `<tr><td colspan="11" style="color:var(--red);padding:16px">⚠ ${esc(e.message)}</td></tr>`; return; }
+  ocRender();
+}
+function ocRender(){
+  const q = (document.getElementById('oc-q')?.value||'').toLowerCase(), est = document.getElementById('oc-est')?.value||'';
+  const L = _ocLista.filter(o => (!est || o.estatus===est) && (!q || [o.oid,o.job,o.cpo_id,o.cpo_po_number,o.cliente,o.ptsv,(o.hito||{}).nombre].join(' ').toLowerCase().includes(q)));
+  const f = v => '$'+Number(v||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const col = {'Por facturar':'var(--amber)','Facturada':'#1f8a4c','Cancelada':'var(--muted)'};
+  const puede = permCanCreate('fin-ordenes-cobro');
+  document.getElementById('oc-tb').innerHTML = L.map(o=>`<tr>
+      <td style="font-family:'DM Mono',monospace;color:var(--gold);font-weight:700">${esc(o.oid)}</td><td>${esc(String(o.creado||'').slice(0,10))}</td>
+      <td style="font-family:'DM Mono',monospace">${esc(o.job||'')}</td><td style="font-family:'DM Mono',monospace;font-size:11px">${esc(o.cpo_id||'')}<div style="color:var(--muted)">PO ${esc(o.cpo_po_number||'')}</div></td>
+      <td>${esc(o.cliente||'')}</td><td>${esc((o.hito||{}).nombre||'')} <span style="color:var(--muted)">${(o.hito||{}).porcentaje??''} %</span></td>
+      <td style="text-align:right;font-family:'DM Mono',monospace">${f(o.subtotal)}</td><td style="text-align:center">${o.requiere_iva?'Sí':'No'}</td>
+      <td style="text-align:right;font-family:'DM Mono',monospace;font-weight:700">${f(o.total)}</td>
+      <td><span style="font-weight:700;color:${col[o.estatus]||'var(--text)'}">${esc(o.estatus)}</span>${o.cpc_id?`<div style="font-size:10px;color:var(--muted)">${esc(o.cpc_id)}</div>`:''}</td>
+      <td style="white-space:nowrap"><button class="fi-del" style="color:var(--muted2)" onclick="window.open('/api/ordenes-cobro/${encodeURIComponent(o.oid)}/pdf','_blank')">PDF</button>
+        <button class="fi-del" style="color:var(--muted2)" onclick="window.open('/api/ordenes-cobro/${encodeURIComponent(o.oid)}/evidencia','_blank')" title="${esc((o.evidencia||{}).nombre||'')}">Evidencia</button>
+        ${puede && o.estatus==='Por facturar' ? `<button class="fi-del" style="color:#1f8a4c" onclick="ocFacturar('${esc(o.oid)}')">Registrar factura</button>
+        <button class="fi-del" onclick="ocCancelar('${esc(o.oid)}')">Cancelar</button>` : ''}</td></tr>`).join('')
+    || '<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:24px">Sin órdenes de cobro. Se generan desde Configurar Proyecto ▸ Presupuesto ▸ Términos de pago.</td></tr>';
+  const pend = _ocLista.filter(o=>o.estatus==='Por facturar');
+  document.getElementById('oc-resumen').innerHTML = `${pend.length} por facturar · <b>${f(pend.reduce((a,o)=>a+Number(o.total||0),0))}</b> USD`;
+}
+async function ocFacturar(oid){
+  const o = _ocLista.find(x=>x.oid===oid); if(!o) return;
+  // abre CPC ▸ Nueva factura con los datos de la orden; al guardarla, la orden queda Facturada
+  switchMenu('fin-cpc','ng-finanzas');
+  setTimeout(async ()=>{
+    await cpcOpenNew();
+    window._cpcOrdenCobro = oid;
+    const set = (id,v) => { const el=document.getElementById(id); if(el){ el.value = v; el.dispatchEvent(new Event('input')); } };
+    set('cpc-job', o.job||''); set('cpc-cliente', o.cliente||''); set('cpc-moneda','USD'); cpcOnMoneda();
+    set('cpc-subtotal', o.subtotal); set('cpc-iva', o.iva);
+    const chk = document.getElementById('cpc-usar-cpo'); if(chk && !chk.checked){ chk.checked = true; cpcToggleCpoMode(); }
+    setTimeout(()=>{ const sel=document.getElementById('cpc-cpo-select'); if(sel){ sel.value=o.cpo_id; cpcOnCpoSelect(); }
+      set('cpc-subtotal', o.subtotal); set('cpc-iva', o.iva); cpcRecalcTotal && cpcRecalcTotal();
+      set('cpc-notas', `Orden de cobro ${o.oid} · ${(o.hito||{}).nombre||''} (${(o.hito||{}).porcentaje}%)`);
+      const dv = (o.hito||{}).dias_vencimiento;                                   // rev122: vencimiento = fecha de factura + NET
+      if(dv!=null){ const ff = document.getElementById('cpc-fecha-factura').value || new Date().toISOString().slice(0,10);
+        const d = new Date(ff+'T12:00:00'); d.setDate(d.getDate()+Number(dv)); set('cpc-fecha-venc', d.toISOString().slice(0,10)); } }, 900);
+    toast(`Factura para la orden ${oid}: completa la serie/folio o carga el XML y guarda`,'if',6000);
+  }, 400);
+}
+async function ocCancelar(oid){
+  const motivo = prompt('Motivo de la cancelación (el milestone queda libre para generar otra orden):',''); if(motivo===null) return;
+  const r = await apiCall('PUT','/ordenes-cobro/'+encodeURIComponent(oid), {estatus:'Cancelada', motivo});
+  if(r.error){ toast(r.error,'er'); return; }
+  toast('Orden cancelada','if'); ocCargar();
+}
+
+
+// ════════════════════════════════════════════════════════
+//  rev122 — Management ▸ Income Forecast
+// ════════════════════════════════════════════════════════
+let _if = null;
+const ifFmt = v => '$' + Number(v||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+async function ifCargar(){
+  try{ _if = await fetch('/api/income-forecast').then(r=>r.json()); if(_if.error) throw new Error(_if.error); }
+  catch(e){ document.getElementById('if-tb').innerHTML = `<tr><td colspan="11" style="color:var(--red);padding:16px">⚠ ${esc(e.message)}</td></tr>`; return; }
+  ifRender();
+}
+function ifFiltradas(){
+  const q=(document.getElementById('if-q').value||'').toLowerCase(), est=document.getElementById('if-est').value;
+  const de=document.getElementById('if-desde').value, ha=document.getElementById('if-hasta').value;
+  return _if.filas.filter(r => (!q || [r.job,r.ptsv,r.cliente,r.milestone,r.orden_cobro,r.cpc_id].join(' ').toLowerCase().includes(q))
+    && (est==='' ? !['Cobrado','Factura cancelada'].includes(r.estatus) : est==='Vencido' ? r.vencido : est==='Todos' ? true : r.estatus===est)
+    && (!de || (r.fecha_cobro||'') >= de) && (!ha || (r.fecha_cobro||'9999') <= ha));
+}
+function ifRender(){
+  const L = ifFiltradas(), hoy = _if.hoy, abiertos = _if.filas.filter(r=>!['Cobrado','Factura cancelada'].includes(r.estatus));
+  const dias = n => { const d=new Date(hoy+'T12:00:00'); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); };
+  const suma = arr => arr.reduce((a,r)=>a+r.monto,0);
+  const card = (t,v,sub,col) => `<div style="background:var(--card,#fff);border:1px solid var(--border);border-radius:10px;padding:12px 14px"><div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted)">${t}</div><div style="font-size:22px;font-weight:800;color:${col||'var(--text)'};margin-top:3px">${v}</div><div style="font-size:11px;color:var(--muted2)">${sub||''}</div></div>`;
+  const venc = abiertos.filter(r=>r.vencido), d30 = abiertos.filter(r=>!r.vencido && r.fecha_cobro && r.fecha_cobro<=dias(30)),
+        d90 = abiertos.filter(r=>!r.vencido && r.fecha_cobro && r.fecha_cobro<=dias(90));
+  document.getElementById('if-cards').innerHTML = card('Total esperado', ifFmt(suma(abiertos)), `${abiertos.length} cobro(s) pendiente(s)`)
+    + card('Vencido', ifFmt(suma(venc)), `${venc.length} con fecha pasada`, venc.length?'var(--red)':null)
+    + card('Próximos 30 días', ifFmt(suma(d30)), `${d30.length} cobro(s)`, '#1f8a4c')
+    + card('Próximos 90 días', ifFmt(suma(d90)), `${d90.length} cobro(s)`)
+    + card('Sin fecha', ifFmt(_if.sin_fecha), 'Milestones sin fecha estimada', _if.sin_fecha?'var(--amber)':null);
+  ifSemanal();
+  const meses = [];
+  const max = 1, nom = k => k;
+  if(false) document.getElementById('if-chart').innerHTML = meses.length ? `<div style="display:flex;align-items:flex-end;gap:10px;height:170px;padding:0 4px;border-bottom:1px solid var(--border)">${meses.map(([k,v])=>`
+      <div style="flex:1;min-width:38px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%" title="${nom(k)}: ${ifFmt(v)}">
+        <div style="font-size:10px;color:var(--muted2);margin-bottom:3px;white-space:nowrap">${(v/1000).toLocaleString('en-US',{maximumFractionDigits:0})}k</div>
+        <div style="width:70%;height:${Math.max(3, v/max*130)}px;border-radius:5px 5px 0 0;background:${k==='Vencido'?'var(--red)':'#1f3864'}"></div></div>`).join('')}</div>
+    <div style="display:flex;gap:10px;padding:4px">${meses.map(([k])=>`<div style="flex:1;min-width:38px;text-align:center;font-size:10.5px;color:${k==='Vencido'?'var(--red)':'var(--muted2)'};font-weight:${k==='Vencido'?700:400}">${nom(k)}</div>`).join('')}</div>`
+    : '<div style="padding:18px;text-align:center;color:var(--muted)">Sin cobros esperados con fecha. Captura los términos de pago en Configurar Proyecto.</div>';
+  const col = {'Por cumplir':'var(--muted2)','Cumplido · sin orden':'var(--amber)','Orden por facturar':'#b45309','Facturado':'#1d4ed8','Cobrado':'#1f8a4c','Factura cancelada':'var(--muted)'};
+  document.getElementById('if-tb').innerHTML = L.map(r=>`<tr style="${r.vencido?'background:rgba(200,16,46,.05)':''}">
+      <td style="font-weight:700;${r.vencido?'color:var(--red)':''}">${r.fecha_cobro ? new Date(r.fecha_cobro+'T12:00:00').toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}) : '<span style="color:var(--amber)">sin fecha</span>'}${r.vencido?' <span style="font-size:10px">VENCIDO</span>':''}</td>
+      <td style="font-family:'DM Mono',monospace">${esc(r.job)}</td><td style="font-family:'DM Mono',monospace;font-size:11px">${esc(r.ptsv||'')}</td><td>${esc(r.cliente||'')}</td>
+      <td>${esc(r.milestone||'')} <span style="color:var(--muted)">${r.porcentaje} %</span></td>
+      <td style="font-size:11px">${r.fecha_estimada||'—'}</td><td style="font-size:11px">${r.dias_vencimiento!=null?'NET'+r.dias_vencimiento:'—'}</td>
+      <td style="text-align:right;font-family:'DM Mono',monospace;font-weight:700">${ifFmt(r.monto)}</td>
+      <td style="font-size:10.5px;color:var(--muted2)">${esc(r.fuente)}</td>
+      <td><span style="font-weight:700;color:${col[r.estatus]||'var(--text)'}">${esc(r.estatus)}</span></td>
+      <td style="font-size:11px">${r.orden_cobro?`<a href="/api/ordenes-cobro/${encodeURIComponent(r.orden_cobro)}/pdf" target="_blank">${esc(r.orden_cobro)}</a>`:''}${r.cpc_id?`<div>${esc(r.cpc_id)}</div>`:''}</td></tr>`).join('')
+    || '<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:22px">Sin cobros en el filtro.</td></tr>';
+  document.getElementById('if-count').textContent = `${L.length} renglón(es) · ${ifFmt(suma(L))}`;
+}
+function ifExportar(){
+  const L = ifFiltradas(), q = v => `"${String(v??'').replace(/"/g,'""')}"`;
+  const csv = ['Fecha esperada de cobro,Job,PT/SV,Cliente,Milestone,%,Fecha estimada,Dias vencimiento,Monto USD,Fuente,Estatus,Vencido,Orden de cobro,Factura CPC',
+    ...L.map(r=>[r.fecha_cobro,r.job,r.ptsv,r.cliente,r.milestone,r.porcentaje,r.fecha_estimada,r.dias_vencimiento,r.monto,r.fuente,r.estatus,r.vencido?'SI':'NO',r.orden_cobro,r.cpc_id].map(q).join(','))].join('\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv'})); a.download = `income_forecast_${_if.hoy}.csv`; a.click();
+}
+
+
+// ════════════════════════════════════════════════════════
+//  rev123 — CPP: vencimiento y programación de pagos
+// ════════════════════════════════════════════════════════
+let _cpg = null;
+function cppProgAbrir(num){
+  const src = (typeof _pp!=='undefined' && _pp && _pp.records || []).concat(cppData||[]);
+  const r = src.find(x=>x.cpp_number===num); if(!r) return;
+  _cpg = r;
+  document.getElementById('cpg-num').textContent = num;
+  const f = v => '$'+Number(v||0).toLocaleString('en-US',{minimumFractionDigits:2});
+  document.getElementById('cpg-info').innerHTML = `<b>${esc(r.supplier_name||'')}</b> · Factura ${esc(r.factura||'—')} del ${esc(r.fecha_factura||'—')} · ${f(r.monto_abs ?? Math.abs(r.monto||0))} ${esc(r.moneda||'')}`;
+  document.getElementById('cpg-dias').value = r.dias_credito ?? '';
+  document.getElementById('cpg-dias').placeholder = r.dias_origen==='proveedor' ? `${r.dias_credito_efectivo} (del proveedor)` : 'sin dato';
+  const v = document.getElementById('cpg-venc'); v.value = r.fecha_vencimiento || ''; v.dataset.manual = r.fecha_vencimiento_manual ? '1' : '';
+  document.getElementById('cpg-prog').value = r.fecha_programada || '';
+  const hs = r.historial_programacion || [];
+  document.getElementById('cpg-hist-box').style.display = hs.length ? '' : 'none';
+  document.getElementById('cpg-hist').innerHTML = hs.slice().reverse().map(h=>`<div style="border-top:1px solid var(--border);padding:3px 0">${esc(String(h.fecha).replace('T',' '))} · ${esc(h.usuario||'')}<div style="color:var(--muted2)">${esc(h.detalle)}</div></div>`).join('');
+  cpgCalc(true);
+  document.getElementById('mo-cpp-prog').classList.add('on');
+}
+function cpgCalc(inicial){
+  const d = document.getElementById('cpg-dias').value, v = document.getElementById('cpg-venc');
+  const dias = d!=='' ? Number(d) : (_cpg.dias_origen==='proveedor' ? _cpg.dias_credito_efectivo : null);
+  if(!inicial && v.dataset.manual!=='1' && _cpg.fecha_factura && dias!=null){
+    const x = new Date(_cpg.fecha_factura+'T12:00:00'); x.setDate(x.getDate()+dias); v.value = x.toISOString().slice(0,10);
+  }
+  document.getElementById('cpg-hint').textContent = dias!=null ? `Vencimiento calculado = ${_cpg.fecha_factura||'fecha de factura'} + ${dias} días. Si cambias la fecha a mano, se respeta.` : 'Captura los días de crédito (o en el proveedor) para calcular el vencimiento.';
+}
+async function cpgGuardar(){
+  const v = document.getElementById('cpg-venc');
+  const body = { dias_credito: document.getElementById('cpg-dias').value, fecha_programada: document.getElementById('cpg-prog').value || null,
+                 fecha_vencimiento_manual: v.dataset.manual==='1' ? (v.value || null) : null };
+  const r = await apiCall('PUT', `/cpp/${encodeURIComponent(_cpg.cpp_number)}/programacion`, body);
+  if(r.error){ toast(r.error,'er'); return; }
+  closeMo('mo-cpp-prog'); toast(body.fecha_programada ? 'Pago programado — registrado en PAGOS por confirmar' : 'Programación guardada','ok',5000);
+  if(document.getElementById('mod-fin-prog-pagos')?.classList.contains('on')) ppCargar(); else loadCPP();
+}
+
+let _pp = null;
+const ppFmt = v => '$'+Number(v||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+async function ppCargar(){
+  try{ _pp = await fetch('/api/cpp/programacion').then(r=>r.json()); if(_pp.error) throw new Error(_pp.error); }
+  catch(e){ document.getElementById('pp-tb').innerHTML = `<tr><td colspan="13" style="color:var(--red);padding:16px">⚠ ${esc(e.message)}</td></tr>`; return; }
+  ppRender();
+}
+function ppFiltradas(){
+  const q=(document.getElementById('pp-q').value||'').toLowerCase(), est=document.getElementById('pp-est').value;
+  return _pp.records.filter(r => (!q || [r.cpp_number,r.supplier_name,r.factura,r.po_number,r.job].join(' ').toLowerCase().includes(q))
+    && (!est || (est==='sin-prog' ? !r.fecha_programada : r.estatus_pago===est)));
+}
+function ppRender(){
+  const a = _pp.aging, card = (t,v,col,sub) => `<div style="background:var(--card,#fff);border:1px solid var(--border);border-radius:10px;padding:10px 12px"><div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)">${t}</div><div style="font-size:19px;font-weight:800;color:${col||'var(--text)'};margin-top:2px">${ppFmt(v)}</div><div style="font-size:10.5px;color:var(--muted2)">${sub||''}</div></div>`;
+  const tot = Object.values(a).reduce((x,y)=>x+y,0);
+  document.getElementById('pp-aging').innerHTML = card('Total por pagar',tot,null,'USD equiv.'+(_pp.sin_tc?` · ${_pp.sin_tc} sin TC`:'')) + card('Por vencer',a['Por vencer'],'#1f8a4c')
+    + card('Vencido 1–30',a['1-30'],a['1-30']?'var(--amber)':null) + card('Vencido 31–60',a['31-60'],a['31-60']?'var(--red)':null)
+    + card('Vencido 61–90',a['61-90'],a['61-90']?'var(--red)':null) + card('Vencido 91+',a['91+'],a['91+']?'var(--red)':null)
+    + card('Sin vencimiento',a['Sin vencimiento'],a['Sin vencimiento']?'var(--amber)':null,'Falta días de crédito');
+  // pivote proveedor × semana (8 semanas desde la actual + sin programar)
+  const sems = [], d0 = new Date(_pp.hoy+'T12:00:00');
+  const isoW = d => { const t=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())); const day=t.getUTCDay()||7; t.setUTCDate(t.getUTCDate()+4-day); const y=t.getUTCFullYear(); const w=Math.ceil(((t-Date.UTC(y,0,1))/86400000+1)/7); return `${y}-W${String(w).padStart(2,'0')}`; };
+  for(let i=0;i<8;i++){ const d=new Date(d0); d.setDate(d.getDate()+7*i); sems.push(isoW(d)); }
+  const filas = {}, usd = r => r.monto_usd||0;
+  _pp.records.forEach(r=>{ const k=r.supplier_name||'—'; const f=filas[k]=filas[k]||{tot:0}; let col = r.semana_programada||'Sin programar';
+    if(r.semana_programada && r.semana_programada < sems[0]) col = 'Antes'; else if(r.semana_programada && !sems.includes(r.semana_programada)) col = 'Después';
+    f[col]=(f[col]||0)+usd(r); f.tot+=usd(r); });
+  const cols = ['Antes', ...sems, 'Después', 'Sin programar'].filter(c => Object.values(filas).some(f=>f[c]) || sems.includes(c));
+  const etiqueta = c => sems.includes(c) ? `Sem ${c.split('-W')[1]}${c===_pp.semana_actual?' (actual)':''}` : c==='Antes' ? 'Semanas pasadas' : c;
+  const prov = Object.entries(filas).sort((x,y)=>y[1].tot-x[1].tot);
+  const sumCol = c => prov.reduce((a,[,f])=>a+(f[c]||0),0);
+  const cel = v => v ? `<td style="text-align:right;font-family:'DM Mono',monospace;padding:4px 8px">${(v).toLocaleString('en-US',{maximumFractionDigits:0})}</td>` : '<td style="text-align:right;color:var(--muted);padding:4px 8px">·</td>';
+  document.getElementById('pp-pivot').innerHTML = prov.length ? `<table style="width:100%;border-collapse:collapse;font-size:11.5px"><thead><tr><th style="text-align:left;padding:4px 8px;cursor:default">Proveedor</th>${cols.map(c=>`<th style="text-align:right;padding:4px 8px;cursor:default;white-space:nowrap;${c==='Sin programar'?'color:var(--amber)':c==='Antes'?'color:var(--red)':''}">${etiqueta(c)}</th>`).join('')}<th style="text-align:right;padding:4px 8px;cursor:default">Total</th></tr></thead>
+    <tbody>${prov.map(([k,f])=>`<tr style="border-top:1px solid var(--border)"><td style="padding:4px 8px;white-space:nowrap;max-width:280px;overflow:hidden;text-overflow:ellipsis">${esc(k)}</td>${cols.map(c=>cel(f[c])).join('')}<td style="text-align:right;font-weight:700;font-family:'DM Mono',monospace;padding:4px 8px">${f.tot.toLocaleString('en-US',{maximumFractionDigits:0})}</td></tr>`).join('')}
+    <tr style="border-top:2px solid var(--border);font-weight:700"><td style="padding:5px 8px">Total</td>${cols.map(c=>cel(sumCol(c))).join('')}<td style="text-align:right;font-family:'DM Mono',monospace;padding:5px 8px">${prov.reduce((a,[,f])=>a+f.tot,0).toLocaleString('en-US',{maximumFractionDigits:0})}</td></tr></tbody></table>`
+    : '<div style="padding:14px;text-align:center;color:var(--muted)">Sin CPP pendientes</div>';
+  const L = ppFiltradas(), col = {'Vencido':'var(--red)','Programado':'#1d4ed8','Por vencer':'var(--amber)','Sin vencimiento':'var(--muted2)'};
+  document.getElementById('pp-tb').innerHTML = L.map(r=>`<tr style="${r.estatus_pago==='Vencido'?'background:rgba(200,16,46,.05)':''}">
+      <td><input type="checkbox" class="pp-chk" value="${esc(r.cpp_number)}" onchange="ppSelTxt()"></td>
+      <td style="font-family:'DM Mono',monospace;color:var(--gold);font-weight:700">${esc(r.cpp_number)}</td>
+      <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.supplier_name||'')}</td><td style="font-size:11px">${esc(r.factura||'—')}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:11px">${esc(r.po_number||'')}<div style="color:var(--amber)">${esc(r.job||'')}</div></td>
+      <td style="text-align:right;font-family:'DM Mono',monospace">${ppFmt(r.monto_abs)} <span style="font-size:10px;color:var(--muted)">${esc(r.moneda)}</span></td>
+      <td style="text-align:right;font-family:'DM Mono',monospace;color:var(--muted2)">${r.monto_usd==null?'<span style="color:var(--amber)">s/TC</span>':ppFmt(r.monto_usd)}</td>
+      <td style="font-size:11px">${esc(r.fecha_factura||'—')}</td>
+      <td style="font-size:11px" title="${r.dias_origen==='CPP'?'Capturado en esta CPP':r.dias_origen==='proveedor'?'Del proveedor':''}">${r.dias_credito_efectivo!=null?r.dias_credito_efectivo:'<span style="color:var(--amber)">—</span>'}${r.dias_origen==='CPP'?'*':''}</td>
+      <td style="font-size:11px;${r.estatus_pago==='Vencido'?'color:var(--red);font-weight:700':''}">${r.fecha_vencimiento||'—'}${r.dias_vencido?` <span style="font-size:9.5px">(${r.dias_vencido} d)</span>`:''}</td>
+      <td style="font-size:11px">${r.fecha_programada?`${esc(r.fecha_programada)} <span style="color:var(--muted)">${esc((r.semana_programada||'').replace('-W',' S'))}</span>`:'<span style="color:var(--amber)">sin programar</span>'}</td>
+      <td><span style="font-weight:700;font-size:11px;color:${col[r.estatus_pago]||'var(--text)'}">${esc(r.estatus_pago)}</span></td>
+      <td>${permCanCreate('fin-cpp')?`<button class="fi-del" style="font-size:11px;color:var(--muted2)" onclick="cppProgAbrir('${esc(r.cpp_number)}')">Editar</button>`:''}</td></tr>`).join('')
+    || '<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:22px">Sin CPP en el filtro.</td></tr>';
+  document.getElementById('pp-all').checked = false; ppSelTxt();
+}
+function ppTodas(v){ document.querySelectorAll('.pp-chk').forEach(c=>c.checked=v); ppSelTxt(); }
+function ppSelTxt(){
+  const sel = [...document.querySelectorAll('.pp-chk:checked')].map(c=>c.value);
+  const t = _pp.records.filter(r=>sel.includes(r.cpp_number)).reduce((a,r)=>a+(r.monto_usd||0),0);
+  document.getElementById('pp-sel-txt').textContent = sel.length ? `${sel.length} seleccionada(s) · ${ppFmt(t)} USD equiv.` : '';
+}
+async function ppProgramarSel(quitar){
+  const sel = [...document.querySelectorAll('.pp-chk:checked')].map(c=>c.value);
+  if(!sel.length){ toast('Selecciona al menos una CPP','er'); return; }
+  const f = quitar ? null : document.getElementById('pp-fecha').value;
+  if(!quitar && !f){ toast('Elige la fecha programada de pago','er'); return; }
+  const r = await apiCall('POST','/cpp/programar',{cpp_numbers: sel, fecha_programada: f});
+  if(r.error){ toast(r.error,'er'); return; }
+  toast(quitar ? `Programación quitada: los pagos programados se eliminaron de PAGOS y las CPP regresaron a Pendiente` : `${sel.length} CPP programada(s) para el ${f} — registradas en PAGOS (${(r.pagos||[]).length}) por confirmar`,'ok',6000); ppCargar();
+}
+function ppExportar(){
+  const L = ppFiltradas(), q = v => `"${String(v??'').replace(/"/g,'""')}"`;
+  const csv = ['CPP,Proveedor,Factura,OC,Job,Monto,Moneda,USD equiv,Fecha factura,Dias credito,Vencimiento,Dias vencida,Fecha programada,Semana,Estatus',
+    ...L.map(r=>[r.cpp_number,r.supplier_name,r.factura,r.po_number,r.job,r.monto_abs,r.moneda,r.monto_usd,r.fecha_factura,r.dias_credito_efectivo,r.fecha_vencimiento,r.dias_vencido,r.fecha_programada,r.semana_programada,r.estatus_pago].map(q).join(','))].join('\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv'})); a.download = `programacion_pagos_${_pp.hoy}.csv`; a.click();
+}
+
+
+// rev124: gráfica semana a semana — ingreso esperado vs gasto comprometido
+function ifSemanal(){
+  const S = _if.semanas || {}, act = _if.semana_actual;
+  const isoW = d => { const t=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())); const day=t.getUTCDay()||7; t.setUTCDate(t.getUTCDate()+4-day); const y=t.getUTCFullYear(); const w=Math.ceil(((t-Date.UTC(y,0,1))/86400000+1)/7); return `${y}-W${String(w).padStart(2,'0')}`; };
+  const lunes = k => { const [y,w] = k.split('-W').map(Number); const d = new Date(Date.UTC(y,0,4)); const day = d.getUTCDay()||7; d.setUTCDate(d.getUTCDate()-day+1+(w-1)*7); return d; };
+  const N = 13, sems = []; const d0 = new Date(_if.hoy+'T12:00:00');
+  for(let i=0;i<N;i++){ const d=new Date(d0); d.setDate(d.getDate()+7*i); sems.push(isoW(d)); }
+  const despues = {ingreso:0, gasto:0};
+  Object.entries(S).forEach(([k,v])=>{ if(k!=='Vencido' && k > sems[sems.length-1]){ despues.ingreso+=v.ingreso; despues.gasto+=v.gasto; } });
+  const cols = [['Vencido', S['Vencido']||{ingreso:0,gasto:0}], ...sems.map(k=>[k, S[k]||{ingreso:0,gasto:0}]), ['Después', despues]];
+  const max = Math.max(1, ...cols.map(([,v])=>Math.max(v.ingreso, v.gasto)));
+  const k$ = v => v>=1000 ? (v/1000).toLocaleString('en-US',{maximumFractionDigits:0})+'k' : v ? Math.round(v).toString() : '';
+  const etq = k => k==='Vencido' ? 'Vencido' : k==='Después' ? 'Después' : `S${k.split('-W')[1]}<div style="font-size:9px;color:var(--muted)">${lunes(k).toLocaleDateString('es-MX',{day:'2-digit',month:'short',timeZone:'UTC'})}</div>`;
+  let acum = 0;
+  const totI = cols.reduce((a,[,v])=>a+v.ingreso,0), totG = cols.reduce((a,[,v])=>a+v.gasto,0);
+  document.getElementById('if-chart-title').innerHTML = `Ingreso esperado vs gasto comprometido · semana a semana (USD) <span style="font-weight:400;letter-spacing:0;text-transform:none;color:var(--muted2);margin-left:8px"><span style="display:inline-block;width:10px;height:10px;background:#1f8a4c;border-radius:2px"></span> Ingreso ${ifFmt(totI)} &nbsp; <span style="display:inline-block;width:10px;height:10px;background:var(--red);border-radius:2px"></span> Gasto ${ifFmt(totG)}</span>`;
+  document.getElementById('if-chart').innerHTML = `<div style="overflow-x:auto"><div style="min-width:${cols.length*62}px">
+    <div style="display:flex;align-items:flex-end;gap:6px;height:190px;border-bottom:1px solid var(--border);padding:0 2px">${cols.map(([k,v])=>`
+      <div style="flex:1;display:flex;align-items:flex-end;justify-content:center;gap:2px;height:100%;${k===act?'background:rgba(31,56,100,.05);border-radius:6px 6px 0 0':''}" title="${k}: ingreso ${ifFmt(v.ingreso)} · gasto ${ifFmt(v.gasto)} · neto ${ifFmt(v.ingreso-v.gasto)}">
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;width:42%"><div style="font-size:9px;color:#1f8a4c;white-space:nowrap">${k$(v.ingreso)}</div><div style="width:100%;height:${v.ingreso?Math.max(2,v.ingreso/max*150):0}px;background:#1f8a4c;border-radius:3px 3px 0 0;opacity:${k==='Vencido'?.55:1}"></div></div>
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;width:42%"><div style="font-size:9px;color:var(--red);white-space:nowrap">${k$(v.gasto)}</div><div style="width:100%;height:${v.gasto?Math.max(2,v.gasto/max*150):0}px;background:var(--red);border-radius:3px 3px 0 0;opacity:${k==='Vencido'?.55:1}"></div></div>
+      </div>`).join('')}</div>
+    <div style="display:flex;gap:6px;padding:3px 2px">${cols.map(([k])=>`<div style="flex:1;text-align:center;font-size:10.5px;color:${k==='Vencido'?'var(--red)':k===act?'#1f3864':'var(--muted2)'};font-weight:${k===act||k==='Vencido'?700:400}">${etq(k)}</div>`).join('')}</div>
+    <div style="display:flex;gap:6px;padding:2px;border-top:1px dashed var(--border)">${cols.map(([k,v])=>{ const n=v.ingreso-v.gasto; acum+=n; return `<div style="flex:1;text-align:center;font-size:10px;font-family:'DM Mono',monospace" title="Neto de la semana / acumulado"><div style="color:${n<0?'var(--red)':n>0?'#1f8a4c':'var(--muted)'}">${n?(n<0?'−':'+')+k$(Math.abs(n)):'·'}</div><div style="color:${acum<0?'var(--red)':'var(--muted2)'};font-size:9px">${k$(Math.abs(acum))?(acum<0?'−':'')+k$(Math.abs(acum)):''}</div></div>`; }).join('')}</div>
+    </div></div>
+    <div style="font-size:10.5px;color:var(--muted);margin-top:6px">Ingreso: milestones de pago (orden de cobro / factura). Gasto comprometido: CPP por pagar en su fecha programada de pago o, si no tiene, en su vencimiento. Fila inferior: neto de la semana y acumulado.${_if.gastos_sin_fecha?` · CPP sin vencimiento: ${ifFmt(_if.gastos_sin_fecha)}`:''}${_if.gastos_sin_tc?` · ${_if.gastos_sin_tc} CPP sin tipo de cambio (no incluidas)`:''}</div>`;
 }

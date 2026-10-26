@@ -444,6 +444,8 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
    toda la tarjeta fuera de la pantalla en vez de dejar que su propio scroll interno
    la contenga. Aplica en general a cualquier grid de tarjetas del dashboard. */
 .dash-grid > div, .dash-hero-row > div{min-width:0}
+
+/* rev121 */ .pc-tp-gen:disabled{opacity:.35;cursor:not-allowed;filter:grayscale(.6)}
 </style>
 <!-- Fin del bloque responsive añadido — ver CAMBIOS_FASE2_PARTE3.md -->
 </head>
@@ -540,6 +542,8 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
         <button onclick="switchMenu('fin-cpp','ng-finanzas')">CPP</button>
         <button onclick="switchMenu('fin-pagos','ng-finanzas')">Pagos</button>
         <button onclick="switchMenu('fin-cpc','ng-finanzas')">CPC</button>
+        <button onclick="switchMenu('fin-ordenes-cobro','ng-finanzas')">Órdenes de cobro</button>
+        <button onclick="switchMenu('fin-prog-pagos','ng-finanzas')">Programación de pagos</button>
         <button onclick="switchMenu('fin-esquemas','ng-finanzas')">Esquemas Tributarios</button>
         <button onclick="switchMenu('fin-datos-fiscales','ng-finanzas')">Datos fiscales</button>
       </div>
@@ -584,6 +588,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
       <button class="nav-tab nav-group-btn" id="ng-mgmt">Management ▾</button>
       <div class="nav-dropdown">
         <button onclick="switchMenu('rrhh-kpis','ng-mgmt')">KPIs</button>
+        <button onclick="switchMenu('mgmt-income-forecast','ng-mgmt')">Income Forecast</button>
       </div>
     </div>
   </div>
@@ -4540,6 +4545,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
         <div style="display:flex;flex-direction:column;gap:8px;padding:4px 0">
           <div><span style="font-size:10px;color:var(--muted)">FORMA DE PAGO</span><div id="pp-fpago" style="color:var(--text);font-size:12px">—</div></div>
           <div><span style="font-size:10px;color:var(--muted)">TÉRMINOS DE PAGO</span><div id="pp-tpago" style="color:var(--text);font-size:12px">—</div></div>
+          <div><span style="font-size:10px;color:var(--muted)">DÍAS DE CRÉDITO</span><div id="pp-dias" style="color:var(--text);font-size:12px">—</div></div>
           <div><span style="font-size:10px;color:var(--muted)">MONEDA</span><div id="pp-moneda" style="color:var(--gold);font-size:13px;font-weight:700">—</div></div>
           <div><span style="font-size:10px;color:var(--muted)">ÚLTIMA COMPRA</span><div id="pp-fult" style="color:var(--muted2);font-size:12px">—</div></div>
         </div>
@@ -5570,7 +5576,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
           <th>CPP Number</th><th>Pur Number</th><th>Rec Number</th>
           <th>PO Number</th><th>Job</th><th>CPO</th>
           <th>No. Factura</th><th>Proveedor</th>
-          <th style="text-align:right">Monto</th><th>Fecha</th><th>Usuario</th><th>Estatus</th><th>PDF</th>
+          <th style="text-align:right">Monto</th><th>Fecha factura</th><th>Vencimiento</th><th>Pago programado</th><th>Usuario</th><th>Estatus</th><th>PDF</th>
         </tr></thead>
         <tbody id="cpp-tb"></tbody>
       </table>
@@ -5787,9 +5793,12 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
           <div class="cl-hint" id="cpc-cpo-saldo-txt" style="margin-top:4px">—</div>
         </div>
       </div>
+      <!-- rev121: Serie / Folio siempre visibles (también al ligar a una CPO) -->
+      <div class="fr">
+        <div class="fi"><label>Serie</label><input type="text" id="cpc-serie" maxlength="25" oninput="this.value=this.value.toUpperCase()" style="font-family:'DM Mono',monospace"></div>
+        <div class="fi"><label>Folio</label><input type="text" id="cpc-folio" maxlength="40" oninput="this.value=this.value.toUpperCase()" style="font-family:'DM Mono',monospace"></div>
+      </div>
       <div class="fr" id="cpc-job-field">
-        <div class="fi" style="flex:0 0 110px"><label>Serie</label><input type="text" id="cpc-serie" maxlength="25" oninput="this.value=this.value.toUpperCase()" style="font-family:'DM Mono',monospace"></div>
-        <div class="fi" style="flex:0 0 150px"><label>Folio</label><input type="text" id="cpc-folio" maxlength="40" oninput="this.value=this.value.toUpperCase()" style="font-family:'DM Mono',monospace"></div>
         <div class="fi"><label>Job <span style="opacity:.6;text-transform:none;letter-spacing:0">(opcional)</span></label><input type="text" id="cpc-job" placeholder="ej. 652-50" style="color:var(--gold);font-family:'DM Mono',monospace;font-weight:600"></div>
         <div class="fi"><label>Cliente *</label><input type="text" id="cpc-cliente" placeholder="ej. GRUPO ANTOLIN"></div>
       </div>
@@ -5853,6 +5862,108 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
 <!-- ══════════════════════════════════════════════════
      MODULE: FINANZAS - ESQUEMAS TRIBUTARIOS
 ══════════════════════════════════════════════════ -->
+<!-- ══ MODULE: Programación de pagos (rev123) ══ -->
+<div class="module" id="mod-fin-prog-pagos">
+  <div class="main-content" style="overflow-y:auto">
+    <div class="bar-top"><h1>📅 Programación de pagos</h1>
+      <button class="btn-reload" onclick="ppExportar()" style="margin-left:auto">⬇ CSV</button>
+      <button class="btn-reload" onclick="ppCargar()">Recargar</button></div>
+    <div style="padding:16px 22px;max-width:1450px">
+      <div style="font-size:11.5px;color:var(--muted2);margin-bottom:12px">CPP pendientes de pago. <b>Vencimiento = fecha de la factura + días de crédito</b> (del proveedor o de la CPP). Asigna la <b>fecha programada de pago</b> a una o varias CPP; "Procesar Pago" sigue en CPP.</div>
+      <div id="pp-aging" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px"></div>
+      <div style="background:var(--card,#fff);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px">
+        <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--red);margin-bottom:8px">Plan de pagos por proveedor y semana (USD equiv.)</div>
+        <div id="pp-pivot" style="overflow-x:auto"></div></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+        <input id="pp-q" placeholder="Buscar proveedor, CPP, OC, factura, Job…" oninput="ppRender()" style="font-size:12px;padding:6px 10px;min-width:240px">
+        <select id="pp-est" onchange="ppRender()" style="font-size:12px;padding:5px 8px"><option value="">Todas las pendientes</option><option>Vencido</option><option>Por vencer</option><option>Programado</option><option>Sin vencimiento</option><option value="sin-prog">Sin programar</option></select>
+        <span style="margin-left:auto;font-size:12px" id="pp-sel-txt"></span>
+        <input type="date" id="pp-fecha" style="font-size:12px;padding:5px 8px">
+        <button class="btn-new" style="width:auto;padding:7px 14px" onclick="ppProgramarSel()">Programar seleccionadas</button>
+        <button class="btn-reload" onclick="ppProgramarSel(true)" title="Quitar la fecha programada">Quitar programación</button></div>
+      <table class="tbl" style="width:100%"><thead><tr><th style="width:26px"><input type="checkbox" id="pp-all" onchange="ppTodas(this.checked)"></th><th>CPP</th><th>Proveedor</th><th>Factura</th><th>OC / Job</th><th style="text-align:right">Monto</th><th style="text-align:right">USD equiv.</th><th>Fecha factura</th><th>Días</th><th>Vencimiento</th><th>Programado</th><th>Estatus</th><th></th></tr></thead>
+        <tbody id="pp-tb"></tbody></table>
+    </div>
+  </div>
+</div>
+
+<div class="mo" id="mo-cpp-prog" style="z-index:160">
+  <div class="md" style="max-width:520px;width:calc(100% - 32px)">
+    <div class="mh"><h2>📅 Programar pago · <span id="cpg-num"></span></h2><button class="px" onclick="closeMo('mo-cpp-prog')">Cerrar</button></div>
+    <div class="mb2">
+      <div id="cpg-info" style="font-size:12px;color:var(--muted2);margin-bottom:10px"></div>
+      <div class="fr">
+        <div class="fi"><label>Días de crédito</label><input type="number" id="cpg-dias" min="0" max="365" step="1" oninput="cpgCalc()"></div>
+        <div class="fi"><label>Vencimiento</label><input type="date" id="cpg-venc" onchange="document.getElementById('cpg-venc').dataset.manual='1'"></div></div>
+      <div style="font-size:11px;color:var(--muted);margin:-4px 0 10px" id="cpg-hint"></div>
+      <div class="fi"><label>Fecha programada de pago</label><input type="date" id="cpg-prog"></div>
+      <details id="cpg-hist-box" style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;color:var(--muted2)">Bitácora</summary><div id="cpg-hist" style="font-size:11px;margin-top:6px"></div></details>
+    </div>
+    <div class="mf"><button class="btn btn-s" onclick="closeMo('mo-cpp-prog')">Cancelar</button><button class="btn btn-p" onclick="cpgGuardar()">Guardar</button></div>
+  </div>
+</div>
+
+<!-- ══ MODULE: Income Forecast (rev122) ══ -->
+<div class="module" id="mod-mgmt-income-forecast">
+  <div class="main-content" style="overflow-y:auto">
+    <div class="bar-top"><h1>💵 Income Forecast</h1>
+      <button class="btn-reload" onclick="ifExportar()" style="margin-left:auto">⬇ CSV</button>
+      <button class="btn-reload" onclick="ifCargar()">Recargar</button></div>
+    <div style="padding:16px 22px;max-width:1400px">
+      <div style="font-size:11.5px;color:var(--muted2);margin-bottom:12px">Cobros esperados de los <b>términos de pago</b> de cada proyecto (Configurar Proyecto ▸ Presupuesto). <b>Fecha esperada = fecha estimada del milestone + días de vencimiento</b> (naturales). Monto: total de la orden de cobro o saldo de su factura; si aún no hay orden, % del milestone sobre el revenue del Job (sin IVA).</div>
+      <div id="if-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:16px"></div>
+      <div style="background:var(--card,#fff);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:16px">
+        <div id="if-chart-title" style="font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--red);margin-bottom:8px">Ingreso esperado vs gasto comprometido (USD)</div>
+        <div id="if-chart"></div></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+        <input id="if-q" placeholder="Buscar Job, cliente, milestone…" oninput="ifRender()" style="font-size:12px;padding:6px 10px;min-width:220px">
+        <select id="if-est" onchange="ifRender()" style="font-size:12px;padding:5px 8px"><option value="">Pendientes de cobro</option><option>Vencido</option><option>Por cumplir</option><option>Cumplido · sin orden</option><option>Orden por facturar</option><option>Facturado</option><option>Cobrado</option><option>Todos</option></select>
+        <label style="font-size:11px">Desde <input type="date" id="if-desde" onchange="ifRender()"></label>
+        <label style="font-size:11px">Hasta <input type="date" id="if-hasta" onchange="ifRender()"></label>
+        <span id="if-count" style="font-size:12px;color:var(--muted2);margin-left:auto"></span></div>
+      <table class="tbl" style="width:100%"><thead><tr><th>Fecha esperada de cobro</th><th>Job</th><th>PT/SV</th><th>Cliente</th><th>Milestone</th><th>Fecha estimada</th><th>Vencimiento</th><th style="text-align:right">Monto (USD)</th><th>Fuente</th><th>Estatus</th><th>Orden / factura</th></tr></thead>
+        <tbody id="if-tb"></tbody></table>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODULE: Órdenes de cobro (rev121) ══ -->
+<div class="module" id="mod-fin-ordenes-cobro">
+  <div class="main-content" style="overflow-y:auto">
+    <div class="bar-top"><h1>🧾 Órdenes de cobro</h1>
+      <input id="oc-q" placeholder="Buscar orden, Job, CPO, cliente…" oninput="ocRender()" style="font-size:12px;padding:6px 10px;min-width:240px">
+      <select id="oc-est" onchange="ocRender()" style="font-size:12px;padding:5px 8px"><option value="">Todas</option><option selected>Por facturar</option><option>Facturada</option><option>Cancelada</option></select>
+      <span id="oc-resumen" style="font-size:12px;color:var(--muted2)"></span>
+      <button class="btn-reload" onclick="ocCargar()" style="margin-left:auto">Recargar</button></div>
+    <div style="padding:16px 20px">
+      <div style="font-size:11.5px;color:var(--muted2);margin-bottom:10px">Se generan en <b>Configurar Proyecto ▸ Presupuesto ▸ Términos de pago</b> cuando se cumple un milestone. "Registrar factura" abre CPC con los datos de la orden; al guardar la factura, la orden queda <b>Facturada</b>.</div>
+      <table class="tbl" style="width:100%"><thead><tr><th>Orden</th><th>Fecha</th><th>Job</th><th>CPO</th><th>Cliente</th><th>Milestone</th><th style="text-align:right">Subtotal</th><th>IVA</th><th style="text-align:right">Total (USD)</th><th>Estatus</th><th></th></tr></thead>
+        <tbody id="oc-tb"></tbody></table>
+    </div>
+  </div>
+</div>
+
+<div class="mo" id="mo-orden-cobro" style="z-index:160">
+  <div class="md" style="max-width:620px;width:calc(100% - 32px)">
+    <div class="mh"><h2>🧾 Generar orden de cobro</h2><button class="px" onclick="closeMo('mo-orden-cobro')">Cerrar</button></div>
+    <div class="mb2">
+      <div class="fr">
+        <div class="fi"><label>CPO</label><select id="oc-cpo" onchange="ocCalc()"></select></div>
+        <div class="fi"><label>Job</label><div id="oc-job" style="font-family:'DM Mono',monospace;font-weight:700;padding:9px 0"></div></div>
+      </div>
+      <div class="fi"><label>Milestone por cobrar</label><div id="oc-hito" style="font-weight:700;padding:4px 0 8px"></div></div>
+      <div class="fi"><label>Evidencia de aceptación o entrega *</label><input type="file" id="oc-archivo" accept=".pdf,.jpg,.jpeg,.png,.xlsx,.xls,.doc,.docx,.msg,.eml,.zip"></div>
+      <div class="fi"><label>¿La facturación requiere IVA (VAT)? *</label>
+        <div style="display:flex;gap:18px;padding:6px 0;font-size:13px">
+          <label style="display:flex;gap:6px;align-items:center;text-transform:none;letter-spacing:0;font-weight:400"><input type="radio" name="oc-iva" value="si" onchange="ocCalc()"> Sí, 16 %</label>
+          <label style="display:flex;gap:6px;align-items:center;text-transform:none;letter-spacing:0;font-weight:400"><input type="radio" name="oc-iva" value="no" onchange="ocCalc()"> No (exportación / sin IVA)</label></div></div>
+      <div class="fi"><label>Notas</label><input id="oc-notas" placeholder="Opcional"></div>
+      <div id="oc-montos" style="font-size:13px;padding:10px 12px;background:rgba(0,0,0,.03);border-radius:8px"></div>
+    </div>
+    <div class="mf"><button class="btn btn-s" onclick="closeMo('mo-orden-cobro')">Cancelar</button><button class="btn btn-p" id="oc-btn" onclick="ocGenerar()">Generar orden de cobro</button></div>
+  </div>
+</div>
+
 <!-- ══ MODULE: Datos fiscales (rev119) ══ -->
 <div class="module" id="mod-fin-datos-fiscales">
   <div class="main-content" style="overflow-y:auto">
@@ -6908,6 +7019,9 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
         </div>
         <div class="fi"><label>Términos de Pago</label>
           <input type="text" id="pn-tpago" placeholder="ej. 30 días, inmediato…">
+        </div>
+        <div class="fi" style="flex:0 0 140px"><label>Días de crédito</label>
+          <input type="number" id="pn-dias" min="0" max="365" step="1" placeholder="ej. 30" title="Días naturales para calcular el vencimiento de sus facturas (CPP). Si se deja vacío, se toma el número de 'Términos de Pago'.">
         </div>
       </div>
       <!-- Document upload section inside modal -->

@@ -2240,10 +2240,10 @@ def _catalog_path(name):
     return p / f"{name}.json"
 
 _CATALOG_MODEL = {"areas": ("nombre", "nombre"), "perfiles": ("pid", "pid"), "tipos_puesto": ("tpid", "tpid"),
-                  "kpi_asignaciones": ("kid", "kid"), "piso_ensamble": ("pid", "pid")}  # name -> (campo_json, columna_modelo)
+                  "kpi_asignaciones": ("kid", "kid"), "piso_ensamble": ("pid", "pid"), "ordenes_cobro": ("oid", "oid")}  # name -> (campo_json, columna_modelo)
 def _catalog_modelo(name):
     return {"areas": _orm.Area, "perfiles": _orm.Perfil, "tipos_puesto": _orm.TipoPuesto,
-            "kpi_asignaciones": _orm.KpiAsignacion, "piso_ensamble": _orm.PisoEnsamble}[name]
+            "kpi_asignaciones": _orm.KpiAsignacion, "piso_ensamble": _orm.PisoEnsamble, "ordenes_cobro": _orm.OrdenCobro}[name]
 
 def _load_catalog(name):
     if _orm and _orm.DB_ENABLED and name in _CATALOG_MODEL:
@@ -10413,7 +10413,7 @@ MODULES = [
     "projconfig-dashboard", "projconfig-presupuesto", "projconfig-timing",
     "projconfig-abiertos", "projconfig-cambios", "projconfig-documentos",
     # Finanzas
-    "fin-recepciones", "fin-procesarcompra", "fin-cpp", "fin-pagos", "fin-esquemas", "fin-datos-fiscales",
+    "fin-recepciones", "fin-procesarcompra", "fin-cpp", "fin-pagos", "fin-esquemas", "fin-datos-fiscales", "fin-ordenes-cobro", "mgmt-income-forecast",
     # Recursos Humanos
     "rrhh-asistencia", "rrhh-vacaciones", "rrhh-permisos", "rrhh-salario", "rrhh-sueldos", "rrhh-nomina",
     "personal-areas", "personal-tipos-puesto", "personal-perfiles", "personal-listado",
@@ -10893,7 +10893,9 @@ MODULOS_HEREDAN = {"projconfig-dashboard": "projconfig", "projconfig-presupuesto
                    "personal-tipos-puesto": "personal-perfiles",
                    "rrhh-kpis": "personal-listado",
                    "ops-piso": "ops-capacidad",
-                   "fin-datos-fiscales": "fin-esquemas",   # rev119: Datos fiscales toma el nivel de Esquemas Tributarios     # rev115: Piso de ensamble toma el nivel de Capacidad
+                   "fin-datos-fiscales": "fin-esquemas",
+                   "fin-ordenes-cobro": "fin-cpc",
+                   "mgmt-income-forecast": "fin-cpc",      # rev122: Income forecast toma el nivel de CPC          # rev121: Órdenes de cobro toma el nivel de CPC   # rev119: Datos fiscales toma el nivel de Esquemas Tributarios     # rev115: Piso de ensamble toma el nivel de Capacidad
                    "fin-cpc": "fin-cpp"}           # rev104: CPC toma el nivel de CPP mientras no se fije
 
 def nivel_heredado(info, mod):
@@ -11260,6 +11262,7 @@ _RESPALDO_GRUPOS = [   # (carpeta relativa, descripción) — solo para el resum
     ("SV_DOCS", "Documentos de SV"),
     ("PROV_DOCS", "Documentos de proveedores"),
     ("PERSONAL", "Documentos de personal, perfiles y permisos"),
+    ("FINANZAS/ordenes_cobro", "Evidencias de órdenes de cobro"),
 ]
 
 def _respaldo_archivos():
@@ -13255,6 +13258,7 @@ def api_create_proveedor():
                 "clasificacion":     str(data.get("clasificacion","")).strip(),
                 "forma_pago":        str(data.get("forma_pago","Transferencia")),
                 "terminos_pago":     str(data.get("terminos_pago","")).strip(),
+                "dias_credito":      _dias_credito_num(data.get("dias_credito"), data.get("terminos_pago")),   # rev123
                 "moneda":            str(data.get("moneda","MXN")),
                 "fecha_ultima_compra": str(data.get("fecha_ultima_compra","")).strip(),
                 "created_at":        datetime.datetime.now().isoformat(),
@@ -13276,6 +13280,8 @@ def api_update_proveedor(clave):
             for k in ["estatus","nombre","rfc","calle","num_interior","num_exterior",
                       "telefono","clasificacion","forma_pago","terminos_pago","moneda","fecha_ultima_compra"]:
                 if k in data: rec[k] = str(data[k]).strip()
+            if "dias_credito" in data or "terminos_pago" in data:            # rev123
+                rec["dias_credito"] = _dias_credito_num(data.get("dias_credito", rec.get("dias_credito")), rec.get("terminos_pago"))
             rec["nombre"] = rec["nombre"].upper()
             rec["rfc"]    = rec["rfc"].upper()
             rec["updated_at"] = datetime.datetime.now().isoformat()
@@ -16009,6 +16015,232 @@ def api_datos_fiscales_put():
     _df_cache.update(t=0, v=None)
     return jsonify({"ok": True, "datos": d})
 
+# ══════════════════════════════════════════════════════════════════
+#  rev121 — HITOS DE PAGO (Configurar Proyecto) y ÓRDENES DE COBRO (Finanzas)
+# ══════════════════════════════════════════════════════════════════
+OC_EVID_DIR = Path(_DATA) / "FINANZAS" / "ordenes_cobro"
+
+def _oc_cpos_de_job(job):
+    """CPOs de revenue del Job (todas las de cualquier año)."""
+    jn = str(job or "").strip().upper(); out = []
+    for y in (cpo_available_years() or [CURRENT_YEAR]):
+        for c in cpo_load(y):
+            if str(c.get("job") or "").strip().upper() == jn and "REVENUE" in str(c.get("type_name") or "01_REVENUE").upper():
+                out.append({"id": c.get("id"), "po_number": c.get("po_number"), "value": float(c.get("value") or 0),
+                            "customer": c.get("customer"), "date": c.get("date"), "year": y,
+                            "tbd": "TBD" in str(c.get("po_number") or "").upper()})
+    return out
+
+def _oc_buscar_hito(ptsv, job, mid):
+    recs = projcfg_load()
+    cfg = next((r for r in recs if str(r.get("ptsv") or "").upper() == str(ptsv or "").upper()), None)
+    if not cfg: return recs, None, None, None
+    j = next((x for x in cfg.get("jobs") or [] if str(x.get("job_number") or "").upper() == str(job or "").upper()), None)
+    if not j: return recs, cfg, None, None
+    m = next((x for x in j.get("terminos_pago") or [] if x.get("mid") == mid), None)
+    return recs, cfg, j, m
+
+@app.route("/api/ordenes-cobro/cpos", methods=["GET"])
+def api_oc_cpos():
+    if not session.get("user"): return jsonify({"error": "No autenticado"}), 401
+    return jsonify(_oc_cpos_de_job(request.args.get("job")))
+
+@app.route("/api/ordenes-cobro", methods=["GET"])
+def api_oc_list():
+    if not can("view", "fin-ordenes-cobro"): return jsonify({"error": "Sin permiso"}), 403
+    recs = sorted(_load_catalog("ordenes_cobro") or [], key=lambda r: r.get("creado") or "", reverse=True)
+    return jsonify(recs)
+
+@app.route("/api/ordenes-cobro", methods=["POST"])
+def api_oc_crear():
+    """Genera la orden de cobro de un hito cumplido. multipart: ptsv, job, mid, cpo_id,
+    requiere_iva (si/no), notas, archivo (evidencia de aceptación o entrega)."""
+    if not (can("create", "fin-ordenes-cobro") or pc_tab_can("create", "presupuesto")):
+        return jsonify({"error": "Sin permiso para generar órdenes de cobro"}), 403
+    f = request.files.get("archivo")
+    ptsv, job, mid = request.form.get("ptsv"), request.form.get("job"), request.form.get("mid")
+    cpo_id = (request.form.get("cpo_id") or "").strip()
+    req_iva = str(request.form.get("requiere_iva") or "").lower() in ("1", "si", "sí", "true", "yes")
+    if not f or not f.filename: return jsonify({"error": "Adjunta la evidencia de aceptación o entrega"}), 400
+    if request.form.get("requiere_iva") in (None, ""): return jsonify({"error": "Indica si la factura requiere IVA"}), 400
+    raw = f.read()
+    if len(raw) > 25 * 1024 * 1024: return jsonify({"error": "La evidencia no debe pasar de 25 MB"}), 400
+    cpos = {c["id"]: c for c in _oc_cpos_de_job(job)}
+    if cpo_id not in cpos: return jsonify({"error": "Selecciona la CPO del Job"}), 400
+    cpo = cpos[cpo_id]
+    with lock:
+        recs, cfg, j, m = _oc_buscar_hito(ptsv, job, mid)
+        if not m: return jsonify({"error": "No se encontró el hito. Guarda la configuración del proyecto primero."}), 404
+        if m.get("orden_cobro"): return jsonify({"error": f"Este hito ya tiene la orden de cobro {m['orden_cobro']}"}), 409
+        if not m.get("cumplido"): return jsonify({"error": "Marca el hito como cumplido (y guarda) antes de generar la orden"}), 400
+        try: pct = float(m.get("porcentaje") or 0)
+        except (TypeError, ValueError): pct = 0
+        if pct <= 0: return jsonify({"error": "El hito no tiene porcentaje de cobro"}), 400
+        ordenes = _load_catalog("ordenes_cobro") or []
+        oid = _folio_libre("ODC", {o.get("oid") for o in ordenes})
+        subtotal = round(cpo["value"] * pct / 100, 2)
+        iva = round(subtotal * 0.16, 2) if req_iva else 0.0
+        nombre_arch = re.sub(r"[^\w.\- ]", "_", f.filename)[:120]
+        d = OC_EVID_DIR / oid; d.mkdir(parents=True, exist_ok=True)
+        (d / nombre_arch).write_bytes(raw)
+        ahora = datetime.datetime.now().isoformat(timespec="seconds")
+        orden = {"oid": oid, "estatus": "Por facturar", "ptsv": cfg.get("ptsv"), "job": j.get("job_number"),
+                 "cpo_id": cpo_id, "cpo_po_number": cpo.get("po_number"), "cliente": cpo.get("customer"), "cpo_valor": cpo["value"],
+                 "moneda": "USD", "hito": {"mid": mid, "nombre": m.get("nombre"), "porcentaje": pct, "fecha_estimada": m.get("fecha_estimada"),
+                                          "dias_vencimiento": m.get("dias_vencimiento"),
+                                          "fecha_cumplido": m.get("fecha_cumplido") or ahora[:10]},
+                 "subtotal": subtotal, "requiere_iva": req_iva, "iva": iva, "total": round(subtotal + iva, 2),
+                 "evidencia": {"nombre": nombre_arch, "bytes": len(raw), "sha1": hashlib.sha1(raw).hexdigest()},
+                 "notas": (request.form.get("notas") or "").strip()[:500], "cpc_id": None,
+                 "creado": ahora, "creado_por": session.get("user", ""),
+                 "historial": [{"fecha": ahora, "usuario": session.get("user", ""), "accion": "Generada", "detalle": f"{m.get('nombre')} · {pct:g} %"}]}
+        if cpo.get("tbd"): orden["aviso"] = "La CPO tiene número TBD (pedido sin PO formal)."
+        ordenes.append(orden); _save_catalog("ordenes_cobro", ordenes)
+        m["orden_cobro"] = oid; m["cumplido"] = True; m["fecha_cumplido"] = m.get("fecha_cumplido") or ahora[:10]
+        projcfg_save(recs)
+    return jsonify({"ok": True, "orden": orden})
+
+# ── rev122: MANAGEMENT ▸ INCOME FORECAST ───────────────────────────────────────
+#  Cobros esperados a partir de los milestones de pago de todos los proyectos.
+#  Fecha esperada de cobro = fecha estimada del milestone + días de vencimiento (naturales).
+#  Monto: si ya hay orden de cobro, su total (con IVA, si aplica) o el saldo de su factura;
+#  si no, el % del milestone sobre el revenue del Job (sin IVA, todavía no se sabe).
+@app.route("/api/income-forecast", methods=["GET"])
+def api_income_forecast():
+    if not can("view", "mgmt-income-forecast"): return jsonify({"error": "Sin permiso"}), 403
+    hoy = datetime.date.today()
+    ordenes = {o.get("oid"): o for o in (_load_catalog("ordenes_cobro") or [])}
+    cpcs = {c.get("id"): c for c in cpc_all_records()}
+    revenue_cache, filas = {}, []
+    for cfg in projcfg_load():
+        for j in cfg.get("jobs") or []:
+            jn = str(j.get("job_number") or "").upper()
+            for m in j.get("terminos_pago") or []:
+                try: pct = float(m.get("porcentaje") or 0)
+                except (TypeError, ValueError): pct = 0
+                if pct <= 0: continue
+                if jn not in revenue_cache:
+                    cps = _oc_cpos_de_job(jn)
+                    revenue_cache[jn] = (sum(c["value"] for c in cps), (cps[0].get("customer") if cps else "") or "")
+                rev, cliente = revenue_cache[jn]
+                dias = m.get("dias_vencimiento")
+                f_est = (m.get("fecha_estimada") or "")[:10]
+                base_fecha = (m.get("fecha_cumplido") or "")[:10] if m.get("cumplido") and m.get("fecha_cumplido") else f_est
+                try:
+                    f_cobro = (datetime.date.fromisoformat(f_est) + datetime.timedelta(days=int(dias or 0))).isoformat() if f_est else None
+                except ValueError:
+                    f_cobro = None
+                o = ordenes.get(m.get("orden_cobro")) if m.get("orden_cobro") else None
+                monto = round(rev * pct / 100, 2); fuente = "Estimado (% del revenue del Job, sin IVA)"; estatus = "Por cumplir"
+                cpc_id = None; cobrado = 0.0
+                if m.get("cumplido") and not o: estatus = "Cumplido · sin orden"
+                if o and o.get("estatus") != "Cancelada":
+                    monto = float(o.get("total") or 0); fuente = f"Orden {o.get('oid')}"; estatus = "Orden por facturar"
+                    if o.get("estatus") == "Facturada" and o.get("cpc_id") in cpcs:
+                        c = cpcs[o["cpc_id"]]; cpc_id = c.get("id")
+                        saldo = _cpc_saldo(c); tc = float(c.get("tipo_cambio") or 0)
+                        saldo_usd = (saldo / tc if tc > 0 else saldo) if (c.get("moneda") or "USD") == "MXN" else saldo
+                        cobrado = round(max(0.0, monto - saldo_usd), 2)
+                        if c.get("estatus") == "Cancelada": estatus = "Factura cancelada"
+                        elif saldo <= 0.01: estatus = "Cobrado"; monto = round(monto, 2)
+                        else: estatus = "Facturado"; fuente = f"Factura {cpc_id} (saldo)"; monto = round(saldo_usd, 2)
+                        if c.get("fecha_vencimiento") and estatus == "Facturado": f_cobro = c["fecha_vencimiento"][:10]
+                vencido = bool(f_cobro and estatus not in ("Cobrado",) and f_cobro < hoy.isoformat())
+                filas.append({"ptsv": cfg.get("ptsv"), "job": jn, "cliente": cliente, "milestone": m.get("nombre"), "porcentaje": pct,
+                              "fecha_estimada": f_est or None, "dias_vencimiento": dias, "fecha_cobro": f_cobro,
+                              "monto": monto, "fuente": fuente, "estatus": estatus, "vencido": vencido,
+                              "orden_cobro": o.get("oid") if o else None, "cpc_id": cpc_id, "cobrado": cobrado, "revenue_job": rev})
+    filas.sort(key=lambda r: (r["fecha_cobro"] or "9999", r["job"]))
+    meses = {}
+    for r in filas:
+        if r["estatus"] in ("Cobrado", "Factura cancelada") or not r["fecha_cobro"]: continue
+        k = "Vencido" if r["vencido"] else r["fecha_cobro"][:7]
+        meses[k] = round(meses.get(k, 0) + r["monto"], 2)
+    sin_fecha = round(sum(r["monto"] for r in filas if not r["fecha_cobro"] and r["estatus"] not in ("Cobrado", "Factura cancelada")), 2)
+    # rev124: semana a semana — ingreso esperado vs gasto comprometido (CPP por pagar:
+    # fecha programada de pago o, si no tiene, su vencimiento)
+    def semana(fiso):
+        try:
+            y, w, _ = datetime.date.fromisoformat(fiso).isocalendar(); return f"{y}-W{w:02d}"
+        except (TypeError, ValueError):
+            return None
+    sem_hoy = semana(hoy.isoformat())
+    semanas = {}
+    def sumar(k, campo, v):
+        b = semanas.setdefault(k, {"ingreso": 0.0, "gasto": 0.0}); b[campo] = round(b[campo] + v, 2)
+    for r in filas:
+        if r["estatus"] in ("Cobrado", "Factura cancelada") or not r["fecha_cobro"]: continue
+        k = semana(r["fecha_cobro"])
+        sumar("Vencido" if (k and k < sem_hoy) else k, "ingreso", r["monto"])
+    gastos_sin_fecha = 0.0; gastos_sin_tc = 0
+    try:
+        for c in _cpp_enriquecer([c for c in cpp_load() if (c.get("estatus") or "Pendiente") != "Pagado"]):
+            f = c.get("fecha_programada") or c.get("fecha_vencimiento")
+            v = c.get("monto_usd")
+            if v is None: gastos_sin_tc += 1; continue
+            if not f: gastos_sin_fecha = round(gastos_sin_fecha + v, 2); continue
+            k = semana(f)
+            sumar("Vencido" if (k and k < sem_hoy) else k, "gasto", v)
+    except Exception as e:
+        print(f"[FORECAST] gastos: {e}")
+    return jsonify({"filas": filas, "por_mes": meses, "sin_fecha": sin_fecha, "hoy": hoy.isoformat(),
+                    "semanas": semanas, "semana_actual": sem_hoy, "gastos_sin_fecha": gastos_sin_fecha, "gastos_sin_tc": gastos_sin_tc})
+
+@app.route("/api/ordenes-cobro/<oid>/evidencia", methods=["GET"])
+def api_oc_evidencia(oid):
+    if not (can("view", "fin-ordenes-cobro") or pc_tab_can("view", "presupuesto")): return jsonify({"error": "Sin permiso"}), 403
+    o = next((x for x in _load_catalog("ordenes_cobro") or [] if x.get("oid") == oid), None)
+    if not o: return jsonify({"error": "Orden no encontrada"}), 404
+    p_ = OC_EVID_DIR / oid / (o.get("evidencia") or {}).get("nombre", "")
+    if not p_.is_file(): return jsonify({"error": "No se encontró el archivo de evidencia en el servidor"}), 404
+    return send_file(str(p_), as_attachment=False, download_name=p_.name)
+
+@app.route("/api/ordenes-cobro/<oid>", methods=["PUT"])
+def api_oc_actualizar(oid):
+    """Cambiar estatus (Facturada con cpc_id / Cancelada) o notas."""
+    if not can("create", "fin-ordenes-cobro"): return jsonify({"error": "Sin permiso"}), 403
+    d = request.json or {}
+    with lock:
+        ordenes = _load_catalog("ordenes_cobro") or []
+        o = next((x for x in ordenes if x.get("oid") == oid), None)
+        if not o: return jsonify({"error": "Orden no encontrada"}), 404
+        ahora = datetime.datetime.now().isoformat(timespec="seconds")
+        if "notas" in d: o["notas"] = str(d.get("notas") or "").strip()[:500]
+        est = d.get("estatus")
+        if est and est != o.get("estatus"):
+            if est not in ("Por facturar", "Facturada", "Cancelada"): return jsonify({"error": "Estatus inválido"}), 400
+            if est == "Facturada":
+                o["cpc_id"] = (d.get("cpc_id") or o.get("cpc_id") or "").strip() or None
+                if not o["cpc_id"]: return jsonify({"error": "Indica la factura (CPC) con la que se facturó"}), 400
+            if est == "Cancelada":
+                if not (can("delete", "fin-ordenes-cobro")): return jsonify({"error": "Cancelar requiere permiso de Control total"}), 403
+                if o.get("estatus") == "Facturada":
+                    return jsonify({"error": f"La orden ya está facturada ({o.get('cpc_id')}); cancela primero la factura en CPC"}), 400
+                recs, cfg, j, m = _oc_buscar_hito(o.get("ptsv"), o.get("job"), (o.get("hito") or {}).get("mid"))
+                if m and m.get("orden_cobro") == oid:   # el hito queda libre para generar otra orden
+                    m["orden_cobro"] = None; projcfg_save(recs)
+            o["historial"] = (o.get("historial") or []) + [{"fecha": ahora, "usuario": session.get("user", ""), "accion": est,
+                                                          "detalle": (f"CPC {o.get('cpc_id')}" if est == "Facturada" else (d.get("motivo") or ""))}]
+            o["estatus"] = est
+        _save_catalog("ordenes_cobro", ordenes)
+    return jsonify({"ok": True, "orden": o})
+
+@app.route("/api/ordenes-cobro/<oid>/pdf", methods=["GET"])
+def api_oc_pdf(oid):
+    if not (can("view", "fin-ordenes-cobro") or pc_tab_can("view", "presupuesto")): return jsonify({"error": "Sin permiso"}), 403
+    o = next((x for x in _load_catalog("ordenes_cobro") or [] if x.get("oid") == oid), None)
+    if not o: return jsonify({"error": "Orden no encontrada"}), 404
+    h = o.get("hito") or {}
+    meta = [("Cliente", o.get("cliente") or ""), ("CPO", f"{o.get('cpo_id')} · PO {o.get('cpo_po_number') or ''}"), ("Job", o.get("job") or ""),
+            ("PT / SV", o.get("ptsv") or ""), ("Hito de pago", f"{h.get('nombre') or ''} ({h.get('porcentaje', 0):g} %)"),
+            ("Fecha de cumplimiento", h.get("fecha_cumplido") or ""),
+            ("Vencimiento del pago", f"NET{h.get('dias_vencimiento')}" if h.get("dias_vencimiento") is not None else "—"), ("Valor de la CPO", f"${o.get('cpo_valor', 0):,.2f} {o.get('moneda')}"),
+            ("Subtotal", f"${o.get('subtotal', 0):,.2f}"), ("IVA", f"${o.get('iva', 0):,.2f}" if o.get("requiere_iva") else "No aplica"),
+            ("Evidencia", (o.get("evidencia") or {}).get("nombre", "")), ("Estatus", o.get("estatus") or ""),
+            ("Notas", o.get("notas") or "")]
+    html = _ledger_pdf_html("Orden de cobro", oid, str(o.get("creado") or "")[:10], meta, o.get("total", 0), f"Generada por {o.get('creado_por') or ''}")
+    return Response(html, mimetype="text/html")
+
 @app.route("/api/gpo/<po_number>/pdf")
 def api_gpo_pdf(po_number):
     try:
@@ -16386,6 +16618,41 @@ def api_create_projconfig():
                     else:
                         for f in PROJCONFIG_FULL_ONLY_JOB_FIELDS:
                             j[f] = 0
+
+            # rev122: los porcentajes de los milestones de un Job no pueden pasar del 100 %
+            for j in jobs_in:
+                tp = j.get("terminos_pago") or []
+                suma = 0.0
+                for m in tp:
+                    try: suma += float(m.get("porcentaje") or 0)
+                    except (TypeError, ValueError): pass
+                    try:
+                        dv = m.get("dias_vencimiento")
+                        m["dias_vencimiento"] = int(float(dv)) if dv not in (None, "") else None
+                        if m["dias_vencimiento"] is not None and not (0 <= m["dias_vencimiento"] <= 365): raise ValueError
+                    except (TypeError, ValueError):
+                        return jsonify({"error": f"Job {j.get('job_number')}: los días de vencimiento deben ser un número entre 0 y 365"}), 400
+                if suma > 100.0001:
+                    return jsonify({"error": f"Job {j.get('job_number')}: la suma de los milestones de pago es {suma:g} % y no puede pasar del 100 %"}), 400
+
+            # rev121: los hitos de pago con orden de cobro los controla el servidor: se conserva
+            # su orden (y no se pueden borrar ni cambiar su % mientras la orden exista)
+            if existing:
+                prev_jobs = {str(j.get("job_number") or "").upper(): j for j in existing.get("jobs", [])}
+                for j in jobs_in:
+                    pj = prev_jobs.get(str(j.get("job_number") or "").upper())
+                    if not pj: continue
+                    prev_ms = {m.get("mid"): m for m in pj.get("terminos_pago") or [] if m.get("mid")}
+                    nuevos = list(j.get("terminos_pago") or [])
+                    ids = {m.get("mid") for m in nuevos}
+                    for m in nuevos:
+                        pm = prev_ms.get(m.get("mid"))
+                        if pm and pm.get("orden_cobro"):
+                            m.update(orden_cobro=pm["orden_cobro"], cumplido=True, porcentaje=pm.get("porcentaje"),
+                                     fecha_cumplido=pm.get("fecha_cumplido"))
+                    for mid, pm in prev_ms.items():
+                        if pm.get("orden_cobro") and mid not in ids: nuevos.append(pm)
+                    j["terminos_pago"] = nuevos
 
             # Remove existing config for same PT/SV (overwrite)
             records = [r for r in records if _n(r.get("ptsv")) != _n(ptsv)]
@@ -19123,9 +19390,22 @@ def api_create_cpc():
             if sobre and not data.get("confirmar_sobrefacturacion"):
                 return jsonify({"sobre_facturacion": sobre, "error": f"Con esta factura, la CPO {sobre['cpo']} quedaría facturada de más por ${sobre['exceso']:,.2f} USD"}), 409
             rec["id"] = _doc_next_number("CPC"); rec["year"] = year
+            if data.get("orden_cobro_id"): rec["orden_cobro_id"] = str(data["orden_cobro_id"])          # rev121
             if cfdi and cfdi.get("_sat"): rec["sat"] = cfdi.pop("_sat")              # rev109
             _cpc_hist(rec, "Alta", f"{rec['moneda']} {rec['total']:,.2f}" + (f" · sobre-facturación confirmada (+${sobre['exceso']:,.2f} USD)" if sobre else ""))
             records = cpc_load(year); records.append(rec); cpc_save(year, records)
+        if rec.get("orden_cobro_id"):     # rev121: la orden de cobro queda Facturada con esta CPC
+            try:
+                with lock:
+                    ordenes = _load_catalog("ordenes_cobro") or []
+                    o = next((x for x in ordenes if x.get("oid") == rec["orden_cobro_id"]), None)
+                    if o and o.get("estatus") == "Por facturar":
+                        o["estatus"] = "Facturada"; o["cpc_id"] = rec["id"]
+                        o["historial"] = (o.get("historial") or []) + [{"fecha": datetime.datetime.now().isoformat(timespec="seconds"),
+                                         "usuario": session.get("user", ""), "accion": "Facturada", "detalle": f"CPC {rec['id']}"}]
+                        _save_catalog("ordenes_cobro", ordenes)
+            except Exception as e:
+                print(f"[ORDEN DE COBRO] {e}")
         return jsonify({"ok": True, "record": rec})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -19225,6 +19505,184 @@ def api_cpc_pdf(cpc_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# ══════════════════════════════════════════════════════════════════
+#  rev123 — CPP: fecha de vencimiento y programación de pagos
+#  · Días de crédito del proveedor (campo numérico; si no se capturó, se interpreta su
+#    texto "Términos de pago": "30 días", "NET 60", "contado"…).
+#  · Vencimiento = fecha de la factura (CFDI) + días de crédito (naturales), editable.
+#  · Fecha programada de pago (semana) que asigna Finanzas, individual o masiva.
+# ══════════════════════════════════════════════════════════════════
+def _dias_credito_num(v, texto=None):
+    try:
+        if v not in (None, ""):
+            n = int(float(v))
+            return n if 0 <= n <= 365 else None
+    except (TypeError, ValueError):
+        pass
+    t = str(texto or "").lower()
+    if not t: return None
+    if re.search(r"contado|inmediat|anticipad|prepago|cash", t): return 0
+    m = re.search(r"(\d{1,3})", t)
+    return int(m.group(1)) if m and int(m.group(1)) <= 365 else None
+
+def _cpp_enriquecer(cpps):
+    """Agrega a cada CPP (sin guardarlo) su fecha de factura, moneda, días de crédito,
+    vencimiento, semana programada y estatus de pago."""
+    purs = {p.get("pur_number"): p for p in pur_load()}
+    provs = {str(pv.get("nombre") or "").strip().upper(): pv for pv in prov_load()}
+    gpos = {str(g.get("po_number") or "").upper(): g for g in gpo_load()}
+    fx_all = None
+    hoy = datetime.date.today()
+    for c in cpps:
+        pur = purs.get(c.get("pur_number")) or {}
+        cf = pur.get("cfdi") or {}
+        f_fac = str(cf.get("fecha") or "")[:10] or str(c.get("fecha") or "")[:10]
+        c["fecha_factura"] = f_fac
+        g = gpos.get(str(c.get("po_number") or "").upper()) or {}
+        moneda = (cf.get("moneda") or g.get("moneda") or "MXN").upper()
+        c["moneda"] = "USD" if moneda == "USD" else "MXN"
+        tc = cf.get("tipo_cambio") or (g.get("fx_rate") if c["moneda"] == "MXN" and g.get("fx_rate") not in (None, 1, 1.0) else None)
+        if c["moneda"] == "MXN" and not tc:
+            if fx_all is None: fx_all = fx_load_all()
+            tc = fx_rate_for_date(f_fac or hoy.isoformat(), fx_all)
+        c["tipo_cambio"] = float(tc) if tc else None
+        monto = abs(float(c.get("monto") or 0))
+        c["monto_abs"] = round(monto, 2)
+        c["monto_usd"] = (round(monto / c["tipo_cambio"], 2) if c.get("tipo_cambio") else None) if c["moneda"] == "MXN" else round(monto, 2)
+        pv = provs.get(str(c.get("supplier_name") or "").strip().upper()) or {}
+        dias_prov = _dias_credito_num(pv.get("dias_credito"), pv.get("terminos_pago"))
+        dias = c.get("dias_credito") if c.get("dias_credito") is not None else dias_prov
+        c["dias_credito_efectivo"] = dias
+        c["dias_origen"] = "CPP" if c.get("dias_credito") is not None else ("proveedor" if dias_prov is not None else None)
+        if c.get("fecha_vencimiento_manual"):
+            c["fecha_vencimiento"] = c["fecha_vencimiento_manual"]
+        else:
+            try:
+                c["fecha_vencimiento"] = (datetime.date.fromisoformat(f_fac) + datetime.timedelta(days=int(dias))).isoformat() if f_fac and dias is not None else None
+            except ValueError:
+                c["fecha_vencimiento"] = None
+        prog = c.get("fecha_programada"); c["semana_programada"] = None
+        if prog:
+            try:
+                y, w, _d = datetime.date.fromisoformat(prog).isocalendar(); c["semana_programada"] = f"{y}-W{w:02d}"
+            except ValueError:
+                pass
+        pagado = (c.get("estatus") or "Pendiente") == "Pagado"
+        venc = c.get("fecha_vencimiento")
+        if pagado: est = "Pagado"
+        elif prog or c.get("estatus") == "Programado": est = "Programado"
+        elif venc and venc < hoy.isoformat(): est = "Vencido"
+        elif not venc: est = "Sin vencimiento"
+        else: est = "Por vencer"
+        c["estatus_pago"] = est
+        c["dias_vencido"] = (hoy - datetime.date.fromisoformat(venc)).days if (venc and not pagado and venc < hoy.isoformat()) else 0
+    return cpps
+
+# rev124: programar un pago = registrarlo en PAGOS (por confirmar) y CPP → "Programado".
+#  Confirmar el pago en PAGOS lo deja "Pagado". Quitar la programación borra el pago
+#  programado (solo si no está confirmado) y regresa la CPP a "Pendiente".
+def _pago_programar(cpp, pagos, fecha, usuario):
+    p = next((x for x in pagos if x.get("cpp_number") == cpp.get("cpp_number") and not x.get("confirmado")), None)
+    ahora = datetime.datetime.now().isoformat()
+    if p is None:
+        p = {"pago_number": _doc_next_number("PAY"), "cpp_number": cpp["cpp_number"], "pur_number": cpp.get("pur_number", ""),
+             "rec_number": cpp.get("rec_number", ""), "po_number": cpp.get("po_number", ""), "job": cpp.get("job", ""),
+             "cpo": cpp.get("cpo", ""), "factura": cpp.get("factura", ""), "monto": cpp.get("monto", 0),
+             "supplier_name": cpp.get("supplier_name", ""), "confirmado": False, "usuario": usuario, "created_at": ahora}
+        pagos.append(p)
+    p.update(programado=True, fecha_programada=fecha, fecha=fecha, actualizado=ahora)
+    cpp["estatus"] = "Programado"; cpp["pago_number"] = p["pago_number"]
+    return p
+
+def _pago_desprogramar(cpp, pagos):
+    antes = len(pagos)
+    pagos[:] = [x for x in pagos if not (x.get("cpp_number") == cpp.get("cpp_number") and not x.get("confirmado") and x.get("programado"))]
+    if cpp.get("estatus") == "Programado": cpp["estatus"] = "Pendiente"
+    cpp.pop("pago_number", None)
+    return antes - len(pagos)
+
+@app.route("/api/cpp/<cpp_number>/programacion", methods=["PUT"])
+def api_cpp_programacion(cpp_number):
+    """Días de crédito / vencimiento manual / fecha programada de una CPP."""
+    if not can("create", "fin-cpp"): return jsonify({"error": "Sin permiso"}), 403
+    d = request.json or {}
+    with lock:
+        cpps = cpp_load()
+        c = next((x for x in cpps if str(x.get("cpp_number") or "").upper() == cpp_number.upper()), None)
+        if not c: return jsonify({"error": "CPP no encontrada"}), 404
+        if (c.get("estatus") or "") == "Pagado": return jsonify({"error": "La CPP ya está pagada"}), 400
+        antes = {k: c.get(k) for k in ("dias_credito", "fecha_vencimiento_manual", "fecha_programada")}
+        if "dias_credito" in d:
+            if d.get("dias_credito") in (None, ""): c["dias_credito"] = None
+            else:
+                c["dias_credito"] = _dias_credito_num(d.get("dias_credito"))
+                if c["dias_credito"] is None: return jsonify({"error": "Los días de crédito deben ser un número entre 0 y 365"}), 400
+        for k in ("fecha_vencimiento_manual", "fecha_programada"):
+            if k in d:
+                v = str(d.get(k) or "")[:10] or None
+                if v:
+                    try: datetime.date.fromisoformat(v)
+                    except ValueError: return jsonify({"error": "Fecha inválida"}), 400
+                c[k] = v
+        cambios = [f"{k}: {antes[k]} → {c.get(k)}" for k in antes if antes[k] != c.get(k)]
+        if cambios:
+            c.setdefault("historial_programacion", []).append({"fecha": datetime.datetime.now().isoformat(timespec="seconds"),
+                                                               "usuario": session.get("user", ""), "detalle": "; ".join(cambios)})
+        if "fecha_programada" in d:                                           # rev124: PAGOS al día
+            pagos = pago_load()
+            if c.get("fecha_programada"): _pago_programar(c, pagos, c["fecha_programada"], session.get("user", ""))
+            else: _pago_desprogramar(c, pagos)
+            pago_save(pagos)
+        cpp_save(cpps)
+    return jsonify({"ok": True, "record": _cpp_enriquecer([dict(c)])[0]})
+
+@app.route("/api/cpp/programar", methods=["POST"])
+def api_cpp_programar_masivo():
+    """Asigna la misma fecha programada de pago a varias CPP (o la quita con fecha vacía)."""
+    if not can("create", "fin-cpp"): return jsonify({"error": "Sin permiso"}), 403
+    d = request.json or {}
+    nums = {str(x).upper() for x in d.get("cpp_numbers") or []}
+    f = str(d.get("fecha_programada") or "")[:10] or None
+    if f:
+        try: datetime.date.fromisoformat(f)
+        except ValueError: return jsonify({"error": "Fecha inválida"}), 400
+    if not nums: return jsonify({"error": "Selecciona al menos una CPP"}), 400
+    n = 0; pagos_creados = []
+    with lock:
+        cpps = cpp_load(); pagos = pago_load()
+        for c in cpps:
+            if str(c.get("cpp_number") or "").upper() in nums and (c.get("estatus") or "") != "Pagado":
+                if c.get("fecha_programada") != f:
+                    c.setdefault("historial_programacion", []).append({"fecha": datetime.datetime.now().isoformat(timespec="seconds"),
+                        "usuario": session.get("user", ""), "detalle": f"fecha_programada: {c.get('fecha_programada')} → {f}"})
+                    c["fecha_programada"] = f; n += 1
+                if f: pagos_creados.append(_pago_programar(c, pagos, f, session.get("user", ""))["pago_number"])   # rev124
+                else: _pago_desprogramar(c, pagos)
+        pago_save(pagos); cpp_save(cpps)
+    return jsonify({"ok": True, "actualizadas": n, "pagos": pagos_creados})
+
+@app.route("/api/cpp/programacion", methods=["GET"])
+def api_cpp_programacion_resumen():
+    """CPP pendientes con vencimiento/programación, resumen por semana y antigüedad (aging)."""
+    if not can("view", "fin-cpp"): return jsonify({"error": "Sin permiso"}), 403
+    pend = _cpp_enriquecer([c for c in cpp_load() if (c.get("estatus") or "Pendiente") != "Pagado"])
+    hoy = datetime.date.today()
+    usd = lambda c: c.get("monto_usd") if c.get("monto_usd") is not None else 0.0
+    aging = {"Por vencer": 0.0, "1-30": 0.0, "31-60": 0.0, "61-90": 0.0, "91+": 0.0, "Sin vencimiento": 0.0}
+    for c in pend:
+        dv = c["dias_vencido"]
+        k = "Sin vencimiento" if not c.get("fecha_vencimiento") else ("Por vencer" if dv <= 0 else "1-30" if dv <= 30 else "31-60" if dv <= 60 else "61-90" if dv <= 90 else "91+")
+        aging[k] = round(aging[k] + usd(c), 2)
+    semanas = {}
+    for c in pend:
+        k = c.get("semana_programada") or "Sin programar"
+        s_ = semanas.setdefault(k, {"usd": 0.0, "MXN": 0.0, "USD": 0.0, "n": 0})
+        s_["usd"] = round(s_["usd"] + usd(c), 2); s_[c["moneda"]] = round(s_[c["moneda"]] + c["monto_abs"], 2); s_["n"] += 1
+    y, w, _ = hoy.isocalendar()
+    return jsonify({"records": sorted(pend, key=lambda c: (c.get("fecha_programada") or "9999", c.get("fecha_vencimiento") or "9999")),
+                    "aging": aging, "semanas": semanas, "semana_actual": f"{y}-W{w:02d}", "hoy": hoy.isoformat(),
+                    "sin_tc": sum(1 for c in pend if c.get("monto_usd") is None)})
+
 @app.route("/api/cpp", methods=["GET"])
 def api_get_cpp():
     if not can("view", "fin-cpp"): return jsonify({"error":"Sin permiso"}), 403
@@ -19241,6 +19699,7 @@ def api_get_cpp():
                 q in (r.get("factura","")).lower() or
                 q in (r.get("supplier_name","")).lower()]
         records = sorted(records, key=lambda r: r.get("created_at",""), reverse=True)
+        _cpp_enriquecer(records)                                          # rev123: vencimiento y programación
         return jsonify({"records": records, "total": len(records)})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -19267,6 +19726,7 @@ def api_cpp_pendientes():
         if q:
             cpps = [c for c in cpps if q in (c.get("supplier_name","")).lower()]
         cpps = sorted(cpps, key=lambda c: c.get("created_at",""))
+        _cpp_enriquecer(cpps)                                             # rev123
         return jsonify({"records": cpps, "total": len(cpps)})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -19395,6 +19855,13 @@ def api_procesar_pago():
                 if cpp.get("estatus","Pendiente") == "Pagado":
                     return jsonify({"error": f"La CPP {cpp_number} ya tiene un pago registrado"}), 400
 
+                # rev124: si ya tenía un pago programado, ese pago es el que se procesa (sin duplicar)
+                prog = next((x for x in pagos if x.get("cpp_number") == cpp.get("cpp_number") and not x.get("confirmado")), None)
+                if prog:
+                    prog.update(programado=False, fecha=now[:10], usuario=usuario)
+                    cpp["estatus"] = "Pagado"; creados.append(prog)
+                    continue
+
                 cpp["estatus"] = "Pagado"
 
                 pago = {
@@ -19437,6 +19904,11 @@ def api_confirmar_pago(pago_number):
             pago["confirmado"] = True
             pago["confirmado_por"] = session.get("user","")
             pago["confirmado_at"] = datetime.datetime.now().isoformat()
+            if pago.get("programado"): pago["fecha_pago"] = datetime.date.today().isoformat()   # rev124
+            cpps = cpp_load()
+            c = next((x for x in cpps if x.get("cpp_number") == pago.get("cpp_number")), None)
+            if c and c.get("estatus") != "Pagado":
+                c["estatus"] = "Pagado"; cpp_save(cpps)
             pago_save(pagos)
         return jsonify({"ok": True, "record": pago})
     except Exception as e:
