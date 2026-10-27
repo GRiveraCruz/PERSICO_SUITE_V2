@@ -20243,22 +20243,37 @@ function ocFacRender(){
   document.getElementById('ocf-lista').innerHTML = L.length ? `<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:rgba(0,0,0,.035)">
       <th style="width:26px"></th><th style="text-align:left;padding:5px;cursor:default">Factura</th><th style="text-align:left;padding:5px;cursor:default">Fecha</th><th style="text-align:left;padding:5px;cursor:default">Cliente</th>
       <th style="text-align:left;padding:5px;cursor:default">Job / CPO</th><th style="text-align:right;padding:5px;cursor:default">Total</th><th style="text-align:right;padding:5px;cursor:default">Diferencia</th><th style="padding:5px;cursor:default"></th></tr></thead>
-    <tbody>${L.map(f=>`<tr style="border-top:1px solid var(--border);${f.coincide?'':'opacity:.55'}">
-      <td style="padding:4px"><input type="radio" name="ocf-sel" value="${esc(f.id)}" ${f.coincide?'':'disabled'} onchange="_ocFac.sel=this.value;document.getElementById('ocf-btn').disabled=false"></td>
+    <tbody>${L.map(f=>{ const elegible = f.coincide || (!solo && f.alcanza); return `<tr style="border-top:1px solid var(--border);${elegible?'':'opacity:.5'}">
+      <td style="padding:4px"><input type="radio" name="ocf-sel" value="${esc(f.id)}" ${elegible?'':'disabled'} ${_ocFac.sel===f.id?'checked':''} onchange="_ocFac.sel=this.value;ocFacAviso()" title="${elegible?'':(!f.alcanza?'La orden excede lo disponible de la factura':'Desmarca \'Solo las que coinciden\' para elegir una factura con otro monto')}"></td>
       <td style="padding:4px;font-family:'DM Mono',monospace">${esc(f.id)}<div style="color:var(--muted)">${esc([f.serie,f.folio].filter(Boolean).join(' ')||'')}</div></td>
       <td style="padding:4px">${esc(f.fecha_factura||'')}</td><td style="padding:4px">${esc(f.customer||'')}</td>
       <td style="padding:4px;font-family:'DM Mono',monospace;font-size:11px">${esc(f.job||'—')}<div style="color:var(--muted)">${esc(f.cpo_id||'')}</div></td>
       <td style="padding:4px;text-align:right;font-family:'DM Mono',monospace">${ifFmt(f.total_factura)} <span style="color:var(--muted);font-size:10px">${esc(f.moneda)}</span>${f.moneda!=='USD'&&f.equiv_usd!=null?`<div style="font-size:10px;color:var(--muted)">≈ ${ifFmt(f.equiv_usd)} USD</div>`:''}</td>
       <td style="padding:4px;text-align:right;font-family:'DM Mono',monospace;color:${f.coincide?'#1f8a4c':'var(--red)'}">${f.diferencia==null?(f.motivo?'s/TC':'—'):(f.diferencia>0?'+':'')+ifFmt(f.diferencia).replace('$-','-$')}</td>
-      <td style="padding:4px;font-size:10px">${f.coincide?'<b style="color:#1f8a4c">✓ coincide</b>':''}${f.relacion.length?`<div style="color:var(--muted)">mismo ${f.relacion.join(', ')}</div>`:''}</td></tr>`).join('')}</tbody></table>`
+      <td style="padding:4px;font-size:10px">${f.coincide?'<b style="color:#1f8a4c">✓ coincide</b>':(!f.alcanza?'<b style="color:var(--red)">excede lo disponible</b>':'')}${f.relacion.length?`<div style="color:var(--muted)">mismo ${f.relacion.join(', ')}</div>`:''}${(f.ordenes_ligadas||[]).length?`<div style="color:#1d4ed8">ya salda ${f.ordenes_ligadas.join(', ')} · disponible ${ifFmt(f.disponible_usd)} USD</div>`:''}</td></tr>`; }).join('')}</tbody></table>`
     : '<div style="padding:14px;text-align:center;color:var(--muted)">Sin facturas en el filtro.</div>';
-  const btn = document.getElementById('ocf-btn'); btn.style.display = ''; btn.disabled = !_ocFac.sel || !L.some(f=>f.id===_ocFac.sel);
+  const btn = document.getElementById('ocf-btn'); btn.style.display = '';
+  if(_ocFac.sel && !L.some(f=>f.id===_ocFac.sel && (f.coincide || (!solo && f.alcanza)))) _ocFac.sel = null;
+  ocFacAviso();
+}
+function ocFacAviso(){
+  const f = (_ocFac.data?.facturas||[]).find(x=>x.id===_ocFac.sel), btn = document.getElementById('ocf-btn'), av = document.getElementById('ocf-aviso');
+  btn.disabled = !f;
+  if(!f){ av.innerHTML=''; return; }
+  av.innerHTML = f.coincide ? `<span style="color:#1f8a4c">✓ El monto coincide con la orden.</span>`
+    : `<span style="color:var(--amber)">⚠ El monto de la factura no coincide con la orden (diferencia ${ifFmt(f.diferencia).replace('$-','-$')} USD). Se pedirá el motivo, por ejemplo: la factura agrupa varios Jobs.</span>`;
 }
 async function ocFacVincular(){
   if(!_ocFac.sel) return;
   const f = _ocFac.data.facturas.find(x=>x.id===_ocFac.sel);
-  if(!confirm(`¿Saldar la orden ${_ocFac.oid} con la factura ${f.id} (${[f.serie,f.folio].filter(Boolean).join(' ')||'sin serie/folio'}) por ${ifFmt(f.total_factura)} ${f.moneda}?`)) return;
-  const r = await apiCall('POST', `/ordenes-cobro/${encodeURIComponent(_ocFac.oid)}/vincular`, {cpc_id: _ocFac.sel});
+  const body = {cpc_id: _ocFac.sel};
+  if(!f.coincide){
+    const m = prompt(`La factura ${f.id} (${ifFmt(f.total_factura)} ${f.moneda}) no coincide con la orden (${ifFmt(_ocFac.data.orden.total)} USD).\n\nMotivo para saldarla de todos modos (ej. "factura agrupa los Jobs 652-50 y 665-00"):`, 'Factura agrupa varios Jobs');
+    if(m===null) return;
+    if(m.trim().length < 5){ toast('Escribe el motivo','er'); return; }
+    body.forzar = true; body.motivo = m.trim();
+  } else if(!confirm(`¿Saldar la orden ${_ocFac.oid} con la factura ${f.id} (${[f.serie,f.folio].filter(Boolean).join(' ')||'sin serie/folio'}) por ${ifFmt(f.total_factura)} ${f.moneda}?`)) return;
+  const r = await apiCall('POST', `/ordenes-cobro/${encodeURIComponent(_ocFac.oid)}/vincular`, body);
   if(r.error){ toast(r.error,'er',7000); return; }
   closeMo('mo-oc-facturar'); toast(`Orden ${_ocFac.oid} saldada con la factura ${_ocFac.sel}`,'ok',5000); ocCargar();
 }

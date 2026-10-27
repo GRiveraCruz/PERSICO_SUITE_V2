@@ -5981,10 +5981,11 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
       <div id="ocf-paso2" style="display:none">
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
           <input id="ocf-q" placeholder="Buscar factura, serie/folio, cliente, Job…" oninput="ocFacRender()" style="font-size:12px;padding:6px 10px;min-width:240px">
-          <label style="font-size:12px;display:flex;gap:5px;align-items:center;text-transform:none;letter-spacing:0;font-weight:400"><input type="checkbox" id="ocf-solo" checked onchange="ocFacRender()"> Solo las que coinciden en monto</label>
+          <label style="font-size:12px;display:flex;gap:5px;align-items:center;text-transform:none;letter-spacing:0;font-weight:400" title="Desmárcalo para elegir una factura con otro monto (por ejemplo, una factura que agrupa varios Jobs)"><input type="checkbox" id="ocf-solo" checked onchange="ocFacRender()"> Solo las que coinciden en monto</label>
           <span id="ocf-info" style="font-size:12px;margin-left:auto"></span></div>
         <div id="ocf-lista" style="max-height:380px;overflow:auto;border:1px solid var(--border);border-radius:8px"></div>
-        <div style="font-size:10.5px;color:var(--muted);margin-top:6px">Se compara el total de la factura contra el total de la orden (USD). Facturas en USD: diferencia máxima $0.01. Facturas en MXN: su equivalente en USD (tipo de cambio de la factura) dentro de ±0.5 %. No se muestran facturas canceladas ni las que ya saldan otra orden.</div>
+        <div id="ocf-aviso" style="font-size:12px;margin-top:8px"></div>
+        <div style="font-size:10.5px;color:var(--muted);margin-top:6px">Se compara el total de la factura contra el total de la orden (USD). Facturas en USD: diferencia máxima $0.01; en MXN: equivalente en USD dentro de ±0.5 %. Al desmarcar "Solo las que coinciden" se puede elegir otra factura (se pide el motivo), por ejemplo una que agrupa varios Jobs: una misma factura puede saldar varias órdenes mientras le quede monto disponible. No se muestran facturas canceladas ni las que ya no tienen monto disponible.</div>
       </div>
     </div>
     <div class="mf"><button class="btn btn-s" onclick="closeMo('mo-oc-facturar')">Cancelar</button><button class="btn btn-p" id="ocf-btn" style="display:none" disabled onclick="ocFacVincular()">Saldar con la factura seleccionada</button></div>
