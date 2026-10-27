@@ -5964,6 +5964,33 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
   </div>
 </div>
 
+<!-- rev125: facturar una orden de cobro (nueva o existente) -->
+<div class="mo" id="mo-oc-facturar" style="z-index:160">
+  <div class="md" style="max-width:900px;width:calc(100% - 32px)">
+    <div class="mh"><h2>🧾 Facturar orden · <span id="ocf-oid"></span></h2><button class="px" onclick="closeMo('mo-oc-facturar')">Cerrar</button></div>
+    <div class="mb2">
+      <div id="ocf-resumen" style="font-size:12.5px;margin-bottom:14px;padding:10px 12px;background:rgba(0,0,0,.03);border-radius:8px"></div>
+      <div id="ocf-paso1" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <button type="button" onclick="ocFacNueva()" style="text-align:left;border:1.5px solid var(--border);border-radius:10px;padding:16px;background:var(--card,#fff);cursor:pointer">
+          <div style="font-size:15px;font-weight:700">➕ Registrar factura nueva</div>
+          <div style="font-size:12px;color:var(--muted2);margin-top:4px">Abre CPC ▸ Nueva factura con los datos de la orden (carga el XML o captura serie/folio).</div></button>
+        <button type="button" onclick="ocFacExistente()" style="text-align:left;border:1.5px solid var(--border);border-radius:10px;padding:16px;background:var(--card,#fff);cursor:pointer">
+          <div style="font-size:15px;font-weight:700">🔗 Usar una factura ya registrada</div>
+          <div style="font-size:12px;color:var(--muted2);margin-top:4px">Salda la orden con una factura que ya está en CPC. <b>El monto debe coincidir</b> con el de la orden.</div></button>
+      </div>
+      <div id="ocf-paso2" style="display:none">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+          <input id="ocf-q" placeholder="Buscar factura, serie/folio, cliente, Job…" oninput="ocFacRender()" style="font-size:12px;padding:6px 10px;min-width:240px">
+          <label style="font-size:12px;display:flex;gap:5px;align-items:center;text-transform:none;letter-spacing:0;font-weight:400"><input type="checkbox" id="ocf-solo" checked onchange="ocFacRender()"> Solo las que coinciden en monto</label>
+          <span id="ocf-info" style="font-size:12px;margin-left:auto"></span></div>
+        <div id="ocf-lista" style="max-height:380px;overflow:auto;border:1px solid var(--border);border-radius:8px"></div>
+        <div style="font-size:10.5px;color:var(--muted);margin-top:6px">Se compara el total de la factura contra el total de la orden (USD). Facturas en USD: diferencia máxima $0.01. Facturas en MXN: su equivalente en USD (tipo de cambio de la factura) dentro de ±0.5 %. No se muestran facturas canceladas ni las que ya saldan otra orden.</div>
+      </div>
+    </div>
+    <div class="mf"><button class="btn btn-s" onclick="closeMo('mo-oc-facturar')">Cancelar</button><button class="btn btn-p" id="ocf-btn" style="display:none" disabled onclick="ocFacVincular()">Saldar con la factura seleccionada</button></div>
+  </div>
+</div>
+
 <!-- ══ MODULE: Datos fiscales (rev119) ══ -->
 <div class="module" id="mod-fin-datos-fiscales">
   <div class="main-content" style="overflow-y:auto">

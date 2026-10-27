@@ -16186,6 +16186,110 @@ def api_income_forecast():
     return jsonify({"filas": filas, "por_mes": meses, "sin_fecha": sin_fecha, "hoy": hoy.isoformat(),
                     "semanas": semanas, "semana_actual": sem_hoy, "gastos_sin_fecha": gastos_sin_fecha, "gastos_sin_tc": gastos_sin_tc})
 
+# ── rev125: saldar una orden de cobro con una factura CPC YA REGISTRADA ──────────
+#  Condición: el monto de la factura debe coincidir con el de la orden (total, con IVA si
+#  aplica). La orden está en USD: factura en USD → diferencia ≤ $0.01; factura en MXN →
+#  su equivalente en USD (con el tipo de cambio de la factura) dentro de ±0.5 %.
+OC_TOL_USD, OC_TOL_MXN_PCT = 0.01, 0.5
+
+def _oc_comparar(orden, cpc):
+    tot_o = round(float(orden.get("total") or 0), 2)
+    tot_c = round(float(cpc.get("total") or 0), 2)
+    mon = (cpc.get("moneda") or "USD").upper()
+    if mon == "USD":
+        dif = round(tot_c - tot_o, 2)
+        return {"coincide": abs(dif) <= OC_TOL_USD, "moneda": "USD", "total_factura": tot_c, "equiv_usd": tot_c, "diferencia": dif}
+    tc = float(cpc.get("tipo_cambio") or 0)
+    if tc <= 0:
+        return {"coincide": False, "moneda": mon, "total_factura": tot_c, "equiv_usd": None, "diferencia": None, "motivo": "La factura en MXN no tiene tipo de cambio"}
+    eq = round(tot_c / tc, 2); dif = round(eq - tot_o, 2)
+    ok = tot_o > 0 and abs(dif) / tot_o * 100 <= OC_TOL_MXN_PCT
+    return {"coincide": ok, "moneda": mon, "total_factura": tot_c, "equiv_usd": eq, "diferencia": dif, "tipo_cambio": tc}
+
+@app.route("/api/ordenes-cobro/<oid>/facturas-candidatas", methods=["GET"])
+def api_oc_candidatas(oid):
+    if not can("view", "fin-ordenes-cobro"): return jsonify({"error": "Sin permiso"}), 403
+    o = next((x for x in _load_catalog("ordenes_cobro") or [] if x.get("oid") == oid), None)
+    if not o: return jsonify({"error": "Orden no encontrada"}), 404
+    ligadas = {x.get("cpc_id"): x.get("oid") for x in _load_catalog("ordenes_cobro") or [] if x.get("cpc_id") and x.get("estatus") == "Facturada"}
+    out = []
+    for c in cpc_all_records():
+        if c.get("estatus") == "Cancelada": continue
+        otra = ligadas.get(c.get("id")) or (c.get("orden_cobro_id") if c.get("orden_cobro_id") and c.get("orden_cobro_id") != oid else None)
+        if otra and otra != oid: continue
+        cmp_ = _oc_comparar(o, c)
+        relacion = []
+        if c.get("cpo_id") and c.get("cpo_id") == o.get("cpo_id"): relacion.append("CPO")
+        if str(c.get("job") or "").upper() == str(o.get("job") or "").upper() and c.get("job"): relacion.append("Job")
+        if str(c.get("customer") or "").strip().upper() and str(c.get("customer") or "").strip().upper() == str(o.get("cliente") or "").strip().upper(): relacion.append("Cliente")
+        out.append({"id": c.get("id"), "serie": c.get("serie"), "folio": c.get("folio"), "fecha_factura": c.get("fecha_factura"),
+                    "customer": c.get("customer"), "job": c.get("job"), "cpo_id": c.get("cpo_id"), "estatus": c.get("estatus"),
+                    "uuid": (c.get("cfdi") or {}).get("uuid"), "relacion": relacion, **cmp_})
+    out.sort(key=lambda x: (not x["coincide"], -len(x["relacion"]), abs(x["diferencia"]) if x["diferencia"] is not None else 1e12))
+    return jsonify({"orden": {"oid": o["oid"], "total": o.get("total"), "job": o.get("job"), "cpo_id": o.get("cpo_id"), "cliente": o.get("cliente")},
+                    "facturas": out[:200], "tolerancia": {"usd": OC_TOL_USD, "mxn_pct": OC_TOL_MXN_PCT}})
+
+@app.route("/api/ordenes-cobro/<oid>/vincular", methods=["POST"])
+def api_oc_vincular(oid):
+    """Salda la orden de cobro con una factura CPC ya registrada (montos iguales)."""
+    if not can("create", "fin-ordenes-cobro"): return jsonify({"error": "Sin permiso"}), 403
+    cpc_id = str((request.json or {}).get("cpc_id") or "").strip()
+    if not cpc_id: return jsonify({"error": "Elige la factura"}), 400
+    with lock:
+        ordenes = _load_catalog("ordenes_cobro") or []
+        o = next((x for x in ordenes if x.get("oid") == oid), None)
+        if not o: return jsonify({"error": "Orden no encontrada"}), 404
+        if o.get("estatus") != "Por facturar": return jsonify({"error": f"La orden está {o.get('estatus')}"}), 400
+        otra = next((x for x in ordenes if x.get("cpc_id") == cpc_id and x.get("estatus") == "Facturada" and x.get("oid") != oid), None)
+        if otra: return jsonify({"error": f"La factura {cpc_id} ya salda la orden {otra['oid']}"}), 409
+    with _cpc_candado():
+        y, recs, i = _cpc_buscar(cpc_id)
+        if i is None: return jsonify({"error": "Factura no encontrada"}), 404
+        c = recs[i]
+        if c.get("estatus") == "Cancelada": return jsonify({"error": "La factura está cancelada"}), 400
+        if c.get("orden_cobro_id") and c.get("orden_cobro_id") != oid:
+            return jsonify({"error": f"La factura ya está ligada a la orden {c['orden_cobro_id']}"}), 409
+        cmp_ = _oc_comparar(o, c)
+        if not cmp_["coincide"]:
+            det = (f"factura {cmp_['moneda']} {cmp_['total_factura']:,.2f}" + (f" (≈ USD {cmp_['equiv_usd']:,.2f})" if cmp_.get("equiv_usd") is not None and cmp_["moneda"] != "USD" else "")
+                   + f" vs orden USD {float(o.get('total') or 0):,.2f}") if cmp_.get("motivo") is None else cmp_["motivo"]
+            return jsonify({"error": f"Los montos no coinciden: {det}", "comparacion": cmp_}), 400
+        c["orden_cobro_id"] = oid
+        _cpc_hist(c, "Ligada a orden de cobro", f"{oid} · {(o.get('hito') or {}).get('nombre') or ''}")
+        cpc_save(y, recs)
+    with lock:
+        ordenes = _load_catalog("ordenes_cobro") or []
+        o = next((x for x in ordenes if x.get("oid") == oid), None)
+        o["estatus"] = "Facturada"; o["cpc_id"] = cpc_id; o["vinculada"] = True
+        o["historial"] = (o.get("historial") or []) + [{"fecha": datetime.datetime.now().isoformat(timespec="seconds"), "usuario": session.get("user", ""),
+                                                      "accion": "Facturada", "detalle": f"Saldada con factura existente {cpc_id} ({cmp_['moneda']} {cmp_['total_factura']:,.2f})"}]
+        _save_catalog("ordenes_cobro", ordenes)
+    return jsonify({"ok": True, "orden": o, "comparacion": cmp_})
+
+@app.route("/api/ordenes-cobro/<oid>/desvincular", methods=["POST"])
+def api_oc_desvincular(oid):
+    """Quita la factura de una orden (regresa a Por facturar). Requiere Control total."""
+    if not can("delete", "fin-ordenes-cobro"): return jsonify({"error": "Requiere permiso de Control total"}), 403
+    motivo = str((request.json or {}).get("motivo") or "").strip()[:200]
+    with lock:
+        ordenes = _load_catalog("ordenes_cobro") or []
+        o = next((x for x in ordenes if x.get("oid") == oid), None)
+        if not o or o.get("estatus") != "Facturada": return jsonify({"error": "La orden no está facturada"}), 400
+        cpc_id = o.get("cpc_id")
+    if cpc_id:
+        with _cpc_candado():
+            y, recs, i = _cpc_buscar(cpc_id)
+            if i is not None and recs[i].get("orden_cobro_id") == oid:
+                recs[i]["orden_cobro_id"] = None; _cpc_hist(recs[i], "Desligada de orden de cobro", f"{oid} · {motivo}"); cpc_save(y, recs)
+    with lock:
+        ordenes = _load_catalog("ordenes_cobro") or []
+        o = next((x for x in ordenes if x.get("oid") == oid), None)
+        o["estatus"] = "Por facturar"; o["cpc_id"] = None; o.pop("vinculada", None)
+        o["historial"] = (o.get("historial") or []) + [{"fecha": datetime.datetime.now().isoformat(timespec="seconds"), "usuario": session.get("user", ""),
+                                                      "accion": "Factura desligada", "detalle": f"{cpc_id} · {motivo}"}]
+        _save_catalog("ordenes_cobro", ordenes)
+    return jsonify({"ok": True, "orden": o})
+
 @app.route("/api/ordenes-cobro/<oid>/evidencia", methods=["GET"])
 def api_oc_evidencia(oid):
     if not (can("view", "fin-ordenes-cobro") or pc_tab_can("view", "presupuesto")): return jsonify({"error": "Sin permiso"}), 403

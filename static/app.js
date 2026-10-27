@@ -19971,10 +19971,11 @@ function ocRender(){
       <td>${esc(o.cliente||'')}</td><td>${esc((o.hito||{}).nombre||'')} <span style="color:var(--muted)">${(o.hito||{}).porcentaje??''} %</span></td>
       <td style="text-align:right;font-family:'DM Mono',monospace">${f(o.subtotal)}</td><td style="text-align:center">${o.requiere_iva?'Sí':'No'}</td>
       <td style="text-align:right;font-family:'DM Mono',monospace;font-weight:700">${f(o.total)}</td>
-      <td><span style="font-weight:700;color:${col[o.estatus]||'var(--text)'}">${esc(o.estatus)}</span>${o.cpc_id?`<div style="font-size:10px;color:var(--muted)">${esc(o.cpc_id)}</div>`:''}</td>
+      <td><span style="font-weight:700;color:${col[o.estatus]||'var(--text)'}">${esc(o.estatus)}</span>${o.cpc_id?`<div style="font-size:10px;color:var(--muted)">${esc(o.cpc_id)}${o.vinculada?' · existente':''}</div>`:''}
+        ${o.estatus==='Facturada' && (!USER_PERMS || USER_PERMS.is_admin || (USER_PERMS.permissions||{})['fin-ordenes-cobro']==='full') ? `<button class="fi-del" style="font-size:10px" onclick="ocDesligar('${esc(o.oid)}')">Desligar</button>`:''}</td>
       <td style="white-space:nowrap"><button class="fi-del" style="color:var(--muted2)" onclick="window.open('/api/ordenes-cobro/${encodeURIComponent(o.oid)}/pdf','_blank')">PDF</button>
         <button class="fi-del" style="color:var(--muted2)" onclick="window.open('/api/ordenes-cobro/${encodeURIComponent(o.oid)}/evidencia','_blank')" title="${esc((o.evidencia||{}).nombre||'')}">Evidencia</button>
-        ${puede && o.estatus==='Por facturar' ? `<button class="fi-del" style="color:#1f8a4c" onclick="ocFacturar('${esc(o.oid)}')">Registrar factura</button>
+        ${puede && o.estatus==='Por facturar' ? `<button class="fi-del" style="color:#1f8a4c" onclick="ocFacturarAbrir('${esc(o.oid)}')">Facturar</button>
         <button class="fi-del" onclick="ocCancelar('${esc(o.oid)}')">Cancelar</button>` : ''}</td></tr>`).join('')
     || '<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:24px">Sin órdenes de cobro. Se generan desde Configurar Proyecto ▸ Presupuesto ▸ Términos de pago.</td></tr>';
   const pend = _ocLista.filter(o=>o.estatus==='Por facturar');
@@ -20208,4 +20209,62 @@ function ifSemanal(){
     <div style="display:flex;gap:6px;padding:2px;border-top:1px dashed var(--border)">${cols.map(([k,v])=>{ const n=v.ingreso-v.gasto; acum+=n; return `<div style="flex:1;text-align:center;font-size:10px;font-family:'DM Mono',monospace" title="Neto de la semana / acumulado"><div style="color:${n<0?'var(--red)':n>0?'#1f8a4c':'var(--muted)'}">${n?(n<0?'−':'+')+k$(Math.abs(n)):'·'}</div><div style="color:${acum<0?'var(--red)':'var(--muted2)'};font-size:9px">${k$(Math.abs(acum))?(acum<0?'−':'')+k$(Math.abs(acum)):''}</div></div>`; }).join('')}</div>
     </div></div>
     <div style="font-size:10.5px;color:var(--muted);margin-top:6px">Ingreso: milestones de pago (orden de cobro / factura). Gasto comprometido: CPP por pagar en su fecha programada de pago o, si no tiene, en su vencimiento. Fila inferior: neto de la semana y acumulado.${_if.gastos_sin_fecha?` · CPP sin vencimiento: ${ifFmt(_if.gastos_sin_fecha)}`:''}${_if.gastos_sin_tc?` · ${_if.gastos_sin_tc} CPP sin tipo de cambio (no incluidas)`:''}</div>`;
+}
+
+
+// ════════════════════════════════════════════════════════
+//  rev125 — Facturar una orden de cobro: factura nueva o factura existente
+// ════════════════════════════════════════════════════════
+let _ocFac = null;
+function ocFacturarAbrir(oid){
+  const o = _ocLista.find(x=>x.oid===oid); if(!o) return;
+  _ocFac = {oid, sel: null, data: null};
+  document.getElementById('ocf-oid').textContent = oid;
+  document.getElementById('ocf-resumen').innerHTML = `${esc(o.cliente||'')} · Job <b>${esc(o.job||'')}</b> · CPO ${esc(o.cpo_id||'')} · ${esc((o.hito||{}).nombre||'')} (${(o.hito||{}).porcentaje}%) · <b style="color:var(--red)">Total ${ifFmt(o.total)} USD</b>${o.requiere_iva?' (con IVA)':' (sin IVA)'}`;
+  document.getElementById('ocf-paso1').style.display = '';
+  document.getElementById('ocf-paso2').style.display = 'none';
+  document.getElementById('ocf-btn').style.display = 'none';
+  document.getElementById('mo-oc-facturar').classList.add('on');
+}
+function ocFacNueva(){ closeMo('mo-oc-facturar'); ocFacturar(_ocFac.oid); }
+async function ocFacExistente(){
+  document.getElementById('ocf-paso1').style.display = 'none';
+  document.getElementById('ocf-paso2').style.display = '';
+  const box = document.getElementById('ocf-lista'); box.innerHTML = '<div style="padding:14px;color:var(--muted)">Buscando facturas…</div>';
+  const d = await fetch(`/api/ordenes-cobro/${encodeURIComponent(_ocFac.oid)}/facturas-candidatas`).then(r=>r.json());
+  if(d.error){ box.innerHTML = `<div style="color:var(--red)">${esc(d.error)}</div>`; return; }
+  _ocFac.data = d; ocFacRender();
+}
+function ocFacRender(){
+  const d = _ocFac.data, solo = document.getElementById('ocf-solo').checked, q = (document.getElementById('ocf-q').value||'').toLowerCase();
+  const L = d.facturas.filter(f => (!solo || f.coincide) && (!q || [f.id,f.serie,f.folio,f.customer,f.job,f.cpo_id,f.uuid].join(' ').toLowerCase().includes(q)));
+  const n = d.facturas.filter(f=>f.coincide).length;
+  document.getElementById('ocf-info').innerHTML = n ? `<span style="color:#1f8a4c">✓ ${n} factura(s) con el mismo monto</span>` : `<span style="color:var(--amber)">Ninguna factura disponible coincide con el monto de la orden (${ifFmt(d.orden.total)} USD).</span>`;
+  document.getElementById('ocf-lista').innerHTML = L.length ? `<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:rgba(0,0,0,.035)">
+      <th style="width:26px"></th><th style="text-align:left;padding:5px;cursor:default">Factura</th><th style="text-align:left;padding:5px;cursor:default">Fecha</th><th style="text-align:left;padding:5px;cursor:default">Cliente</th>
+      <th style="text-align:left;padding:5px;cursor:default">Job / CPO</th><th style="text-align:right;padding:5px;cursor:default">Total</th><th style="text-align:right;padding:5px;cursor:default">Diferencia</th><th style="padding:5px;cursor:default"></th></tr></thead>
+    <tbody>${L.map(f=>`<tr style="border-top:1px solid var(--border);${f.coincide?'':'opacity:.55'}">
+      <td style="padding:4px"><input type="radio" name="ocf-sel" value="${esc(f.id)}" ${f.coincide?'':'disabled'} onchange="_ocFac.sel=this.value;document.getElementById('ocf-btn').disabled=false"></td>
+      <td style="padding:4px;font-family:'DM Mono',monospace">${esc(f.id)}<div style="color:var(--muted)">${esc([f.serie,f.folio].filter(Boolean).join(' ')||'')}</div></td>
+      <td style="padding:4px">${esc(f.fecha_factura||'')}</td><td style="padding:4px">${esc(f.customer||'')}</td>
+      <td style="padding:4px;font-family:'DM Mono',monospace;font-size:11px">${esc(f.job||'—')}<div style="color:var(--muted)">${esc(f.cpo_id||'')}</div></td>
+      <td style="padding:4px;text-align:right;font-family:'DM Mono',monospace">${ifFmt(f.total_factura)} <span style="color:var(--muted);font-size:10px">${esc(f.moneda)}</span>${f.moneda!=='USD'&&f.equiv_usd!=null?`<div style="font-size:10px;color:var(--muted)">≈ ${ifFmt(f.equiv_usd)} USD</div>`:''}</td>
+      <td style="padding:4px;text-align:right;font-family:'DM Mono',monospace;color:${f.coincide?'#1f8a4c':'var(--red)'}">${f.diferencia==null?(f.motivo?'s/TC':'—'):(f.diferencia>0?'+':'')+ifFmt(f.diferencia).replace('$-','-$')}</td>
+      <td style="padding:4px;font-size:10px">${f.coincide?'<b style="color:#1f8a4c">✓ coincide</b>':''}${f.relacion.length?`<div style="color:var(--muted)">mismo ${f.relacion.join(', ')}</div>`:''}</td></tr>`).join('')}</tbody></table>`
+    : '<div style="padding:14px;text-align:center;color:var(--muted)">Sin facturas en el filtro.</div>';
+  const btn = document.getElementById('ocf-btn'); btn.style.display = ''; btn.disabled = !_ocFac.sel || !L.some(f=>f.id===_ocFac.sel);
+}
+async function ocFacVincular(){
+  if(!_ocFac.sel) return;
+  const f = _ocFac.data.facturas.find(x=>x.id===_ocFac.sel);
+  if(!confirm(`¿Saldar la orden ${_ocFac.oid} con la factura ${f.id} (${[f.serie,f.folio].filter(Boolean).join(' ')||'sin serie/folio'}) por ${ifFmt(f.total_factura)} ${f.moneda}?`)) return;
+  const r = await apiCall('POST', `/ordenes-cobro/${encodeURIComponent(_ocFac.oid)}/vincular`, {cpc_id: _ocFac.sel});
+  if(r.error){ toast(r.error,'er',7000); return; }
+  closeMo('mo-oc-facturar'); toast(`Orden ${_ocFac.oid} saldada con la factura ${_ocFac.sel}`,'ok',5000); ocCargar();
+}
+async function ocDesligar(oid){
+  const motivo = prompt('Motivo para desligar la factura (la orden regresa a "Por facturar"):',''); if(motivo===null) return;
+  const r = await apiCall('POST', `/ordenes-cobro/${encodeURIComponent(oid)}/desvincular`, {motivo});
+  if(r.error){ toast(r.error,'er'); return; }
+  toast('Factura desligada','if'); ocCargar();
 }
