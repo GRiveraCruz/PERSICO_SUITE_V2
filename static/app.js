@@ -125,6 +125,8 @@ function switchMenu(mod, groupId) {
   if(mod==='fin-ordenes-cobro') { setTimeout(ocCargar,100); }
   if(mod==='mgmt-income-forecast') { setTimeout(ifCargar,100); }
   if(mod==='fin-prog-pagos') { setTimeout(ppCargar,100); }
+  if(mod==='fin-cashflow') { setTimeout(cfCargar,100); }
+  if(mod==='mgmt-costo-mo') { setTimeout(async ()=>{ await umaCargar(); cmoCargar(); },100); }
   if(mod==='personal-listado') { setTimeout(loadPersonal,100); }
   if(mod==='consignacion') { setTimeout(loadCsg,50); }
   if(mod==='apartados') { setTimeout(loadApartados,50); }   // antes solo se cargaba al abrir la suite
@@ -5979,9 +5981,9 @@ let USER_PERMS = null;
 
 // rev77: módulos que heredan el nivel de otro mientras el administrador no les fije uno
 const MODULOS_HEREDAN = {'projconfig-dashboard':'projconfig','projconfig-presupuesto':'projconfig','projconfig-timing':'projconfig',
-  'projconfig-abiertos':'projconfig','projconfig-cambios':'projconfig','projconfig-documentos':'projconfig','personal-tipos-puesto':'personal-perfiles','rrhh-kpis':'personal-listado','fin-cpc':'fin-cpp','ops-piso':'ops-capacidad','fin-datos-fiscales':'fin-esquemas','fin-ordenes-cobro':'fin-cpc','mgmt-income-forecast':'fin-cpc','fin-prog-pagos':'fin-cpp'};
+  'projconfig-abiertos':'projconfig','projconfig-cambios':'projconfig','projconfig-documentos':'projconfig','personal-tipos-puesto':'personal-perfiles','rrhh-kpis':'personal-listado','fin-cpc':'fin-cpp','ops-piso':'ops-capacidad','fin-datos-fiscales':'fin-esquemas','fin-ordenes-cobro':'fin-cpc','mgmt-income-forecast':'fin-cpc','fin-prog-pagos':'fin-cpp','mgmt-costo-mo':'rrhh-sueldos','fin-cashflow':'fin-cpp'};
 const MODULE_LABELS = {
-  'compras-requisicion':'Requisición de Compra', 'fin-cpc':'Cuentas por Cobrar (CPC)', 'fin-datos-fiscales':'Datos fiscales', 'fin-ordenes-cobro':'Órdenes de cobro', 'mgmt-income-forecast':'Management — Income Forecast', 'fin-prog-pagos':'Programación de pagos',
+  'compras-requisicion':'Requisición de Compra', 'fin-cpc':'Cuentas por Cobrar (CPC)', 'fin-datos-fiscales':'Datos fiscales', 'fin-ordenes-cobro':'Órdenes de cobro', 'mgmt-income-forecast':'Management — Income Forecast', 'fin-prog-pagos':'Programación de pagos', 'mgmt-costo-mo':'Management — Costo de mano de obra', 'fin-cashflow':'Cash Flow Forecast',
   // Proyectos
   'jobs':'Job Register', 'pt':'PT Numbers', 'sv':'SV Numbers',
   'rates':'Hourly Rates', 'quotes':'Quote Register',
@@ -6038,9 +6040,9 @@ const MODULE_GROUPS = [
   { label: '✈ Servicio',             mods: ['viaticos','gastos-viaje','envios'] },
   { label: '⚙ Configurar Proyecto',   mods: ['projconfig','projconfig-dashboard','projconfig-presupuesto','projconfig-timing','projconfig-abiertos','projconfig-cambios','projconfig-documentos'] },
   { label: '📊 Control de Costo',     mods: ['wh','report','multirpt','fx'] },
-  { label: '💹 Finanzas',             mods: ['fin-recepciones','fin-procesarcompra','fin-cpp','fin-prog-pagos','fin-cpc','fin-ordenes-cobro','fin-pagos','fin-esquemas','fin-datos-fiscales'] },
+  { label: '💹 Finanzas',             mods: ['fin-recepciones','fin-procesarcompra','fin-cpp','fin-prog-pagos','fin-cashflow','fin-cpc','fin-ordenes-cobro','fin-pagos','fin-esquemas','fin-datos-fiscales'] },
   { label: '🧑‍💼 Recursos Humanos',    mods: ['rrhh-asistencia','rrhh-vacaciones','rrhh-permisos','rrhh-salario','rrhh-sueldos','rrhh-nomina','personal-areas','personal-tipos-puesto','personal-perfiles','personal-listado'] },
-  { label: '📈 Management',           mods: ['rrhh-kpis','mgmt-income-forecast'] },
+  { label: '📈 Management',           mods: ['rrhh-kpis','mgmt-income-forecast','mgmt-costo-mo'] },
   { label: '🏭 Operaciones',           mods: ['ops-capacidad','ops-ot','ops-op','ops-os','ops-piso'] },
 ];
 
@@ -6162,6 +6164,11 @@ function adminSelectUser(uname) {
         <label for="admin-sal-${uname}" style="font-size:12px;font-weight:600;cursor:pointer">🔒 Puede ver/editar Salarios (Sueldos y Salarios)</label>
         ${isAdmin?'<span style="font-size:10px;color:var(--muted);margin-left:auto">Los administradores siempre pueden</span>':''}
       </div>
+      <div style="display:flex;align-items:center;gap:8px;background:rgba(200,16,46,.06);border:1px solid rgba(200,16,46,.3);border-radius:8px;padding:10px 14px;margin-bottom:14px">
+        <input type="checkbox" id="admin-cmo-${uname}" ${info.puede_ver_costo_mo||isAdmin?'checked':''} ${isAdmin?'disabled':''} onchange="adminSetFlag('${uname}','puede_ver_costo_mo',this.checked,'las tablas de Costo de mano de obra')" style="width:16px;height:16px;cursor:pointer">
+        <label for="admin-cmo-${uname}" style="font-size:12px;font-weight:600;cursor:pointer">🔒 Puede ver las tablas de Costo de mano de obra (Management) <span style="font-weight:400;color:var(--muted2)">· además se pide su contraseña al abrirlas</span></label>
+        ${isAdmin?'<span style="font-size:10px;color:var(--muted);margin-left:auto">Los administradores siempre pueden</span>':''}
+      </div>
       <div style="display:flex;align-items:center;gap:8px;background:rgba(0,0,0,.03);border:1px solid var(--border);border-radius:8px;padding:8px 14px;margin-bottom:14px">
         <label style="font-size:12px;font-weight:600;white-space:nowrap">👤 Persona en Control de Personal</label>
         <select onchange="adminSetTid('${esc(uname)}', this.value)" style="flex:1;background:var(--inp);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12px">
@@ -6185,6 +6192,14 @@ function adminSelectUser(uname) {
     </div>`;
 }
 
+async function adminSetFlag(uname, flag, checked, texto){      // rev128
+  try{
+    const r=await fetch('/api/admin/users/'+uname, {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({[flag]: checked})}).then(r=>r.json());
+    if(r.error){ toast(r.error,'er'); return; }
+    if(_adminUsersData?.users?.[uname]) _adminUsersData.users[uname][flag] = checked;
+    toast(`${uname} → ${checked?'puede':'ya no puede'} ver ${texto}`,'ok',2500);
+  }catch(e){ toast('Error guardando permiso','er'); }
+}
 async function adminSetPuedeVerSalarios(uname, checked){
   try{
     const r=await fetch('/api/admin/users/'+uname, {
@@ -6289,6 +6304,8 @@ function applyPermsToDom(d) {
     'fin-ordenes-cobro':  ["switchMenu('fin-ordenes-cobro'"],
     'mgmt-income-forecast': ["switchMenu('mgmt-income-forecast'"],
     'fin-prog-pagos':     ["switchMenu('fin-prog-pagos'"],
+    'mgmt-costo-mo':      ["switchMenu('mgmt-costo-mo'"],
+    'fin-cashflow':       ["switchMenu('fin-cashflow'"],
     'compras-requisicion':["switchMenu('requisicion'"],
     'fin-pagos':          ["switchMenu('fin-pagos'"],
     'fin-esquemas':       ["switchMenu('fin-esquemas'"],
@@ -20282,4 +20299,245 @@ async function ocDesligar(oid){
   const r = await apiCall('POST', `/ordenes-cobro/${encodeURIComponent(oid)}/desvincular`, {motivo});
   if(r.error){ toast(r.error,'er'); return; }
   toast('Factura desligada','if'); ocCargar();
+}
+
+
+// ════════════════════════════════════════════════════════
+//  rev127 — UMA automática + Management ▸ Costo de mano de obra
+// ════════════════════════════════════════════════════════
+let _uma = null;
+async function umaCargar(){
+  try{ _uma = await fetch('/api/uma').then(r=>r.json()); }catch(e){ return; }
+  // los campos "UMA Diaria" de Calcular Salario, Sueldos y Nómina toman la UMA vigente
+  ['cl-uma','sal-uma','np-gen-uma'].forEach(id=>{ const el=document.getElementById(id); if(el && (!el.dataset.umaTocado) && (el.value==='' || el.value==='113.14')) el.value = _uma.vigente; });
+}
+document.addEventListener('input', e=>{ if(['cl-uma','sal-uma','np-gen-uma'].includes(e.target?.id)) e.target.dataset.umaTocado='1'; });
+setTimeout(umaCargar, 2500);
+async function umaAbrir(){
+  await umaCargar(); if(!_uma) return;
+  const r = _uma.ultimo_resultado;
+  document.getElementById('uma-info').innerHTML = `UMA vigente hoy: <b style="font-size:15px">$${Number(_uma.vigente).toFixed(2)}</b> diarios.<br>
+    <span style="font-size:11px;color:var(--muted2)">La publica el INEGI en enero y entra en vigor el 1 de febrero. La Suite revisa el INEGI automáticamente (cada semana; a diario en enero y febrero).
+    Última revisión: ${_uma.ultima_revision ? esc(String(_uma.ultima_revision).replace('T',' ').slice(0,16)) : 'aún no'}${r ? (r.ok ? ` · ✓ ${r.anio}: $${r.diario}` : ` · <span style="color:var(--amber)">⚠ ${esc(r.error||'')}</span>`) : ''}</span>`;
+  document.getElementById('uma-tb').innerHTML = (_uma.valores||[]).map(v=>`<tr style="border-top:1px solid var(--border)"><td style="padding:5px">${v.anio}</td>
+    <td style="padding:5px;text-align:right;font-family:'DM Mono',monospace;font-weight:700">$${Number(v.diario).toFixed(2)}</td>
+    <td style="padding:5px;text-align:right;font-family:'DM Mono',monospace;color:var(--muted2)">$${(v.diario*30.4).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+    <td style="padding:5px;font-size:11px">${esc(v.fuente||'')}${v.verificar?' <span style="color:var(--amber)">· por verificar</span>':''}${v.por?` · ${esc(v.por)}`:''}</td></tr>`).join('');
+  document.getElementById('uma-anio').value = new Date().getFullYear();
+  document.getElementById('mo-uma').classList.add('on');
+}
+async function umaInegi(){
+  toast('Consultando el INEGI…','if',3000);
+  const r = await apiCall('POST','/uma/actualizar',{});
+  if(r.error && !r.ok){ toast(r.error,'er',6000); }
+  else toast(`UMA ${r.anio}: $${r.diario}${r.cambio?' (actualizada)':' (sin cambios)'}`,'ok',5000);
+  await umaAbrir(); if(document.getElementById('mod-mgmt-costo-mo')?.classList.contains('on')) cmoCargar();
+}
+async function umaGuardar(){
+  const r = await apiCall('PUT','/uma',{anio: document.getElementById('uma-anio').value, diario: document.getElementById('uma-diario').value});
+  if(r.error){ toast(r.error,'er'); return; }
+  toast('UMA guardada','ok'); await umaAbrir(); if(document.getElementById('mod-mgmt-costo-mo')?.classList.contains('on')) cmoCargar();
+}
+
+let _cmo = null;
+const cmo$ = v => '$'+Number(v||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+async function cmoCargar(){
+  const q = new URLSearchParams({isn_pct: document.getElementById('cmo-isn').value, prima_vac_pct: document.getElementById('cmo-pv').value, prima_riesgo_pct: document.getElementById('cmo-pr').value});
+  try{ _cmo = await fetch('/api/costo-mano-obra?'+q).then(r=>r.json()); if(_cmo.error) throw new Error(_cmo.error); }
+  catch(e){ document.getElementById('cmo-cards').innerHTML = `<div style="color:var(--red)">⚠ ${esc(e.message)}</div>`; return; }
+  cmoRender();
+}
+const CMO_COLS = [['salario_bruto','Salario bruto'],['isr','ISR (retenido)'],['imss_obrero','IMSS obrero'],['neto','Neto al trabajador'],['imss_patronal','IMSS patronal'],['infonavit','INFONAVIT 5%'],['isn','ISN'],['prestaciones','Provisión prestaciones'],['costo_empresa','Costo total empresa']];
+function cmoRender(){
+  const d = _cmo, t = d.totales, fx = d.tipo_cambio;
+  document.getElementById('cmo-uma').innerHTML = `UMA $${Number(d.uma).toFixed(2)} · TC ${fx?Number(fx).toFixed(4):'—'}`;
+  const card = (tit, v, sub, col, big) => `<div style="background:var(--card,#fff);border:1px solid var(--border);border-radius:10px;padding:11px 13px;${big?'border-color:var(--red)':''}"><div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)">${tit}</div><div style="font-size:${big?22:18}px;font-weight:800;color:${col||'var(--text)'};margin-top:2px">${v}</div><div style="font-size:10.5px;color:var(--muted2)">${sub||''}</div></div>`;
+  const usd = v => fx ? `≈ ${cmo$(v/fx)} USD` : '';
+  document.getElementById('cmo-cards').innerHTML = card('Trabajadores', d.personas||0, d.sin_salario.length?`${d.sin_salario.length} activo(s) sin salario`:'activos con salario')
+    + card('Salario bruto mensual', cmo$(t.salario_bruto), usd(t.salario_bruto))
+    + card('ISR mensual', cmo$(t.isr), d.tabla_isr ? 'retenido al trabajador' : '⚠ falta la tabla de ISR', d.tabla_isr?null:'var(--amber)')
+    + card('IMSS obrero', cmo$(t.imss_obrero), 'retenido al trabajador')
+    + card('Neto a pagar', cmo$(t.neto), 'bruto − ISR − IMSS obrero')
+    + card('IMSS patronal', cmo$(t.imss_patronal), usd(t.imss_patronal))
+    + card('INFONAVIT + ISN', cmo$(t.infonavit + t.isn), `INFONAVIT ${cmo$(t.infonavit)} · ISN ${cmo$(t.isn)}`)
+    + card('Provisión prestaciones', cmo$(t.prestaciones), 'aguinaldo, vacaciones y prima')
+    + card('Costo total empresa / mes', cmo$(t.costo_empresa), usd(t.costo_empresa), 'var(--red)', true);
+  document.getElementById('cmo-nota').innerHTML = `<b>Cómo leerlo:</b> el <b>ISR</b> y el <b>IMSS obrero</b> forman parte del salario bruto (se retienen al trabajador y se enteran al SAT/IMSS), por eso no se suman otra vez al costo. El <b>costo total para la empresa</b> = salario bruto + IMSS patronal + INFONAVIT + ISN + provisión de prestaciones. Salida de efectivo mensual de nómina: neto ${cmo$(t.neto)} a trabajadores + ${cmo$(t.isr + t.imss_obrero)} de retenciones + ${cmo$(t.imss_patronal + t.infonavit + t.isn)} de cuotas patronales.`;
+  // rev128: tablas protegidas (permiso + contraseña)
+  const tb = d.tablas || {}, lock = document.getElementById('cmo-lock'), tablas = document.getElementById('cmo-tablas');
+  clearTimeout(window._cmoExpira);
+  if(!tb.desbloqueado){
+    tablas.style.display = 'none'; lock.style.display = '';
+    lock.innerHTML = !tb.permiso
+      ? `<div style="font-size:13px">🔒 Las tablas por área y por trabajador son información sensible.<br><span style="color:var(--muted2)">No tienes el permiso <b>"Puede ver las tablas de Costo de mano de obra"</b>. Pídelo al administrador (Config ▸ Administrador).</span></div>`
+      : `<div style="font-size:13px;margin-bottom:10px">🔒 Las tablas por área y por trabajador son información sensible. <b>Confirma tu contraseña</b> para verlas (se abren por 15 minutos).</div>
+         <div style="display:flex;gap:8px;justify-content:center"><input type="password" id="cmo-pw" placeholder="Tu contraseña" autocomplete="current-password" onkeydown="if(event.key==='Enter')cmoDesbloquear()" style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;min-width:220px">
+         <button class="btn-new" style="width:auto;padding:8px 16px" onclick="cmoDesbloquear()">Ver tablas</button></div><div id="cmo-pw-msg" style="font-size:12px;color:var(--red);margin-top:6px"></div>`;
+    return;
+  }
+  lock.style.display = 'none'; tablas.style.display = '';
+  document.getElementById('cmo-lock-info').innerHTML = `🔓 Tablas visibles por ${Math.ceil(tb.expira_en/60)} min · <a href="#" onclick="cmoBloquear();return false">Ocultar ahora</a>`;
+  window._cmoExpira = setTimeout(()=>{ toast('Las tablas de Costo de mano de obra se ocultaron (pasaron 15 min)','if'); cmoCargar(); }, Math.max(1000, tb.expira_en*1000));
+  const thA = `<tr><th>Área</th><th style="text-align:right">Personas</th>${CMO_COLS.map(([,l])=>`<th style="text-align:right">${l}</th>`).join('')}</tr>`;
+  document.getElementById('cmo-area-th').innerHTML = thA;
+  const filaA = (n, a, b) => `<tr style="${b?'font-weight:700;border-top:2px solid var(--border)':''}"><td>${esc(n)}</td><td style="text-align:right">${a.personas}</td>${CMO_COLS.map(([k])=>`<td style="text-align:right;font-family:'DM Mono',monospace;${k==='costo_empresa'?'font-weight:700;color:var(--red)':''}">${cmo$(a[k])}</td>`).join('')}</tr>`;
+  document.getElementById('cmo-area-tb').innerHTML = Object.entries(d.por_area).map(([n,a])=>filaA(n,a)).join('') + filaA('Total', {personas: d.personas||0, ...t}, true);
+  document.getElementById('cmo-ind-box').style.display = d.ver_individual ? '' : 'none';
+  if(d.ver_individual){
+    const q = (document.getElementById('cmo-q').value||'').toLowerCase();
+    const L = d.filas.filter(f=>!q || [f.nombre,f.area,f.puesto].join(' ').toLowerCase().includes(q));
+    document.getElementById('cmo-th').innerHTML = `<tr><th>Trabajador</th><th>Área</th><th style="text-align:right">Antig.</th><th style="text-align:right">SBC diario</th>${CMO_COLS.map(([,l])=>`<th style="text-align:right">${l}</th>`).join('')}</tr>`;
+    document.getElementById('cmo-tb').innerHTML = L.map(f=>`<tr><td><b>${esc(f.nombre)}</b><div style="font-size:10.5px;color:var(--muted)">${esc(f.puesto||'')}</div></td><td>${esc(f.area)}</td><td style="text-align:right">${f.antiguedad} a</td>
+      <td style="text-align:right;font-family:'DM Mono',monospace">${cmo$(f.sbc_diario)}</td>${CMO_COLS.map(([k])=>`<td style="text-align:right;font-family:'DM Mono',monospace;${k==='costo_empresa'?'font-weight:700':''}">${cmo$(f[k])}</td>`).join('')}</tr>`).join('');
+  }
+  document.getElementById('cmo-sin').innerHTML = d.sin_salario.length ? `<span style="color:var(--amber)">⚠ ${d.sin_salario.length} trabajador(es) activo(s) sin salario capturado en Sueldos y Salarios (no se incluyen):</span> ${d.sin_salario.map(x=>esc(x.nombre)).join(', ')}` : '';
+}
+async function cmoDesbloquear(){
+  const pw = document.getElementById('cmo-pw')?.value || '';
+  if(!pw){ document.getElementById('cmo-pw-msg').textContent = 'Escribe tu contraseña'; return; }
+  const r = await fetch('/api/costo-mano-obra/desbloquear',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})}).then(r=>r.json());
+  if(r.error){ document.getElementById('cmo-pw-msg').textContent = r.error; document.getElementById('cmo-pw').value=''; return; }
+  cmoCargar();
+}
+async function cmoBloquear(){ await fetch('/api/costo-mano-obra/bloquear',{method:'POST'}); cmoCargar(); }
+function cmoExportar(){
+  if(!(_cmo?.tablas?.desbloqueado)){ toast('Primero abre las tablas con tu contraseña','er'); return; }
+  const d = _cmo, q = v => `"${String(v??'').replace(/"/g,'""')}"`;
+  const head = ['Area','Personas',...CMO_COLS.map(c=>c[1])].join(',');
+  const rowsA = Object.entries(d.por_area).map(([n,a])=>[n,a.personas,...CMO_COLS.map(([k])=>a[k])].map(q).join(','));
+  let csv = ['COSTO DE MANO DE OBRA (mensual, MXN)', `UMA,${d.uma}`, '', head, ...rowsA, ['Total', d.personas, ...CMO_COLS.map(([k])=>d.totales[k])].map(q).join(',')];
+  if(d.ver_individual){ csv.push('', ['Trabajador','Area','Puesto','Antiguedad','SBC diario',...CMO_COLS.map(c=>c[1])].join(','),
+    ...d.filas.map(f=>[f.nombre,f.area,f.puesto,f.antiguedad,f.sbc_diario,...CMO_COLS.map(([k])=>f[k])].map(q).join(','))); }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\ufeff'+csv.join('\n')],{type:'text/csv'})); a.download = `costo_mano_obra_${new Date().toISOString().slice(0,10)}.csv`; a.click();
+}
+
+
+// ════════════════════════════════════════════════════════
+//  rev128 — Finanzas ▸ Cash Flow Forecast
+// ════════════════════════════════════════════════════════
+let _cf = null;
+const cf$ = v => (v<0?'−':'')+'$'+Math.abs(Number(v||0)).toLocaleString('en-US',{maximumFractionDigits:0});
+const CF_FILAS = [['cobros','Cobros esperados',1],['cpp','Proveedores (CPP)',-1],['nom_neto','Nómina (neto)',-1],['nom_isr','ISR retenido',-1],['nom_imss','IMSS',-1],['nom_rcv','RCV + INFONAVIT',-1],['nom_isn','ISN',-1],['nom_aguinaldo','Aguinaldo',-1]];
+async function cfCargar(){
+  try{ _cf = await fetch('/api/cashflow?semanas='+document.getElementById('cf-sem').value).then(r=>r.json()); if(_cf.error) throw new Error(_cf.error); }
+  catch(e){ document.getElementById('cf-tabla').innerHTML = `<tr><td style="color:var(--red);padding:16px">⚠ ${esc(e.message)}</td></tr>`; return; }
+  cfRender();
+}
+function cfRender(){
+  const d = _cf, R = d.resumen, cols = d.columnas, min = Number(d.minimo_usd||0);
+  const fin = R.saldo_final[cols[cols.length-1]], minSaldo = Math.min(...cols.map(c=>R.saldo_final[c]));
+  const semMin = cols.find(c=>R.saldo_final[c]===minSaldo), bajo = cols.filter(c=>R.saldo_final[c] < min);
+  const totE = cols.reduce((a,c)=>a+R.entradas[c],0), totS = cols.reduce((a,c)=>a+R.salidas[c],0);
+  const card = (t,v,sub,col) => `<div style="background:var(--card,#fff);border:1px solid var(--border);border-radius:10px;padding:11px 13px"><div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)">${t}</div><div style="font-size:20px;font-weight:800;color:${col||'var(--text)'};margin-top:2px">${v}</div><div style="font-size:10.5px;color:var(--muted2)">${sub||''}</div></div>`;
+  document.getElementById('cf-cards').innerHTML = card('Saldo inicial', cf$(d.saldo_inicial), d.cuentas.length ? `${d.cuentas.length} cuenta(s) · al ${esc(d.fecha_saldo||'—')}` : '<span style="color:var(--amber)">Captura los saldos bancarios</span>')
+    + card('Entradas', cf$(totE), 'cobros esperados', '#1f8a4c') + card('Salidas', cf$(totS), 'proveedores + nómina', 'var(--red)')
+    + card('Saldo final', cf$(fin), `al cierre de ${cols.length-1} semanas`, fin<0?'var(--red)':fin<min?'var(--amber)':'#1f8a4c')
+    + card('Saldo más bajo', cf$(minSaldo), semMin ? `semana ${semMin==='Vencido'?'actual':semMin.split('-W')[1]}` : '', minSaldo<0?'var(--red)':minSaldo<min?'var(--amber)':null)
+    + card('Semanas bajo el mínimo', bajo.length, `mínimo ${cf$(min)}`, bajo.length?'var(--red)':'#1f8a4c');
+  const etq = c => c==='Vencido' ? 'Vencido' : `S${c.split('-W')[1]}<div style="font-weight:400;font-size:9.5px;color:var(--muted)">${new Date(d.lunes[c]+'T12:00:00').toLocaleDateString('es-MX',{day:'2-digit',month:'short'})}</div>`;
+  const celda = (fila, c, v, signo) => `<td onclick="cfDetalle('${fila}','${c}')" style="padding:5px 8px;text-align:right;font-family:'DM Mono',monospace;cursor:${v?'pointer':'default'};color:${!v?'var(--muted)':signo>0?'#1f8a4c':'var(--text)'}">${v?cf$(v):'·'}</td>`;
+  const th = `<tr style="background:rgba(0,0,0,.04)"><th style="text-align:left;padding:6px 10px;position:sticky;left:0;background:var(--card,#fff);min-width:170px">USD</th>${cols.map(c=>`<th style="padding:6px 8px;text-align:right;white-space:nowrap;${c===d.semana_actual?'color:#1f3864':c==='Vencido'?'color:var(--red)':''}">${etq(c)}</th>`).join('')}<th style="padding:6px 8px;text-align:right">Total</th></tr>`;
+  const filaRes = (lab, obj, estilo) => `<tr style="${estilo}"><td style="padding:5px 10px;position:sticky;left:0;background:var(--card,#fff);font-weight:700">${lab}</td>${cols.map(c=>`<td style="padding:5px 8px;text-align:right;font-family:'DM Mono',monospace;font-weight:700;color:${obj[c]<0?'var(--red)':obj===R.saldo_final&&obj[c]<min?'var(--amber)':'var(--text)'}">${cf$(obj[c])}</td>`).join('')}<td></td></tr>`;
+  const sumF = f => cols.reduce((a,c)=>a+d.filas[f][c],0);
+  document.getElementById('cf-tabla').innerHTML = th
+    + filaRes('Saldo inicial', R.saldo_inicial, 'background:rgba(31,56,100,.04)')
+    + CF_FILAS.map(([f,lab,sg],i)=>`${i===1?`<tr><td colspan="${cols.length+2}" style="padding:4px 10px;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--red);border-top:1px solid var(--border)">Salidas</td></tr>`:''}${i===0?`<tr><td colspan="${cols.length+2}" style="padding:4px 10px;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#1f8a4c">Entradas</td></tr>`:''}
+      <tr style="border-top:1px solid var(--border)"><td style="padding:5px 10px;position:sticky;left:0;background:var(--card,#fff);${i>=2?'padding-left:20px':''}">${lab}</td>${cols.map(c=>celda(f,c,d.filas[f][c],sg)).join('')}<td style="padding:5px 8px;text-align:right;font-family:'DM Mono',monospace;font-weight:700">${cf$(sumF(f))}</td></tr>`).join('')
+    + filaRes('Flujo neto de la semana', R.neto, 'border-top:2px solid var(--border)')
+    + filaRes('Saldo final', R.saldo_final, 'border-top:1px solid var(--border);background:rgba(31,56,100,.06)');
+  // gráfica de saldo
+  const vals = cols.map(c=>R.saldo_final[c]), mx = Math.max(min, ...vals, 1), mn = Math.min(0, ...vals);
+  const H = 150, W = Math.max(600, cols.length*48, (document.getElementById('cf-chart').clientWidth||900) - 10), y = v => 10 + (mx - v) / ((mx - mn) || 1) * (H - 20), x = i => 30 + i * ((W - 50) / Math.max(1, cols.length - 1));
+  document.getElementById('cf-chart').innerHTML = `<div style="overflow-x:auto"><svg width="${W}" height="${H+22}" style="display:block">
+    <line x1="30" x2="${W-20}" y1="${y(0)}" y2="${y(0)}" stroke="#94a3b8" stroke-width="1"/>
+    ${min?`<line x1="30" x2="${W-20}" y1="${y(min)}" y2="${y(min)}" stroke="#d97706" stroke-dasharray="5 4" stroke-width="1"/><text x="${W-22}" y="${y(min)-4}" font-size="10" text-anchor="end" fill="#d97706">mínimo ${cf$(min)}</text>`:''}
+    <polyline fill="none" stroke="#1f3864" stroke-width="2.5" points="${vals.map((v,i)=>`${x(i)},${y(v)}`).join(' ')}"/>
+    ${vals.map((v,i)=>`<circle cx="${x(i)}" cy="${y(v)}" r="3.5" fill="${v<0?'#c8102e':v<min?'#d97706':'#1f3864'}"><title>${cols[i]}: ${cf$(v)}</title></circle>
+      <text x="${x(i)}" y="${H+16}" font-size="9.5" text-anchor="middle" fill="#64748b">${cols[i]==='Vencido'?'Venc.':'S'+cols[i].split('-W')[1]}</text>`).join('')}
+  </svg></div>`;
+  document.getElementById('cf-avisos').innerHTML = (d.avisos||[]).map(a=>`⚠ ${esc(a)}`).join(' · ') + (d.nomina_mes_mxn ? ` · Nómina mensual (MXN): neto $${Number(d.nomina_mes_mxn.neto).toLocaleString('en-US')} de ${d.nomina_mes_mxn.personas} trabajador(es) · TC ${d.tipo_cambio||'—'}` : '');
+}
+function cfDetalle(fila, col){
+  const L = (_cf.detalle[fila]||[]).filter(x=>x.semana===col); if(!L.length) return;
+  const nombre = (CF_FILAS.find(f=>f[0]===fila)||[])[1];
+  alert(`${nombre} · ${col}\n\n` + L.slice(0,40).map(x=>`${x.fecha}  ${cf$(x.monto)}  ${x.desc}`).join('\n') + (L.length>40?`\n… y ${L.length-40} más`:''));
+}
+function cfConfigAbrir(){
+  if(!_cf) return;
+  if(!_cf.puede_editar){ toast('Sin permiso para editar los saldos','er'); return; }
+  window._cfcCuentas = JSON.parse(JSON.stringify(_cf.cuentas||[]));
+  if(!_cfcCuentas.length) _cfcCuentas.push({cuenta:'', moneda:'MXN', saldo:''});
+  cfcRender();
+  document.getElementById('cfc-fecha').value = _cf.fecha_saldo || new Date().toISOString().slice(0,10);
+  document.getElementById('cfc-min').value = _cf.minimo_usd ?? 30000;
+  document.getElementById('cfc-per').value = _cf.periodicidad_nomina || 'quincenal';
+  const pm = _cf.parametros || {};
+  document.getElementById('cfc-isn').value = pm.isn_pct ?? 3; document.getElementById('cfc-pv').value = pm.prima_vac_pct ?? 25; document.getElementById('cfc-pr').value = pm.prima_riesgo_pct ?? 0.5;
+  document.getElementById('mo-cf-config').classList.add('on');
+}
+function cfcRender(){
+  document.getElementById('cfc-cuentas').innerHTML = `<tr style="background:rgba(0,0,0,.035)"><th style="text-align:left;padding:4px;cursor:default">Cuenta</th><th style="padding:4px;cursor:default">Moneda</th><th style="text-align:right;padding:4px;cursor:default">Saldo</th><th></th></tr>`
+    + _cfcCuentas.map((c,i)=>`<tr><td style="padding:3px"><input value="${esc(c.cuenta)}" placeholder="ej. Bancomer MXN" oninput="_cfcCuentas[${i}].cuenta=this.value" style="width:100%;padding:5px"></td>
+      <td style="padding:3px"><select onchange="_cfcCuentas[${i}].moneda=this.value" style="padding:5px"><option ${c.moneda==='MXN'?'selected':''}>MXN</option><option ${c.moneda==='USD'?'selected':''}>USD</option></select></td>
+      <td style="padding:3px"><input type="number" step="0.01" value="${c.saldo??''}" oninput="_cfcCuentas[${i}].saldo=this.value" style="width:100%;padding:5px;text-align:right"></td>
+      <td><button class="fi-del" onclick="_cfcCuentas.splice(${i},1);cfcRender()">✕</button></td></tr>`).join('');
+}
+function cfcAgregar(){ _cfcCuentas.push({cuenta:'', moneda:'MXN', saldo:''}); cfcRender(); }
+async function cfcGuardar(){
+  const r = await apiCall('PUT','/cashflow/config',{cuentas:_cfcCuentas, fecha_saldo:document.getElementById('cfc-fecha').value, minimo_usd:document.getElementById('cfc-min').value,
+    periodicidad_nomina:document.getElementById('cfc-per').value, isn_pct:document.getElementById('cfc-isn').value, prima_vac_pct:document.getElementById('cfc-pv').value, prima_riesgo_pct:document.getElementById('cfc-pr').value});
+  if(r.error){ toast(r.error,'er'); return; }
+  closeMo('mo-cf-config'); toast('Saldos y parámetros guardados','ok'); cfCargar();
+}
+function cfExportar(){
+  const d = _cf, cols = d.columnas, q = v => `"${String(v??'').replace(/"/g,'""')}"`;
+  const R = d.resumen, linea = (lab, obj) => [lab, ...cols.map(c=>obj[c])].map(q).join(',');
+  const csv = [['USD', ...cols].map(q).join(','), linea('Saldo inicial', R.saldo_inicial), ...CF_FILAS.map(([f,l])=>linea(l, d.filas[f])), linea('Flujo neto', R.neto), linea('Saldo final', R.saldo_final)].join('\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv'})); a.download = `cash_flow_forecast_${new Date().toISOString().slice(0,10)}.csv`; a.click();
+}
+
+
+// rev129 — Reporte gerencial (Management ▸ KPIs)
+function rgAbrir(){
+  const y = new Date().getFullYear(), sel = document.getElementById('rg-anio'), act = document.getElementById('kpi-anio')?.value || y;
+  sel.innerHTML = [y+1, y, y-1, y-2].map(a=>`<option ${String(a)===String(act)?'selected':''}>${a}</option>`).join('');
+  document.getElementById('rg-msg').textContent = ''; document.getElementById('rg-pw').value = '';
+  document.getElementById('mo-rg').classList.add('on');
+}
+async function rgGenerar(){
+  const anio = document.getElementById('rg-anio').value, msg = document.getElementById('rg-msg');
+  const w = window.open('about:blank', '_blank');            // se abre antes del await para que el navegador no la bloquee
+  if(document.getElementById('rg-nomina').checked){
+    const pw = document.getElementById('rg-pw').value;
+    if(!pw){ msg.textContent = 'Escribe tu contraseña o desmarca la nómina por área'; w && w.close(); return; }
+    const r = await fetch('/api/costo-mano-obra/desbloquear',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})}).then(r=>r.json()).catch(e=>({error:e.message}));
+    if(r.error){ msg.textContent = r.error; w && w.close(); return; }
+  }
+  const url = '/api/reporte-gerencial?anio=' + encodeURIComponent(anio);
+  closeMo('mo-rg');
+  if(w) w.document.write('<p style="font-family:Arial;padding:30px;color:#666">Generando el reporte gerencial…</p>');
+  try{
+    // rev130: los proyectos en WIP se muestran con las mismas tarjetas del dashboard de inicio
+    const [html, ing, om] = await Promise.all([
+      fetch(url).then(r=>r.text()),
+      fetch('/api/dashboard/engineering').then(r=>r.json()).catch(e=>({error:e.message})),
+      fetch('/api/dashboard/operation-manager').then(r=>r.json()).catch(e=>({error:e.message})),
+    ]);
+    let out = html;
+    if(ing && !ing.error && Array.isArray(ing.cards)){
+      const fin = Object.fromEntries(((om && om.jobs) || []).map(j=>[j.job_number, j]));
+      const wip = ing.cards.filter(c=>String(c.status||'WIP').toUpperCase()==='WIP').sort((a,b)=>(a.tiempo?a.tiempo.restantes:1e9)-(b.tiempo?b.tiempo.restantes:1e9));
+      const cards = wip.map(c=>ingCardHTML(c, ing, om && !om.error ? (fin[c.job_number]||{error:'Sin datos'}) : null)).join('').replace(/<button[\s\S]*?<\/button>/g,'');
+      const bloque = wip.length ? `<div class="rg-cards">${cards}</div><p class="muted">Resultado operativo = Internal Target (o revenue) − costo actual. Costo actual = mano de obra + compras + servicios + reasignaciones − recuperaciones, de toda la vida del Job.</p>`
+                                : '<p class="muted">Sin proyectos en WIP.</p>';
+      out = out.replace(/<div id="rg-wip-tabla">[\s\S]*?<\/div><!--\/rg-wip-tabla-->/, bloque);
+    }
+    // variables de color de la Suite que usan las tarjetas
+    const cs = getComputedStyle(document.documentElement);
+    const vars = ['--muted','--muted2','--text','--red','--border','--border2','--amber','--green','--gold','--card','--inp'].map(v=>`${v}:${cs.getPropertyValue(v).trim()||'#888'}`).join(';');
+    out = out.replace('</style>', `:root{${vars}} .rg-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;align-items:stretch;margin-top:8px}
+      .rg-cards > div{box-shadow:none!important;border:1px solid #e3e3e3;page-break-inside:avoid;break-inside:avoid} .badge{display:inline-block;padding:1px 6px;border-radius:8px;background:#eee}
+      @media print{.rg-cards{grid-template-columns:repeat(3,1fr)}}</style>`);
+    if(w){ w.document.open(); w.document.write(out); w.document.close(); } else window.open(url, '_blank');
+  }catch(e){ if(w) w.location = url; else window.open(url, '_blank'); }
 }

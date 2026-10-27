@@ -544,6 +544,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
         <button onclick="switchMenu('fin-cpc','ng-finanzas')">CPC</button>
         <button onclick="switchMenu('fin-ordenes-cobro','ng-finanzas')">Órdenes de cobro</button>
         <button onclick="switchMenu('fin-prog-pagos','ng-finanzas')">Programación de pagos</button>
+        <button onclick="switchMenu('fin-cashflow','ng-finanzas')">Cash Flow Forecast</button>
         <button onclick="switchMenu('fin-esquemas','ng-finanzas')">Esquemas Tributarios</button>
         <button onclick="switchMenu('fin-datos-fiscales','ng-finanzas')">Datos fiscales</button>
       </div>
@@ -589,6 +590,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
       <div class="nav-dropdown">
         <button onclick="switchMenu('rrhh-kpis','ng-mgmt')">KPIs</button>
         <button onclick="switchMenu('mgmt-income-forecast','ng-mgmt')">Income Forecast</button>
+        <button onclick="switchMenu('mgmt-costo-mo','ng-mgmt')">Costo de mano de obra</button>
       </div>
     </div>
   </div>
@@ -2815,9 +2817,27 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
       <select id="kpi-anio" onchange="kpiCargarResultados()" style="font-size:12px;padding:5px 8px"></select>
       <select id="kpi-filtro" onchange="kpiRender()" style="font-size:12px;padding:5px 8px;max-width:260px"><option value="">Todas las personas</option></select>
       <button class="btn-reload" onclick="kpiCargar()">Recargar</button>
-      <button class="btn-new" id="kpi-btn-nuevo" onclick="kpiAbrir()" style="width:auto;padding:8px 16px;margin-left:auto">+ Asignar KPI</button>
+      <button class="btn-reload" onclick="rgAbrir()" style="margin-left:auto;border-color:var(--red);color:var(--red);font-weight:700">📊 Reporte gerencial</button>
+      <button class="btn-new" id="kpi-btn-nuevo" onclick="kpiAbrir()" style="width:auto;padding:8px 16px">+ Asignar KPI</button>
     </div>
     <div id="kpi-body" style="padding:20px 24px"></div>
+  </div>
+</div>
+
+<!-- rev129: Reporte gerencial -->
+<div class="mo" id="mo-rg" style="z-index:160">
+  <div class="md" style="max-width:520px;width:calc(100% - 32px)">
+    <div class="mh"><h2>📊 Reporte gerencial</h2><button class="px" onclick="closeMo('mo-rg')">Cerrar</button></div>
+    <div class="mb2">
+      <div style="font-size:12px;color:var(--muted2);margin-bottom:10px;line-height:1.6">Incluye: POs recibidas en el año (Monthly sales) · proyectos en WIP · resultado de los proyectos cerrados (margen y entrega a tiempo) · Accounts receivable index · capacidad operativa · puestos y costo de nómina por área · Income Forecast · Cash Flow Forecast. Se abre en una pestaña nueva lista para imprimir o guardar como PDF.</div>
+      <div class="fi"><label>Año</label><select id="rg-anio"></select></div>
+      <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;text-transform:none;letter-spacing:0;font-weight:400;margin:8px 0">
+        <input type="checkbox" id="rg-nomina" onchange="document.getElementById('rg-pw-box').style.display=this.checked?'':'none'">
+        <span>Incluir el <b>costo de nómina por área</b> (información protegida: requiere el permiso de Costo de mano de obra y tu contraseña)</span></label>
+      <div id="rg-pw-box" style="display:none" class="fi"><label>Tu contraseña</label><input type="password" id="rg-pw" autocomplete="current-password" onkeydown="if(event.key==='Enter')rgGenerar()"></div>
+      <div id="rg-msg" style="font-size:12px;color:var(--red)"></div>
+    </div>
+    <div class="mf"><button class="btn btn-s" onclick="closeMo('mo-rg')">Cancelar</button><button class="btn btn-p" onclick="rgGenerar()">Generar reporte</button></div>
   </div>
 </div>
 
@@ -5900,6 +5920,97 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
       <details id="cpg-hist-box" style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;color:var(--muted2)">Bitácora</summary><div id="cpg-hist" style="font-size:11px;margin-top:6px"></div></details>
     </div>
     <div class="mf"><button class="btn btn-s" onclick="closeMo('mo-cpp-prog')">Cancelar</button><button class="btn btn-p" onclick="cpgGuardar()">Guardar</button></div>
+  </div>
+</div>
+
+<!-- ══ MODULE: Costo de mano de obra (rev127) ══ -->
+<div class="module" id="mod-mgmt-costo-mo">
+  <div class="main-content" style="overflow-y:auto">
+    <div class="bar-top"><h1>👷 Costo de mano de obra</h1>
+      <span id="cmo-uma" style="font-size:12px;color:var(--muted2);margin-left:12px"></span>
+      <button class="btn-reload" onclick="umaAbrir()" style="margin-left:auto">UMA</button>
+      <button class="btn-reload" onclick="cmoExportar()">⬇ CSV</button>
+      <button class="btn-reload" onclick="cmoCargar()">Recargar</button></div>
+    <div style="padding:16px 22px;max-width:1450px">
+      <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px;font-size:12px">
+        <div class="fi" style="margin:0;flex:0 0 110px"><label>ISN estatal %</label><input type="number" id="cmo-isn" value="3" step="0.1" onchange="cmoCargar()"></div>
+        <div class="fi" style="margin:0;flex:0 0 130px"><label>Prima vacacional %</label><input type="number" id="cmo-pv" value="25" step="1" onchange="cmoCargar()"></div>
+        <div class="fi" style="margin:0;flex:0 0 140px"><label>Prima de riesgo %</label><input type="number" id="cmo-pr" value="0.5" step="0.0001" onchange="cmoCargar()"></div>
+        <div style="flex:1;min-width:260px;font-size:11px;color:var(--muted2)">Nómina mensual de los trabajadores <b>activos</b> con su salario de jornada normal (Sueldos y Salarios). Mismas tasas que Calcular Salario / Nómina.</div>
+      </div>
+      <div id="cmo-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px"></div>
+      <div id="cmo-nota" style="font-size:11px;color:var(--muted2);margin-bottom:14px;padding:8px 12px;background:rgba(0,0,0,.03);border-radius:8px"></div>
+      <div id="cmo-lock" style="display:none;text-align:center;padding:26px;border:1px dashed var(--border);border-radius:10px;background:rgba(0,0,0,.02)"></div>
+      <div id="cmo-tablas" style="display:none">
+      <div style="display:flex;align-items:center;margin-bottom:6px"><div style="font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--red)">Por área</div><span id="cmo-lock-info" style="font-size:11px;color:var(--muted2);margin-left:auto"></span></div>
+      <div style="overflow-x:auto;margin-bottom:16px"><table class="tbl" style="width:100%"><thead id="cmo-area-th"></thead><tbody id="cmo-area-tb"></tbody></table></div>
+      <div id="cmo-ind-box">
+        <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--red);margin-bottom:6px">Por trabajador</div>
+        <input id="cmo-q" placeholder="Buscar trabajador, área, puesto…" oninput="cmoRender()" style="font-size:12px;padding:6px 10px;min-width:240px;margin-bottom:6px">
+        <div style="overflow-x:auto"><table class="tbl" style="width:100%"><thead id="cmo-th"></thead><tbody id="cmo-tb"></tbody></table></div>
+      </div>
+      </div>
+      <div id="cmo-sin" style="font-size:11.5px;margin-top:12px"></div>
+    </div>
+  </div>
+</div>
+
+<div class="mo" id="mo-uma" style="z-index:160">
+  <div class="md" style="max-width:560px;width:calc(100% - 32px)">
+    <div class="mh"><h2>📏 UMA (Unidad de Medida y Actualización)</h2><button class="px" onclick="closeMo('mo-uma')">Cerrar</button></div>
+    <div class="mb2">
+      <div id="uma-info" style="font-size:12.5px;margin-bottom:10px"></div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:rgba(0,0,0,.035)"><th style="text-align:left;padding:5px;cursor:default">Año (vigencia 1-feb)</th><th style="text-align:right;padding:5px;cursor:default">Diario</th><th style="text-align:right;padding:5px;cursor:default">Mensual</th><th style="text-align:left;padding:5px;cursor:default">Fuente</th></tr></thead><tbody id="uma-tb"></tbody></table>
+      <div style="display:flex;gap:8px;align-items:flex-end;margin-top:12px;flex-wrap:wrap" id="uma-edit">
+        <div class="fi" style="margin:0;flex:0 0 90px"><label>Año</label><input type="number" id="uma-anio"></div>
+        <div class="fi" style="margin:0;flex:0 0 120px"><label>Valor diario</label><input type="number" id="uma-diario" step="0.01"></div>
+        <button class="btn btn-s" onclick="umaGuardar()">Guardar a mano</button>
+        <button class="btn btn-p" onclick="umaInegi()" style="margin-left:auto">🔄 Buscar en INEGI</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODULE: Cash Flow Forecast (rev128) ══ -->
+<div class="module" id="mod-fin-cashflow">
+  <div class="main-content" style="overflow-y:auto">
+    <div class="bar-top"><h1>💧 Cash Flow Forecast</h1>
+      <select id="cf-sem" onchange="cfCargar()" style="font-size:12px;padding:5px 8px;margin-left:12px"><option value="13">13 semanas</option><option value="26">26 semanas</option></select>
+      <button class="btn-reload" onclick="cfConfigAbrir()" style="margin-left:auto">⚙ Saldos y parámetros</button>
+      <button class="btn-reload" onclick="cfExportar()">⬇ CSV</button>
+      <button class="btn-reload" onclick="cfCargar()">Recargar</button></div>
+    <div style="padding:16px 22px">
+      <div id="cf-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:14px"></div>
+      <div style="background:var(--card,#fff);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px">
+        <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--red);margin-bottom:8px">Saldo proyectado al cierre de cada semana (USD)</div>
+        <div id="cf-chart"></div></div>
+      <div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px"><table id="cf-tabla" style="border-collapse:collapse;font-size:11.5px;min-width:100%"></table></div>
+      <div id="cf-avisos" style="font-size:11px;color:var(--muted2);margin-top:8px"></div>
+      <div style="font-size:10.5px;color:var(--muted);margin-top:6px;line-height:1.6">
+        <b>Entradas:</b> cobros esperados (Income Forecast: milestones, órdenes de cobro y facturas por cobrar). <b>Proveedores:</b> CPP por pagar en su fecha programada o, si no tiene, en su vencimiento.
+        <b>Nómina (jornada normal, Costo de mano de obra):</b> neto según la periodicidad; ISR, IMSS e ISN el día 17 del mes siguiente; RCV + INFONAVIT bimestral (17 de ene/mar/may/jul/sep/nov); aguinaldo el 20 de diciembre.
+        La columna <b>Vencido</b> agrupa lo que ya debió cobrarse o pagarse y se toma como si ocurriera esta semana. Haz clic en una cifra para ver su detalle.</div>
+    </div>
+  </div>
+</div>
+
+<div class="mo" id="mo-cf-config" style="z-index:160">
+  <div class="md" style="max-width:640px;width:calc(100% - 32px)">
+    <div class="mh"><h2>⚙ Cash Flow · saldos y parámetros</h2><button class="px" onclick="closeMo('mo-cf-config')">Cerrar</button></div>
+    <div class="mb2">
+      <div class="sl" style="margin-top:0">Saldo inicial en bancos</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px" id="cfc-cuentas"></table>
+      <button class="btn-reload" style="margin-top:6px;font-size:11px" onclick="cfcAgregar()">+ Cuenta</button>
+      <div class="fr" style="margin-top:10px">
+        <div class="fi"><label>Fecha del saldo</label><input type="date" id="cfc-fecha"></div>
+        <div class="fi"><label>Efectivo mínimo (USD)</label><input type="number" id="cfc-min" step="1000"></div></div>
+      <div class="sl">Nómina</div>
+      <div class="fr">
+        <div class="fi"><label>Periodicidad del pago</label><select id="cfc-per"><option value="quincenal">Quincenal (15 y fin de mes)</option><option value="semanal">Semanal (viernes)</option><option value="mensual">Mensual (fin de mes)</option></select></div>
+        <div class="fi"><label>ISN %</label><input type="number" id="cfc-isn" step="0.1"></div>
+        <div class="fi"><label>Prima vac. %</label><input type="number" id="cfc-pv" step="1"></div>
+        <div class="fi"><label>Prima riesgo %</label><input type="number" id="cfc-pr" step="0.0001"></div></div>
+    </div>
+    <div class="mf"><button class="btn btn-s" onclick="closeMo('mo-cf-config')">Cancelar</button><button class="btn btn-p" onclick="cfcGuardar()">Guardar</button></div>
   </div>
 </div>
 
