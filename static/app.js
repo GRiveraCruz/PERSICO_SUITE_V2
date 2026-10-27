@@ -20616,3 +20616,33 @@ function pcMatCalc(idx, k){
   document.getElementById(`pc-matah-${k}-${idx}`).textContent = ah && costo ? 'ahorro ' + fmt(costo*ah/100) : '';
   pcCalc(idx);
 }
+
+
+// rev134 — Exportar el presupuesto disponible y las horas estimadas (PDF / Excel)
+function pcPresupuestoDatos(){
+  return (pcJobRows||[]).map((j,idx)=>{
+    const row = document.querySelector(`#pc-row-${idx}`); if(!row) return null;
+    const f = k => parseFloat(row.querySelector(`[data-field="${k}"]`)?.value)||0, fs = k => row.querySelector(`[data-field="${k}"]`)?.value || '';
+    const revenue = parseFloat(j.revenue)||0, mk = f('markup_pct'), ah = f('ahorro_pct');
+    const presOp = revenue / (1 + mk/100), it = Math.round((presOp - presOp*ah/100)*100)/100;
+    const E = pcEstimados(row);
+    const mo = PC_MO.map(([k,n,perfil])=>({linea:n, perfil, horas:f('mo_horas_'+k), costo_hora:f('mo_costo_'+k), importe:Math.round(f('mo_horas_'+k)*f('mo_costo_'+k)*100)/100}));
+    return { job_number:j.job_number, customer:j.customer||'', internal_target:it,
+      fecha_inicio:fs('fecha_inicio'), runoff_interno:fs('runoff_interno'), runoff_cliente:fs('runoff_cliente'), fecha_envio:fs('fecha_envio'),
+      materiales: PC_MAT.map(([k,n])=>({rubro:n, disponible:f(k)})), total_materiales:Math.round(E.mat*100)/100,
+      mo, mo_anterior:E.anterior, total_mo:Math.round(E.mo*100)/100, total_horas:mo.reduce((a,l)=>a+l.horas,0),
+      total_estimados:Math.round(E.total*100)/100, delta:Math.round((it-E.total)*100)/100 };
+  }).filter(Boolean);
+}
+async function pcPresupuestoExport(formato){
+  if(!pcCurrentPTSV){ toast('Abre un proyecto','er'); return; }
+  const body = JSON.stringify({ptsv: pcCurrentPTSV, formato, jobs: pcPresupuestoDatos()});
+  const w = formato==='pdf' ? window.open('about:blank','_blank') : null;
+  try{
+    const r = await fetch('/api/projconfig/presupuesto-export', {method:'POST', headers:{'Content-Type':'application/json'}, body});
+    if(!r.ok){ const d = await r.json().catch(()=>({})); throw new Error(d.error || ('Error '+r.status)); }
+    if(formato==='pdf'){ const html = await r.text(); w.document.open(); w.document.write(html); w.document.close(); }
+    else { const blob = await r.blob(); const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+      a.download = (r.headers.get('Content-Disposition')||'').match(/filename="?([^";]+)/)?.[1] || `Presupuesto_${pcCurrentPTSV}.xlsx`; a.click(); }
+  }catch(e){ if(w) w.close(); toast(e.message,'er'); }
+}

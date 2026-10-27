@@ -23033,6 +23033,157 @@ def api_reporte_gerencial():
     </body></html>"""
     return Response(html, mimetype="text/html")
 
+# ══════════════════════════════════════════════════════════════════
+#  rev134 — Configurar Proyecto ▸ Presupuesto: exportar PDF / Excel con el presupuesto
+#  disponible (Internal Target y disponibles por rubro) y las horas estimadas.
+#  Recibe los valores que están en pantalla (aunque no se hayan guardado todavía).
+# ══════════════════════════════════════════════════════════════════
+@app.route("/api/projconfig/presupuesto-export", methods=["POST"])
+def api_pc_presupuesto_export():
+    if not (pc_tab_can("view", "presupuesto") or is_admin()): return jsonify({"error": "Sin permiso"}), 403
+    d = request.json or {}
+    fmt_ = (d.get("formato") or "xlsx").lower()
+    ptsv = str(d.get("ptsv") or "")[:40]; jobs = d.get("jobs") or []
+    if not jobs: return jsonify({"error": "No hay Jobs en el presupuesto"}), 400
+    num = lambda v: float(v or 0)
+    hoy = datetime.date.today()
+    lineas_mo = []   # nombres de líneas en el orden recibido
+    for j in jobs:
+        for l in j.get("mo") or []:
+            if l.get("linea") not in lineas_mo: lineas_mo.append(l.get("linea"))
+    tot = {"internal_target": 0.0, "materiales": 0.0, "mo": 0.0, "horas": 0.0, "estimados": 0.0}
+    tot_mat = {}; tot_mo = {}
+    for j in jobs:
+        tot["internal_target"] += num(j.get("internal_target")); tot["materiales"] += num(j.get("total_materiales"))
+        tot["mo"] += num(j.get("total_mo")); tot["horas"] += num(j.get("total_horas")); tot["estimados"] += num(j.get("total_estimados"))
+        for mm in j.get("materiales") or []: tot_mat[mm["rubro"]] = tot_mat.get(mm["rubro"], 0) + num(mm.get("disponible"))
+        for l in j.get("mo") or []:
+            t = tot_mo.setdefault(l["linea"], {"horas": 0.0, "importe": 0.0}); t["horas"] += num(l.get("horas")); t["importe"] += num(l.get("importe"))
+    nombre = f"Presupuesto_{re.sub(r'[^A-Za-z0-9_-]', '_', ptsv or 'proyecto')}_{hoy:%Y-%m-%d}"
+    if fmt_ == "xlsx":
+        from openpyxl.styles import Border, Side
+        wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Presupuesto"
+        rojo, azul, gris = PatternFill("solid", fgColor="C8102E"), PatternFill("solid", fgColor="1F3864"), PatternFill("solid", fgColor="EEEEEE")
+        bold = Font(bold=True); blanco = Font(bold=True, color="FFFFFF"); money = '"$"#,##0.00'; fina = Side(style="thin", color="DDDDDD")
+        ws["A1"] = f"Presupuesto disponible · {ptsv}"; ws["A1"].font = Font(bold=True, size=14, color="C8102E")
+        ws["A2"] = f"{_datos_fiscales().get('razon_social') or ''} · generado el {hoy:%d/%m/%Y} por {session.get('user', '')} · USD"
+        ws["A2"].font = Font(italic=True, color="666666", size=9)
+        r = 4
+        def encabezado(fila, vals, fill=azul):
+            for i, v in enumerate(vals, start=1):
+                c = ws.cell(row=fila, column=i, value=v); c.font = blanco; c.fill = fill; c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        # Resumen por Job
+        ws.cell(row=r, column=1, value="RESUMEN DEL PROYECTO").font = Font(bold=True, color="C8102E"); r += 1
+        encabezado(r, ["Job", "Cliente", "Internal Target (presupuesto disponible)", "Materiales y servicios (disponible)", "Mano de obra estimada", "Horas estimadas", "Suma de estimados", "Delta vs Internal Target"]); r += 1
+        ini = r
+        for j in jobs:
+            vals = [j.get("job_number"), j.get("customer"), num(j.get("internal_target")), num(j.get("total_materiales")), num(j.get("total_mo")), num(j.get("total_horas")), num(j.get("total_estimados")), num(j.get("delta"))]
+            for i, v in enumerate(vals, start=1):
+                c = ws.cell(row=r, column=i, value=v)
+                if i in (3, 4, 5, 7, 8): c.number_format = money
+                if i == 6: c.number_format = '#,##0.0'
+            r += 1
+        ws.cell(row=r, column=1, value="TOTAL").font = bold
+        for i, col in zip((3, 4, 5, 6, 7, 8), "CDEFGH"):
+            c = ws.cell(row=r, column=i, value=f"=SUM({col}{ini}:{col}{r - 1})"); c.font = bold; c.fill = gris
+            c.number_format = '#,##0.0' if i == 6 else money
+        r += 2
+        # Detalle por Job
+        for j in jobs:
+            ws.cell(row=r, column=1, value=f"JOB {j.get('job_number')} · {j.get('customer') or ''}").font = Font(bold=True, size=12, color="1F3864"); r += 1
+            fechas = " · ".join(f"{k}: {v}" for k, v in (("Inicio", j.get("fecha_inicio")), ("Run Off interno", j.get("runoff_interno")), ("Run Off cliente", j.get("runoff_cliente")), ("Envío", j.get("fecha_envio"))) if v)
+            if fechas: ws.cell(row=r, column=1, value=fechas).font = Font(color="666666", size=9); r += 1
+            ws.cell(row=r, column=1, value="Internal Target (presupuesto disponible)").font = bold
+            c = ws.cell(row=r, column=3, value=num(j.get("internal_target"))); c.number_format = money; c.font = Font(bold=True, color="15803D"); r += 1
+            encabezado(r, ["Materiales y servicios", "", "Disponible"], rojo); r += 1
+            i0 = r
+            for mm in j.get("materiales") or []:
+                ws.cell(row=r, column=1, value=mm.get("rubro")); c = ws.cell(row=r, column=3, value=num(mm.get("disponible"))); c.number_format = money; r += 1
+            ws.cell(row=r, column=1, value="Subtotal materiales y servicios").font = bold
+            c = ws.cell(row=r, column=3, value=f"=SUM(C{i0}:C{r - 1})"); c.number_format = money; c.font = bold; c.fill = gris; r += 1
+            encabezado(r, ["Mano de obra", "Perfil", "Horas estimadas", "Costo promedio USD/h", "Importe"], rojo); r += 1
+            i0 = r
+            for l in j.get("mo") or []:
+                vals = [l.get("linea"), l.get("perfil"), num(l.get("horas")), num(l.get("costo_hora")), f"=C{r}*D{r}"]
+                for i, v in enumerate(vals, start=1):
+                    c = ws.cell(row=r, column=i, value=v)
+                    if i == 3: c.number_format = '#,##0.0'
+                    if i in (4, 5): c.number_format = money
+                r += 1
+            if num(j.get("mo_anterior")):
+                ws.cell(row=r, column=1, value="M.O. de proyectos anteriores (sin horas)"); c = ws.cell(row=r, column=5, value=num(j.get("mo_anterior"))); c.number_format = money; r += 1
+            ws.cell(row=r, column=1, value="Subtotal mano de obra").font = bold
+            c = ws.cell(row=r, column=3, value=f"=SUM(C{i0}:C{r - 1})"); c.number_format = '#,##0.0'; c.font = bold; c.fill = gris
+            c = ws.cell(row=r, column=5, value=f"=SUM(E{i0}:E{r - 1})"); c.number_format = money; c.font = bold; c.fill = gris; r += 1
+            ws.cell(row=r, column=1, value="Suma de estimados").font = bold
+            c = ws.cell(row=r, column=5, value=num(j.get("total_estimados"))); c.number_format = money; c.font = bold; r += 1
+            ws.cell(row=r, column=1, value="Delta vs Internal Target").font = bold
+            c = ws.cell(row=r, column=5, value=num(j.get("delta"))); c.number_format = money
+            c.font = Font(bold=True, color="C8102E" if num(j.get("delta")) < 0 else "15803D"); r += 2
+        for col, w in zip("ABCDEFGH", (40, 26, 22, 22, 20, 14, 18, 20)): ws.column_dimensions[col].width = w
+        ws.freeze_panes = "A4"
+        # Hoja de horas por línea (para planeación)
+        wh = wb.create_sheet("Horas por línea")
+        encab = ["Línea de mano de obra"] + [str(j.get("job_number")) for j in jobs] + ["Total"]
+        for i, v in enumerate(encab, start=1):
+            c = wh.cell(row=1, column=i, value=v); c.font = blanco; c.fill = azul; c.alignment = Alignment(horizontal="center")
+        for k, ln in enumerate(lineas_mo, start=2):
+            wh.cell(row=k, column=1, value=ln)
+            for i, j in enumerate(jobs, start=2):
+                h = next((num(l.get("horas")) for l in j.get("mo") or [] if l.get("linea") == ln), 0)
+                wh.cell(row=k, column=i, value=h).number_format = '#,##0.0'
+            last = openpyxl.utils.get_column_letter(len(jobs) + 1)
+            c = wh.cell(row=k, column=len(jobs) + 2, value=f"=SUM(B{k}:{last}{k})"); c.number_format = '#,##0.0'; c.font = bold
+        k = len(lineas_mo) + 2
+        wh.cell(row=k, column=1, value="Total horas").font = bold
+        for i in range(2, len(jobs) + 3):
+            col = openpyxl.utils.get_column_letter(i)
+            c = wh.cell(row=k, column=i, value=f"=SUM({col}2:{col}{k - 1})"); c.number_format = '#,##0.0'; c.font = bold; c.fill = gris
+        wh.column_dimensions["A"].width = 32
+        for i in range(2, len(jobs) + 3): wh.column_dimensions[openpyxl.utils.get_column_letter(i)].width = 14
+        buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+        return send_file(buf, as_attachment=True, download_name=nombre + ".xlsx",
+                         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    # PDF (HTML listo para imprimir / guardar como PDF)
+    e = _html.escape; m = lambda v: (f"−${abs(v):,.2f}" if v < 0 else f"${v:,.2f}"); h = lambda v: f"{v:,.1f}"
+    bloques = []
+    for j in jobs:
+        mats = "".join(f'<tr><td>{e(mm.get("rubro") or "")}</td><td class="r">{m(num(mm.get("disponible")))}</td></tr>' for mm in j.get("materiales") or [])
+        mos = "".join(f'<tr><td>{e(l.get("linea") or "")}</td><td class="muted">{e(l.get("perfil") or "")}</td><td class="r">{h(num(l.get("horas")))}</td><td class="r">{m(num(l.get("costo_hora")))}</td><td class="r">{m(num(l.get("importe")))}</td></tr>' for l in j.get("mo") or [])
+        if num(j.get("mo_anterior")): mos += f'<tr><td colspan="4">M.O. de proyectos anteriores (sin horas)</td><td class="r">{m(num(j.get("mo_anterior")))}</td></tr>'
+        fechas = " · ".join(f"{k}: {e(str(v))}" for k, v in (("Inicio", j.get("fecha_inicio")), ("Run Off interno", j.get("runoff_interno")), ("Run Off cliente", j.get("runoff_cliente")), ("Envío", j.get("fecha_envio"))) if v)
+        dl = num(j.get("delta"))
+        bloques.append(f"""<section><h2>Job {e(str(j.get("job_number")))} <span class="muted">· {e(j.get("customer") or "")}</span></h2>
+          {f'<p class="muted">{fechas}</p>' if fechas else ''}
+          <div class="kpis"><div><small>Internal Target (presupuesto disponible)</small><b class="ok">{m(num(j.get("internal_target")))}</b></div>
+            <div><small>Materiales y servicios</small><b>{m(num(j.get("total_materiales")))}</b></div><div><small>Mano de obra</small><b>{m(num(j.get("total_mo")))}</b></div>
+            <div><small>Horas estimadas</small><b>{h(num(j.get("total_horas")))} h</b></div><div><small>Delta vs Internal Target</small><b class="{"bad" if dl < 0 else "ok"}">{m(dl)}</b></div></div>
+          <div class="dos"><table><tr><th>Materiales y servicios</th><th class="r">Disponible</th></tr>{mats}<tr class="tot"><td>Subtotal</td><td class="r">{m(num(j.get("total_materiales")))}</td></tr></table>
+          <table><tr><th>Mano de obra</th><th>Perfil</th><th class="r">Horas</th><th class="r">USD/h</th><th class="r">Importe</th></tr>{mos}
+            <tr class="tot"><td colspan="2">Subtotal</td><td class="r">{h(num(j.get("total_horas")))}</td><td></td><td class="r">{m(num(j.get("total_mo")))}</td></tr></table></div></section>""")
+    resumen = "".join(f'<tr><td class="mono">{e(str(j.get("job_number")))}</td><td>{e(j.get("customer") or "")}</td><td class="r">{m(num(j.get("internal_target")))}</td><td class="r">{m(num(j.get("total_materiales")))}</td><td class="r">{m(num(j.get("total_mo")))}</td><td class="r">{h(num(j.get("total_horas")))}</td><td class="r {"bad" if num(j.get("delta")) < 0 else ""}">{m(num(j.get("delta")))}</td></tr>' for j in jobs)
+    horas_lin = "".join(f'<tr><td>{e(ln)}</td><td class="r">{h(v["horas"])}</td><td class="r">{m(v["importe"])}</td></tr>' for ln, v in tot_mo.items() if v["horas"] or v["importe"])
+    html = f"""<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>{e(nombre)}</title><style>
+    body{{font-family:Arial,Helvetica,sans-serif;color:#1a1a2e;margin:0;padding:22px 30px;font-size:11.5px}}
+    header{{display:flex;align-items:center;gap:16px;border-bottom:3px solid #c8102e;padding-bottom:10px;margin-bottom:14px}} header img{{height:30px}} h1{{margin:0;font-size:20px}}
+    .sub{{color:#666;font-size:11px}} h2{{font-size:14px;border-bottom:1px solid #ddd;padding-bottom:4px;margin:18px 0 8px}} section{{page-break-inside:avoid}}
+    .kpis{{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}} .kpis div{{flex:1;min-width:130px;border:1px solid #e3e3e3;border-radius:8px;padding:6px 9px}}
+    .kpis small{{display:block;color:#777;font-size:9px;text-transform:uppercase;letter-spacing:.5px}} .kpis b{{display:block;font-size:16px;margin-top:2px}}
+    table{{width:100%;border-collapse:collapse;margin-top:4px}} th{{background:#1f3864;color:#fff;text-align:left;padding:4px 6px;font-size:10px}} td{{padding:3px 6px;border-bottom:1px solid #eee}}
+    .dos{{display:grid;grid-template-columns:1fr 1.6fr;gap:14px;align-items:start}} .r{{text-align:right}} .mono{{font-family:monospace}} .muted{{color:#888;font-weight:400}} .ok{{color:#15803d}} .bad{{color:#c8102e;font-weight:bold}}
+    tr.tot td{{font-weight:bold;border-top:2px solid #1f3864}} .noprint{{margin-bottom:10px}} @media print{{.noprint{{display:none}} body{{padding:8px 12px}}}}</style></head><body>
+    <div class="noprint"><button onclick="window.print()" style="padding:7px 14px;background:#c8102e;color:#fff;border:none;border-radius:6px;cursor:pointer">🖨 Imprimir / Guardar como PDF</button></div>
+    <header><img src="/static/persico_logo.webp" onerror="this.style.display='none'"><div><h1>Presupuesto disponible · {e(ptsv)}</h1>
+    <div class="sub">{e(_datos_fiscales().get("razon_social") or "")} · generado el {hoy:%d/%m/%Y} por {e(session.get("user", ""))} · montos en USD</div></div></header>
+    <div class="kpis"><div><small>Internal Target total</small><b class="ok">{m(tot["internal_target"])}</b></div><div><small>Materiales y servicios</small><b>{m(tot["materiales"])}</b></div>
+      <div><small>Mano de obra estimada</small><b>{m(tot["mo"])}</b></div><div><small>Horas estimadas</small><b>{h(tot["horas"])} h</b></div>
+      <div><small>Delta vs Internal Target</small><b class="{"bad" if tot["internal_target"] - tot["estimados"] < 0 else "ok"}">{m(tot["internal_target"] - tot["estimados"])}</b></div></div>
+    <table><tr><th>Job</th><th>Cliente</th><th class="r">Internal Target</th><th class="r">Materiales y servicios</th><th class="r">Mano de obra</th><th class="r">Horas</th><th class="r">Delta</th></tr>{resumen}</table>
+    <div class="dos" style="margin-top:12px"><table><tr><th>Materiales y servicios (proyecto)</th><th class="r">Disponible</th></tr>{"".join(f'<tr><td>{e(k)}</td><td class="r">{m(v)}</td></tr>' for k, v in tot_mat.items())}</table>
+      <table><tr><th>Horas por línea (proyecto)</th><th class="r">Horas</th><th class="r">Importe</th></tr>{horas_lin or '<tr><td colspan="3" class="muted">Sin horas estimadas</td></tr>'}</table></div>
+    {"".join(bloques)}</body></html>"""
+    return Response(html, mimetype="text/html")
+
 if __name__ == "__main__":
     print("=" * 60)
     print("  Persico Mex — Suite Unificada")
