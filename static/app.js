@@ -11594,7 +11594,7 @@ async function pcCargarHorasConsumidas(jobs){
   try{ const d = await apiCall('GET','/projconfig/horas-consumidas?jobs='+encodeURIComponent(jobs.join(',')));
        if(!d.error){ pcHorasCons = d.jobs||{}; pcHorasFecha = d.calculado||''; } }catch(e){}
 }
-const PC_MAT = [['est_material_mecanico','Material mecánico'],['est_material_electrico','Material eléctrico'],['est_major_items','Major items'],['est_servicios_externos','Servicios externos']];
+const PC_MAT = [['est_material_mecanico','Material mecánico'],['est_material_electrico','Material eléctrico'],['est_major_items','Componentes mayores'],['est_servicios_externos','Servicios externos']];
 let pcCostosPerfil = {};   // {perfil: promedio USD/h}
 async function pcCargarCostos(){
   try{ const d = await apiCall('GET','/costos-perfil');
@@ -11684,7 +11684,7 @@ function pcRenderJobs(jobDetails, savedRows) {
         <div style="display:flex;align-items:center;margin-bottom:8px"><div style="${lbl};margin:0">Estimados</div>
           <button type="button" class="btn-reload" onclick="pcActualizarCostos(${idx})" title="Toma el costo promedio vigente de Proyectos ▸ Costo por Perfil" style="margin-left:auto;font-size:10px;padding:3px 10px">↻ Actualizar costos promedio</button></div>
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px">
-          ${PC_MAT.map(([k,n])=>`<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px">${n}</div><input class="pc-blue-field" data-field="${k}" type="number" min="0" step="0.01" value="${saved[k] ?? (k==='est_material_mecanico'?(saved.est_materiales??''):'')}" placeholder="$0.00" oninput="pcCalc(${idx})" style="${estInp}"></div>`).join('')}
+          ${PC_MAT.map(([k,n])=>pcMatBloqueHTML(k, n, saved, idx, estInp)).join('')}
         </div>
         <table style="width:100%;border-collapse:collapse;font-size:12px">
           <thead><tr style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">
@@ -11877,10 +11877,13 @@ async function pcSave() {
     const targetMO       = r2(E.mo);
     const mo = {};
     PC_MO.forEach(([k])=>{ mo['mo_horas_'+k]=fn('mo_horas_'+k); mo['mo_costo_'+k]=fn('mo_costo_'+k); mo['est_mo_'+k]=Math.round(L[k]*100)/100; });
+    const matDet = {};                                                  // rev131: costo estimado / % ahorro / disponible
+    PC_MAT.forEach(([k])=>{ matDet['costo_'+k] = fn('costo_'+k); matDet['ahorro_'+k] = fn('ahorro_'+k); });
     return {
       job_number:             j.job_number,
       customer:               j.customer||'',
       revenue,
+      ...matDet,
       fecha_inicio:           f('fecha_inicio'),
       runoff_interno:         f('runoff_interno'),
       runoff_cliente:         f('runoff_cliente'),
@@ -20540,4 +20543,42 @@ async function rgGenerar(){
       @media print{.rg-cards{grid-template-columns:repeat(3,1fr)}}</style>`);
     if(w){ w.document.open(); w.document.write(out); w.document.close(); } else window.open(url, '_blank');
   }catch(e){ if(w) w.location = url; else window.open(url, '_blank'); }
+}
+
+
+// ════════════════════════════════════════════════════════
+//  rev131 — Materiales y servicios: COSTO ESTIMADO / % DE AHORRO / DISPONIBLE
+//  El DISPONIBLE (costo × (1 − % ahorro)) queda en el campo est_* de siempre, así que es
+//  el que usan el presupuesto, el Target de Compras, la suma de estimados, el resumen por
+//  áreas y los targets operativos y comerciales.
+// ════════════════════════════════════════════════════════
+function pcMatBloqueHTML(k, n, saved, idx, estInp){
+  const legado = saved[k] ?? (k==='est_material_mecanico' ? (saved.est_materiales ?? '') : '');
+  const costo = saved['costo_'+k] ?? legado;            // antes solo existía el estimado: se toma como costo con 0 % de ahorro
+  const ah = saved['ahorro_'+k] ?? '';
+  const disp = costo==='' ? '' : Math.round((parseFloat(costo)||0) * (1 - (parseFloat(ah)||0)/100) * 100) / 100;
+  const mini = 'font-size:9.5px;color:var(--muted);margin:5px 0 2px';
+  return `<div style="border:1px solid var(--border);border-radius:8px;padding:8px 10px;background:rgba(0,0,0,.015)">
+    <div style="font-size:11px;font-weight:700;margin-bottom:2px">${n}</div>
+    <div style="${mini}">Costo estimado</div>
+    <input class="pc-blue-field" data-field="costo_${k}" type="number" min="0" step="0.01" value="${costo}" placeholder="$0.00" oninput="pcMatCalc(${idx},'${k}')" style="${estInp}">
+    <div style="${mini}">% de ahorro</div>
+    <input class="pc-blue-field" data-field="ahorro_${k}" type="number" min="0" max="100" step="0.1" value="${ah}" placeholder="0 %" oninput="pcMatCalc(${idx},'${k}')" style="${estInp}">
+    <div style="${mini}">Disponible</div>
+    <input type="hidden" data-field="${k}" value="${disp}">
+    <div id="pc-matdisp-${k}-${idx}" style="font-family:'DM Mono',monospace;font-weight:800;font-size:14px;text-align:right;color:var(--green);padding:4px 2px">${disp===''?'—':'$'+Number(disp).toLocaleString('en-US',{minimumFractionDigits:2})}</div>
+    <div id="pc-matah-${k}-${idx}" style="font-size:10px;color:var(--muted2);text-align:right">${ah && costo!=='' ? 'ahorro $'+((parseFloat(costo)||0)*(parseFloat(ah)||0)/100).toLocaleString('en-US',{minimumFractionDigits:2}) : ''}</div>
+  </div>`;
+}
+function pcMatCalc(idx, k){
+  const row = document.querySelector(`#pc-row-${idx}`); if(!row) return;
+  const cInp = row.querySelector(`[data-field="costo_${k}"]`), aInp = row.querySelector(`[data-field="ahorro_${k}"]`);
+  let ah = parseFloat(aInp.value)||0;
+  if(ah > 100){ ah = 100; aInp.value = 100; } if(ah < 0){ ah = 0; aInp.value = 0; }
+  const costo = parseFloat(cInp.value)||0, disp = Math.round(costo * (1 - ah/100) * 100) / 100;
+  row.querySelector(`[data-field="${k}"]`).value = cInp.value==='' ? '' : disp;
+  const fmt = v => '$'+Number(v).toLocaleString('en-US',{minimumFractionDigits:2});
+  document.getElementById(`pc-matdisp-${k}-${idx}`).textContent = cInp.value==='' ? '—' : fmt(disp);
+  document.getElementById(`pc-matah-${k}-${idx}`).textContent = ah && costo ? 'ahorro ' + fmt(costo*ah/100) : '';
+  pcCalc(idx);
 }
