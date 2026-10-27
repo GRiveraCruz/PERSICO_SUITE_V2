@@ -4673,13 +4673,11 @@ function rptComposicionTarget(jc, ptsv, target, comprado){
       <span style="font-size:11px;color:var(--muted2)">${ptsv?esc(ptsv)+' · ':''}Configurar Proyecto ▸ Presupuesto</span></div>
     ${barra}
     <table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="font-size:9.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">
-      <th style="text-align:left;padding:4px 6px;cursor:default">Rubro</th><th style="text-align:right;padding:4px 6px;cursor:default">Costo estimado</th><th style="text-align:right;padding:4px 6px;cursor:default">% ahorro</th>
+      <th style="text-align:left;padding:4px 6px;cursor:default">Rubro</th>
       <th style="text-align:right;padding:4px 6px;cursor:default">Disponible (target)</th><th style="text-align:right;padding:4px 6px;cursor:default">% del target</th></tr></thead>
       <tbody>${rub.map((r,i)=>`<tr style="border-top:1px solid var(--border)"><td style="padding:5px 6px"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${col[i]};margin-right:6px"></span>${esc(r.n)}</td>
-        <td style="text-align:right;padding:5px 6px;font-family:'DM Mono',monospace">${fmt(r.costo)}</td><td style="text-align:right;padding:5px 6px">${r.ah?r.ah.toLocaleString('es-MX',{maximumFractionDigits:2})+' %':'—'}</td>
         <td style="text-align:right;padding:5px 6px;font-family:'DM Mono',monospace;font-weight:700">${fmt(r.disp)}</td><td style="text-align:right;padding:5px 6px;color:var(--muted2)">${tot?Math.round(r.disp/tot*100)+' %':'—'}</td></tr>`).join('')}
-      <tr style="border-top:2px solid var(--border);font-weight:700"><td style="padding:5px 6px">Total</td><td style="text-align:right;padding:5px 6px;font-family:'DM Mono',monospace">${fmt(totC)}</td>
-        <td style="text-align:right;padding:5px 6px">${totC?((totC-tot)/totC*100).toLocaleString('es-MX',{maximumFractionDigits:1})+' %':'—'}</td><td style="text-align:right;padding:5px 6px;font-family:'DM Mono',monospace">${fmt(tot)}</td><td></td></tr></tbody></table>
+      <tr style="border-top:2px solid var(--border);font-weight:700"><td style="padding:5px 6px">Total</td><td style="text-align:right;padding:5px 6px;font-family:'DM Mono',monospace">${fmt(tot)}</td><td></td></tr></tbody></table>
     ${Math.abs(tot-(target||0))>0.5?`<div style="font-size:10.5px;color:var(--amber);margin-top:6px">⚠ La suma de los rubros (${fmt(tot)}) no coincide con el Target Compras guardado (${fmt(target)}): vuelve a guardar la configuración del proyecto.</div>`:''}
     <div style="font-size:10.5px;color:var(--muted);margin-top:6px">Comprado (Purchase Orders) ${fmt(comprado)} · ${tot?Math.round(comprado/tot*100):0} % del target. Las OC no están clasificadas por rubro, por eso la comparación es contra el total.</div>`;
   ancla.after(box);
