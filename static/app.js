@@ -4614,12 +4614,12 @@ function mrptSwitchTab(tab) {
 
 async function rptRenderComercial(d) {
   // Fetch target_compras for this job
-  let targetComp = null;
+  let targetComp = null, jcCfg = null, ptsvCfg = null;
   try {
     const cfgs = await fetch('/api/projconfig').then(r=>r.json());
     for(const cfg of (cfgs.records||[])) {
       const jc = (cfg.jobs||[]).find(j=>(j.job_number||'').trim().toUpperCase()===(rptCurrentJob||'').trim().toUpperCase());
-      if(jc && jc.target_compras != null){ targetComp = parseFloat(jc.target_compras); break; }
+      if(jc && jc.target_compras != null){ targetComp = parseFloat(jc.target_compras); jcCfg = jc; ptsvCfg = cfg.ptsv; break; }
     }
   }catch(e){}
 
@@ -4648,6 +4648,41 @@ async function rptRenderComercial(d) {
     ahorro!==null ? fmt(ahorro) : '—',
     ahorro!==null ? (ahorro>=0?'▲ Dentro del target':'▼ Excedió el target') : 'Sin configuración',
     ahorroClass);
+  rptComposicionTarget(jcCfg, ptsvCfg, targetComp, purchasing);       // rev132
+}
+
+// rev132: composición del Target Compras (materiales, servicios y componentes mayores)
+function rptComposicionTarget(jc, ptsv, target, comprado){
+  document.getElementById('rpt-com-comp')?.remove();
+  const ancla = document.getElementById('rpt-card-rev')?.parentElement; if(!ancla) return;
+  const box = document.createElement('div'); box.id = 'rpt-com-comp';
+  box.style.cssText = 'background:var(--card,#fff);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin:14px 0';
+  if(!jc){ box.innerHTML = '<div style="font-size:12px;color:var(--amber)">⚠ El Job no está en ninguna configuración de proyecto: no hay composición del target.</div>'; ancla.after(box); return; }
+  const fmt = v => rptFmtMoney(v);
+  const rub = PC_MAT.map(([k,n])=>{
+    const disp = parseFloat(jc[k])||0;
+    const costo = jc['costo_'+k]!=null ? parseFloat(jc['costo_'+k])||0 : disp;
+    const ah = jc['ahorro_'+k]!=null ? parseFloat(jc['ahorro_'+k])||0 : 0;
+    return {n, costo, ah, disp};
+  });
+  const tot = rub.reduce((a,r)=>a+r.disp,0) || 0, totC = rub.reduce((a,r)=>a+r.costo,0);
+  const col = ['#2569a0','#d97706','#7c3aed','#0d9488'];
+  const barra = tot ? `<div style="display:flex;height:12px;border-radius:6px;overflow:hidden;margin:8px 0 10px">${rub.map((r,i)=>r.disp?`<div title="${esc(r.n)}: ${fmt(r.disp)}" style="width:${r.disp/tot*100}%;background:${col[i]}"></div>`:'').join('')}</div>` : '';
+  box.innerHTML = `<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+      <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--red)">Composición del Target Compras</div>
+      <span style="font-size:11px;color:var(--muted2)">${ptsv?esc(ptsv)+' · ':''}Configurar Proyecto ▸ Presupuesto</span></div>
+    ${barra}
+    <table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="font-size:9.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">
+      <th style="text-align:left;padding:4px 6px;cursor:default">Rubro</th><th style="text-align:right;padding:4px 6px;cursor:default">Costo estimado</th><th style="text-align:right;padding:4px 6px;cursor:default">% ahorro</th>
+      <th style="text-align:right;padding:4px 6px;cursor:default">Disponible (target)</th><th style="text-align:right;padding:4px 6px;cursor:default">% del target</th></tr></thead>
+      <tbody>${rub.map((r,i)=>`<tr style="border-top:1px solid var(--border)"><td style="padding:5px 6px"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${col[i]};margin-right:6px"></span>${esc(r.n)}</td>
+        <td style="text-align:right;padding:5px 6px;font-family:'DM Mono',monospace">${fmt(r.costo)}</td><td style="text-align:right;padding:5px 6px">${r.ah?r.ah.toLocaleString('es-MX',{maximumFractionDigits:2})+' %':'—'}</td>
+        <td style="text-align:right;padding:5px 6px;font-family:'DM Mono',monospace;font-weight:700">${fmt(r.disp)}</td><td style="text-align:right;padding:5px 6px;color:var(--muted2)">${tot?Math.round(r.disp/tot*100)+' %':'—'}</td></tr>`).join('')}
+      <tr style="border-top:2px solid var(--border);font-weight:700"><td style="padding:5px 6px">Total</td><td style="text-align:right;padding:5px 6px;font-family:'DM Mono',monospace">${fmt(totC)}</td>
+        <td style="text-align:right;padding:5px 6px">${totC?((totC-tot)/totC*100).toLocaleString('es-MX',{maximumFractionDigits:1})+' %':'—'}</td><td style="text-align:right;padding:5px 6px;font-family:'DM Mono',monospace">${fmt(tot)}</td><td></td></tr></tbody></table>
+    ${Math.abs(tot-(target||0))>0.5?`<div style="font-size:10.5px;color:var(--amber);margin-top:6px">⚠ La suma de los rubros (${fmt(tot)}) no coincide con el Target Compras guardado (${fmt(target)}): vuelve a guardar la configuración del proyecto.</div>`:''}
+    <div style="font-size:10.5px;color:var(--muted);margin-top:6px">Comprado (Purchase Orders) ${fmt(comprado)} · ${tot?Math.round(comprado/tot*100):0} % del target. Las OC no están clasificadas por rubro, por eso la comparación es contra el total.</div>`;
+  ancla.after(box);
 }
 
 async function mrptRenderComercialMulti(reports) {
@@ -4979,6 +5014,7 @@ async function mrptRenderOperativo(reports) {
 
 
 function rptRender(d){
+  document.getElementById('rpt-com-comp')?.remove();                     // rev132: la composición solo va en Resultado comercial
   // Restore card-pur in case Comercial tab hid it
   const purEl = document.getElementById('rpt-card-pur');
   if(purEl) purEl.style.display = '';
