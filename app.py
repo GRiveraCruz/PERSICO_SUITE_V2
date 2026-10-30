@@ -6017,6 +6017,7 @@ def _ipo_reparar_gpo(aplicar=True):
                     sub = round(float(it.get("quantity_delivered") or 0) * float(it.get("unit_price") or 0), 2)
                 else:
                     sub = round(float(it.get("total") or (float(it.get("quantity") or 0) * float(it.get("unit_price") or 0))), 2)
+                    if g.get("tipo_descuento") == "total": sub = _ipo_neto_item(it, g)[0]          # rev135
                 recs.append({
                     "clave": pn, "fecha_doc": str(g.get("created_at") or "")[:10], "entregar_a": it.get("job") or g.get("job") or "",
                     "nombre": g.get("supplier_name") or plantilla.get("nombre", ""), "subtotal": sub, "moneda": moneda,
@@ -6331,12 +6332,51 @@ def api_po_years():
     return jsonify({"available_years": po_available_years(), "current_year": CURRENT_YEAR})
 
 # ── rev103: la edición de un renglón de PO también actualiza la PO generada ─────────
+# ══ rev135: DESCUENTOS EN ÓRDENES DE COMPRA ═════════════════════════════════════
+#  tipo_descuento: ""      → sin descuento
+#                  "item"  → % por renglón: importe (cant × precio) − % = total del renglón
+#                  "total" → % sobre el subtotal de la orden
+#  Los impuestos del esquema tributario se calculan sobre el SUBTOTAL DESPUÉS DE DESCUENTO.
+def _pct_seguro(v):
+    try: x = float(v or 0)
+    except (TypeError, ValueError): x = 0.0
+    return min(max(x, 0.0), 100.0)
+
+def _po_aplicar_descuentos(g):
+    """Calcula importe / descuento / total de cada renglón y el descuento global; deja en
+    g["subtotal"] la base de impuestos (después de descuento)."""
+    tipo = g.get("tipo_descuento") or ""
+    if tipo not in ("", "item", "total"): tipo = ""
+    g["tipo_descuento"] = tipo
+    bruto = desc_items = 0.0
+    for i in g.get("items") or []:
+        try: imp = round(float(i.get("quantity") or 0) * float(i.get("unit_price") or 0), 2)
+        except (TypeError, ValueError): imp = float(i.get("total") or 0)
+        pct = _pct_seguro(i.get("descuento_pct")) if tipo == "item" else 0.0
+        d = round(imp * pct / 100, 2)
+        i["importe"] = imp; i["descuento_pct"] = pct; i["descuento_amt"] = d; i["total"] = round(imp - d, 2)
+        bruto += imp; desc_items += d
+    sub_items = round(bruto - desc_items, 2)
+    gpct = _pct_seguro(g.get("descuento_global_pct")) if tipo == "total" else 0.0
+    gamt = round(sub_items * gpct / 100, 2)
+    g.update(subtotal_bruto=round(bruto, 2), descuento_items_amt=round(desc_items, 2), subtotal_items=sub_items,
+             descuento_global_pct=gpct, descuento_global_amt=gamt, subtotal=round(sub_items - gamt, 2),
+             descuento_total_amt=round(desc_items + gamt, 2))
+    return g
+
+def _ipo_neto_item(it, g):
+    """Costo neto del renglón (después del descuento del renglón y del global) para la lista de POs."""
+    gpct = float(g.get("descuento_global_pct") or 0) if g.get("tipo_descuento") == "total" else 0.0
+    neto = round(float(it.get("total") or 0) * (1 - gpct / 100), 2)
+    imp = float(it.get("importe") or it.get("total") or 0)
+    return neto, round(imp - neto, 2), (round((1 - neto / imp) * 100, 4) if imp else 0)
+
 def _gpo_recalcular(g):
     """Subtotal, impuestos y total de la PO generada a partir de sus renglones y su esquema."""
-    sub = round(sum(float(i.get("total") or 0) for i in g.get("items") or []), 2)
+    _po_aplicar_descuentos(g)                                            # rev135
+    sub = float(g.get("subtotal") or 0)
     esq = g.get("esquema_tributario") or {}
     iva_pct = float(g.get("iva_pct") or 0)
-    g["subtotal"] = sub
     g["iva_amt"] = round(sub * iva_pct / 100, 2)
     g["isr_retenido_amt"] = round(sub * float(esq.get("isr_retenido", 0) or 0) / 100, 2)
     g["iva_retenido_amt"] = round(sub * float(esq.get("iva_retenido", 0) or 0) / 100, 2)
@@ -6360,8 +6400,6 @@ def _gpo_sincronizar_edicion(rec, antes, data):
     if it is not None:
         if rec.get("quantity") not in (None, ""): it["quantity"] = rec["quantity"]
         if rec.get("unit_price") not in (None, ""): it["unit_price"] = rec["unit_price"]
-        try: it["total"] = round(float(it.get("quantity") or 0) * float(it.get("unit_price") or 0), 2)
-        except (TypeError, ValueError): pass
         for campo_ipo, campo_gpo in (("description", "description"), ("part_number", "part_number"), ("entregar_a", "job")):
             if rec.get(campo_ipo): it[campo_gpo] = rec[campo_ipo]
     if data.get("moneda"): g["moneda"] = data["moneda"]
@@ -6383,6 +6421,12 @@ def _gpo_sincronizar_edicion(rec, antes, data):
             g.setdefault("historial_esquema", []).append({"de": actual, "a": folio, "fecha": datetime.datetime.now().isoformat(timespec="seconds"),
                                                           "usuario": session.get("user", "")})
     _gpo_recalcular(g)
+    if it is not None:                                                   # rev135: costo neto del renglón editado
+        rec["subtotal"], rec["descuento_financiero"], rec["pct_descuento"] = _ipo_neto_item(it, g)
+        try:
+            tc = float(rec.get("tipo_cambio") or 1) or 1
+            rec["subtotal_usd"] = rec["subtotal"] if rec.get("moneda") == "USD" else round(rec["subtotal"] / tc, 2)
+        except (TypeError, ValueError): pass
     g["revision"] = int(g.get("revision") or 0) + 1
     g["_edited_by"] = session.get("user", ""); g["_edited_at"] = datetime.datetime.now().isoformat(timespec="seconds")
     return {"guardar": gpos, "esquema_cambiado": cambio_esq}
@@ -15745,8 +15789,11 @@ def api_create_gpo():
                     "notes":       str(it.get("notes","")).strip(),
                     "req_item_id": str(it.get("req_item_id") or ""),
                     "variante":    str(it.get("variante") or ""),      # Normal / Mirror (piezas de manufactura)
+                    "descuento_pct": _pct_seguro(it.get("descuento_pct")),          # rev135
                 })
-            subtotal     = round(sum(i["total"] for i in po_items), 2)
+            _desc = _po_aplicar_descuentos({"items": po_items, "tipo_descuento": str(data.get("tipo_descuento") or ""),
+                                            "descuento_global_pct": data.get("descuento_global_pct")})
+            subtotal     = _desc["subtotal"]                     # rev135: base de impuestos = subtotal después de descuento
             iva_amt      = round(subtotal * iva_pct / 100, 2)
             esq          = esquema_tributario or {}
             isr_ret_pct  = float(esq.get("isr_retenido", 0) or 0)
@@ -15769,6 +15816,8 @@ def api_create_gpo():
                 "job":           job_main,
                 "items":         po_items,
                 "subtotal":      subtotal,
+                **{k: _desc[k] for k in ("tipo_descuento", "subtotal_bruto", "descuento_items_amt", "subtotal_items",
+                                         "descuento_global_pct", "descuento_global_amt", "descuento_total_amt")},   # rev135
                 "moneda":        moneda,
                 "fx_rate":       fx_rate,
                 "iva_pct":       iva_pct,
@@ -15797,18 +15846,19 @@ def api_create_gpo():
                                if str(r.get("clave","")).isdigit()]
             next_clave = max(existing_claves)+1 if existing_claves else 1
             for i, it in enumerate(po_items):
+                neto, desc_fin, pct_ef = _ipo_neto_item(it, rec)         # rev135: costo neto (con descuentos)
                 ipo_records.append({
                     "clave":                po_number,
                     "fecha_doc":            now[:10],
                     "entregar_a":           it["job"],
                     "nombre":               rec["supplier_name"],
-                    "subtotal":             it["total"],
+                    "subtotal":             neto,
                     "moneda":               moneda,          # ← CRITICAL: store currency
                     "tipo_cambio":          fx_rate if moneda=="MXN" else 1.0,
-                    "subtotal_mxn":         it["total"] if moneda=="MXN" else round(it["total"] * (fx_hoy or 1.0), 2),
+                    "subtotal_mxn":         neto if moneda=="MXN" else round(neto * (fx_hoy or 1.0), 2),
                     "estatus":              "Emitida",
-                    "descuento_financiero": 0,
-                    "pct_descuento":        0,
+                    "descuento_financiero": desc_fin,
+                    "pct_descuento":        pct_ef,
                     "fecha_recepcion":      "",
                     "gpo_number":           po_number,
                     "gpo_pdf":              i==0,
@@ -16009,12 +16059,14 @@ def api_gpo_modificar(po_number):
                 fx_rate  = float(rec.get("fx_rate",1) or 1)
                 new_subtotal = 0.0
                 parsed_items = []
+                prev_pct = {str(i.get("part_number") or "").upper(): i.get("descuento_pct") for i in rec.get("items") or []}   # rev135
                 for idx, it in enumerate(new_items):
                     qty  = float(it.get("quantity",0) or 0)
                     price= float(it.get("unit_price",0) or 0)
                     tot  = round(qty * price, 2)
                     new_subtotal += tot
                     parsed_items.append({
+                        "descuento_pct": _pct_seguro(it.get("descuento_pct") if it.get("descuento_pct") not in (None, "") else prev_pct.get(str(it.get("part_number","")).strip().upper())),
                         "line":        it.get("line", idx+1),
                         "cat_type":    it.get("cat_type",""),
                         "cat_code":    it.get("cat_code",""),
@@ -16028,7 +16080,10 @@ def api_gpo_modificar(po_number):
                         "job":         it.get("job", rec.get("job","")),
                         "notes":       str(it.get("notes","")).strip(),
                     })
-                new_subtotal = round(new_subtotal, 2)
+                _dv = _po_aplicar_descuentos({"items": parsed_items,
+                                              "tipo_descuento": data.get("tipo_descuento", rec.get("tipo_descuento") or ""),
+                                              "descuento_global_pct": data.get("descuento_global_pct", rec.get("descuento_global_pct"))})   # rev135
+                new_subtotal = _dv["subtotal"]
                 new_iva      = round(new_subtotal * iva_pct / 100, 2)
                 esq          = rec.get("esquema_tributario") or {}
                 isr_ret_pct  = float(esq.get("isr_retenido", 0) or 0)
@@ -16053,6 +16108,8 @@ def api_gpo_modificar(po_number):
                 rec["version"]     = version + 1
                 rec["items"]       = parsed_items
                 rec["subtotal"]    = new_subtotal
+                for _k in ("tipo_descuento", "subtotal_bruto", "descuento_items_amt", "subtotal_items",
+                           "descuento_global_pct", "descuento_global_amt", "descuento_total_amt"): rec[_k] = _dv[_k]   # rev135
                 rec["iva_amt"]     = new_iva
                 rec["isr_retenido_amt"] = new_isr_ret
                 rec["iva_retenido_amt"] = new_iva_ret
@@ -16085,18 +16142,19 @@ def api_gpo_modificar(po_number):
                         # Add new records per item
                         for i, it in enumerate(parsed_items):
                             item_job = it.get("job", "") or rec.get("job","")
+                            neto, desc_fin, pct_ef = _ipo_neto_item(it, rec)          # rev135
                             filtered.append({
                                 "clave":                po_number,
                                 "fecha_doc":            now[:10],
                                 "entregar_a":           item_job,
                                 "nombre":               supplier_name,
-                                "subtotal":             it["total"],
+                                "subtotal":             neto,
                                 "moneda":               moneda,
                                 "tipo_cambio":          fx_rate if moneda=="MXN" else 1.0,
-                                "subtotal_mxn":         it["total"] if moneda=="MXN" else round(it["total"]*fx_rate,2),
+                                "subtotal_mxn":         neto if moneda=="MXN" else round(neto*fx_rate,2),
                                 "estatus":              "Emitida",
-                                "descuento_financiero": 0,
-                                "pct_descuento":        0,
+                                "descuento_financiero": desc_fin,
+                                "pct_descuento":        pct_ef,
                                 "fecha_recepcion":      "",
                                 "gpo_number":           po_number,
                                 "gpo_pdf":              i==0,
@@ -16671,9 +16729,20 @@ def api_gpo_pdf(po_number):
               <td style="text-align:center">{it.get('job','—')}</td>
               <td style="text-align:right">{it.get('quantity',0)}</td>
               <td style="text-align:right">{fmt(it.get('unit_price',0))}</td>
+              {(f"<td style='text-align:right'>{fmt(it.get('importe', it.get('total',0)))}</td><td style='text-align:right'>{float(it.get('descuento_pct') or 0):g} %</td>") if rec.get('tipo_descuento') == 'item' else ''}
               <td style="text-align:right;font-weight:600">{fmt(it.get('total',0))}</td>
               <td style="font-size:9px;color:#777">{it.get('notes','')}</td>
             </tr>"""
+        # rev135: subtotal / descuento / subtotal después de descuento
+        _fila = lambda a, b, peso="400", op=".85": f'<div style="display:flex;justify-content:space-between;width:100%;font-size:11px;font-weight:{peso};opacity:{op}"><span>{a}</span><span>{b}</span></div>'
+        if rec.get("tipo_descuento") == "total":
+            _pdf_bloque_descuento = (_fila(f"SUBTOTAL {moneda}", fmt(rec.get("subtotal_items", subtotal)))
+                                     + _fila(f"DESCUENTO ({float(rec.get('descuento_global_pct') or 0):g}%)", "-" + fmt(rec.get("descuento_global_amt", 0)))
+                                     + _fila("SUBTOTAL DESPUÉS DE DESCUENTO", fmt(subtotal), "700", "1"))
+        else:
+            _pdf_bloque_descuento = _fila(f"SUBTOTAL {moneda}", fmt(subtotal))
+            if rec.get("tipo_descuento") == "item" and rec.get("descuento_items_amt"):
+                _pdf_bloque_descuento += _fila(f"(incluye descuentos por renglón: {fmt(rec.get('descuento_items_amt', 0))})", "", "400", ".7")
         rev_txt = f"Revisión {rec.get('revision')} · {str(rec.get('_edited_at') or '')[:10]}" if rec.get("revision") else ""   # rev103
         html = f"""<!DOCTYPE html>
 <html lang="es"><head><meta charset="UTF-8">
@@ -16759,16 +16828,14 @@ def api_gpo_pdf(po_number):
     <th>Descripción</th><th>Etiqueta</th><th>Job</th>
     <th style="text-align:right">Cant.</th>
     <th style="text-align:right">P. Unit.</th>
-    <th style="text-align:right">Total</th>
+    {'<th style="text-align:right">P. Total</th><th style="text-align:right">% Desc.</th><th style="text-align:right">P. Final</th>' if rec.get('tipo_descuento') == 'item' else '<th style="text-align:right">Total</th>'}
     <th>Notas</th>
   </tr></thead>
   <tbody>{rows_html}</tbody>
 </table>
 <div class="subtotal-row">
   <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;min-width:260px">
-    <div style="display:flex;justify-content:space-between;width:100%;font-size:11px;font-weight:400;opacity:.85">
-      <span>SUBTOTAL {moneda}</span><span>{fmt(subtotal)}</span>
-    </div>
+    {_pdf_bloque_descuento}
     <div style="display:flex;justify-content:space-between;width:100%;font-size:11px;font-weight:400;opacity:.85">
       <span>{iva_label}</span><span>{fmt(iva_amt)}</span>
     </div>

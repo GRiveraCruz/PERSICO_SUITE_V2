@@ -10886,6 +10886,8 @@ let gpoItems = [], gpoSupplier = null, gpoJobs = [];
 
 async function openNewGPO() {
   gpoItems = []; gpoSupplier = null;
+  { const r0 = document.querySelector('input[name="gpo-desc-tipo"][value=""]'); if(r0) r0.checked = true;           // rev135
+    const g = document.getElementById('gpo-desc-global'); if(g) g.value = 0; const b = document.getElementById('gpo-desc-global-box'); if(b) b.style.display='none'; }
   // Reset supplier
   gpoClearSupplier();
   // Reset header fields
@@ -11213,7 +11215,8 @@ function gpoAddItem() {
 function gpoRenderItems() {
   const fmt = v=>'$'+Number(v||0).toLocaleString('en-US',{minimumFractionDigits:2});
   const catBadge = {electrico:'⚡',mecanico:'⚙',servicios:'🔧',major:'⭐'};
-  const total = gpoItems.reduce((s,i)=>s+i.total,0);
+  const D = gpoCalcDescuentos();                                          // rev135
+  const total = D.subtotal;
   document.getElementById('gpo-items-tb').innerHTML = gpoItems.map((i,idx)=>`
     <tr>
       <td style="color:var(--muted)">${i.line}</td>
@@ -11224,12 +11227,28 @@ function gpoRenderItems() {
       <td style="color:var(--muted2);white-space:normal;word-break:break-word;min-width:220px;max-width:340px;line-height:1.35">${esc(i.description)}</td>
       <td style="text-align:right">${i.quantity}</td>
       <td style="text-align:right"><input type="number" min="0" step="0.01" value="${i.unit_price||''}" placeholder="0.00" onchange="gpoSetPrice(${idx},this.value)" style="width:90px;text-align:right;font-size:11px;padding:3px;${i.unit_price?'':'border-color:var(--red)'}"></td>
-      <td style="text-align:right;font-weight:700;color:var(--green)">${fmt(i.total)}${i.req_item_id?'<div style="font-size:9px;color:#6d28d9;font-weight:400">requisición</div>':''}</td>
+      <td style="text-align:right;font-weight:700;color:${gpoDescModo()==='item'?'var(--text)':'var(--green)'}">${fmt(i.importe)}${i.req_item_id?'<div style="font-size:9px;color:#6d28d9;font-weight:400">requisición</div>':''}</td>
+      <td style="text-align:right" class="gpo-col-desc"><input type="number" min="0" max="100" step="0.01" value="${i.descuento_pct||''}" placeholder="0" onchange="gpoSetDesc(${idx},this.value)" style="width:70px;text-align:right;font-size:11px;padding:3px"></td>
+      <td style="text-align:right;font-weight:700;color:var(--green)" class="gpo-col-desc">${fmt(i.total)}${i.descuento_amt?`<div style="font-size:9px;color:var(--muted);font-weight:400">−${fmt(i.descuento_amt)}</div>`:''}</td>
       <td style="font-family:'DM Mono',monospace;font-size:10px;color:var(--gold)">${esc(i.job||'—')}</td>
       <td style="color:var(--muted);font-size:10px">${esc(i.notes||'')}</td>
       <td><button onclick="gpoRemoveItem(${idx})" style="background:none;border:none;color:var(--red);cursor:pointer">Eliminar</button></td>
     </tr>`).join('');
   document.getElementById('gpo-subtotal').textContent = fmt(total);
+  // rev135: columnas y resumen del descuento
+  const modo = gpoDescModo(), mon = document.querySelector('input[name="gpo-moneda"]:checked')?.value || 'USD';
+  document.querySelectorAll('.gpo-col-desc').forEach(el=>el.style.display = modo==='item' ? '' : 'none');
+  document.getElementById('gpo-th-total').textContent = modo==='item' ? 'Precio total' : 'Total';
+  const res = document.getElementById('gpo-desc-resumen');
+  if(modo==='total'){
+    res.style.display='flex';
+    res.innerHTML = `<span style="color:var(--muted2)">Subtotal ${fmt(D.subtotal_items)}</span><span style="color:var(--red)">− Descuento ${D.descuento_global_pct}% ${fmt(D.descuento_global_amt)}</span>`;
+    document.getElementById('gpo-subtotal-lbl').textContent = `SUBTOTAL DESPUÉS DE DESCUENTO ${mon}`;
+  } else if(modo==='item' && D.descuento_items_amt){
+    res.style.display='flex';
+    res.innerHTML = `<span style="color:var(--muted2)">Suma de precios totales ${fmt(D.subtotal_bruto)}</span><span style="color:var(--red)">− Descuentos por ítem ${fmt(D.descuento_items_amt)}</span>`;
+    document.getElementById('gpo-subtotal-lbl').textContent = `SUBTOTAL DESPUÉS DE DESCUENTO ${mon}`;
+  } else { res.style.display='none'; document.getElementById('gpo-subtotal-lbl').textContent = `SUBTOTAL ${mon}`; }
   document.getElementById('gpo-items-list').style.display = gpoItems.length?'':'none';
   const esqFolio = document.getElementById('gpo-esquema')?.value;
   gpoUpdateTotalPreview(gpoEsquemasCache.find(e=>e.folio===esqFolio));
@@ -11238,8 +11257,36 @@ function gpoRenderItems() {
 
 function gpoSetPrice(idx, v){
   const it = gpoItems[idx]; if(!it) return;
-  it.unit_price = parseFloat(v)||0; it.total = Math.round(it.quantity*it.unit_price*100)/100;
+  it.unit_price = parseFloat(v)||0;
   gpoRenderItems();
+}
+// ═══ rev135: descuentos en la orden de compra ═══
+function gpoDescModo(){ return document.querySelector('input[name="gpo-desc-tipo"]:checked')?.value || ''; }
+function gpoDescTipo(){
+  const m = gpoDescModo();
+  document.getElementById('gpo-desc-global-box').style.display = m==='total' ? 'flex' : 'none';
+  gpoRenderItems();
+}
+function gpoSetDesc(idx, v){
+  const it = gpoItems[idx]; if(!it) return;
+  let p = parseFloat(v)||0; if(p<0) p=0; if(p>100){ p=100; toast('El descuento no puede pasar de 100 %','er'); }
+  it.descuento_pct = p; gpoRenderItems();
+}
+// Misma regla que el servidor: importe = cant × precio; por ítem: total = importe − %; sobre el total: subtotal − %
+function gpoCalcDescuentos(){
+  const modo = gpoDescModo(), r2 = v => Math.round(v*100)/100;
+  let bruto = 0, dItems = 0;
+  gpoItems.forEach(i=>{
+    i.importe = r2((i.quantity||0)*(i.unit_price||0));
+    const p = modo==='item' ? Math.min(Math.max(parseFloat(i.descuento_pct)||0,0),100) : 0;
+    i.descuento_amt = r2(i.importe*p/100); i.total = r2(i.importe - i.descuento_amt);
+    bruto += i.importe; dItems += i.descuento_amt;
+  });
+  const subItems = r2(bruto - dItems);
+  let gp = modo==='total' ? (parseFloat(document.getElementById('gpo-desc-global')?.value)||0) : 0;
+  gp = Math.min(Math.max(gp,0),100);
+  const gAmt = r2(subItems*gp/100);
+  return { modo, subtotal_bruto:r2(bruto), descuento_items_amt:r2(dItems), subtotal_items:subItems, descuento_global_pct:gp, descuento_global_amt:gAmt, subtotal:r2(subItems-gAmt) };
 }
 
 function gpoRemoveItem(idx) {
@@ -11284,7 +11331,7 @@ function gpoEsquemaChange() {
 function gpoUpdateTotalPreview(esquema) {
   const wrap = document.getElementById('gpo-total-preview-wrap');
   if(!esquema || !gpoItems.length) { wrap.style.display = 'none'; return; }
-  const subtotal = gpoItems.reduce((s,i)=>s+i.total,0);
+  const subtotal = gpoCalcDescuentos().subtotal;                        // rev135: impuestos sobre el subtotal después de descuento
   const ivaAmt   = subtotal * (parseFloat(esquema.iva_trasladado)||0) / 100;
   const isrAmt   = subtotal * (parseFloat(esquema.isr_retenido)||0) / 100;
   const ivaRAmt  = subtotal * (parseFloat(esquema.iva_retenido)||0) / 100;
@@ -11343,6 +11390,8 @@ async function saveGPO() {
       job:       jobType==='Unico'?document.getElementById('gpo-job-unico').value:
                  (jobType in {Shopfloor:1,'Fix Asset':1}?jobType:''),
       items:     gpoItems,
+      tipo_descuento: gpoDescModo(),                                                           // rev135
+      descuento_global_pct: gpoDescModo()==='total' ? (parseFloat(document.getElementById('gpo-desc-global').value)||0) : 0,
       notes:     document.getElementById('gpo-notes').value.trim(),
       po_sae:    (document.getElementById('gpo-po-sae')?.value||'').trim().toUpperCase(),   // rev107
       iva_pct:   parseFloat(esquemaSel?.iva_trasladado)||0,
