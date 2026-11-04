@@ -2822,7 +2822,7 @@ async function ctrlLoadReport(){
     const tb=document.getElementById('ctrl-tb');
     tb.innerHTML=ctrlReportRows.length?ctrlReportRows.map(row=>`<tr>
       <td style="font-weight:600">${esc(row.nombre)}</td>
-      <td style="font-family:'DM Mono',monospace;font-size:11px">${row.timestamp?row.timestamp.slice(0,10):'—'}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:11px">${row.fecha || (row.timestamp?row.timestamp.slice(0,10):'—')}</td>
       <td><span class="badge b-wip">${esc(row.job)}</span></td>
       <td class="n" style="text-align:right;font-family:'DM Mono',monospace;font-weight:600">${row.horas}</td>
       <td style="font-size:11px;color:var(--muted2)">${esc(row.area||'—')}</td>

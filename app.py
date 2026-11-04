@@ -4392,6 +4392,38 @@ def _kiosco_workers():
     finally:
         s.close()
 
+# rev136: el kiosco guarda la hora en UTC. Un registro de las 19:00 en México ya es el día
+# siguiente en UTC (01:00), así que las fechas se calculan y filtran en HORA LOCAL de la planta.
+KIOSCO_TZ = _os.environ.get("KIOSCO_TZ", "America/Mexico_City")
+def _kiosco_fecha_local(ts):
+    """'2026-10-27T01:00:00.000Z' → '2026-10-26' (hora de la planta)."""
+    try:
+        from zoneinfo import ZoneInfo
+        d = datetime.datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+        if d.tzinfo is None: d = d.replace(tzinfo=datetime.timezone.utc)
+        return d.astimezone(ZoneInfo(KIOSCO_TZ)).date().isoformat()
+    except Exception:
+        return str(ts or "")[:10]
+
+def _kiosco_limite(v, fin=False):
+    """Fecha del filtro (local) → instante UTC comparable con el ts del kiosco.
+    'YYYY-MM-DD' = inicio (o fin) del día local; 'YYYY-MM-DDTHH:MM[:SS]' sin zona = hora local."""
+    v = str(v or "").strip()
+    if not v: return v
+    try:
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo(KIOSCO_TZ)
+        if len(v) == 10:
+            d = datetime.datetime.fromisoformat(v + ("T23:59:59.999" if fin else "T00:00:00")).replace(tzinfo=tz)
+        else:
+            d = datetime.datetime.fromisoformat(v.replace("Z", "+00:00"))
+            if d.tzinfo is None:
+                d = d.replace(tzinfo=tz)
+                if fin and d.second == 59 and d.microsecond == 0: d = d.replace(microsecond=999000)
+        return d.astimezone(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.") + f"{d.astimezone(datetime.timezone.utc).microsecond // 1000:03d}Z"
+    except Exception:
+        return v
+
 def _kiosco_records(params=None):
     params = params or {}
     s = _orm.get_session()
@@ -4399,8 +4431,8 @@ def _kiosco_records(params=None):
         R = _orm.KioscoRegistro
         q = s.query(R)
         if params.get("workerId"): q = q.filter(R.worker_tid == params["workerId"])
-        if params.get("from"): q = q.filter(R.ts >= params["from"])
-        if params.get("to"): q = q.filter(R.ts <= params["to"])
+        if params.get("from"): q = q.filter(R.ts >= _kiosco_limite(params["from"]))           # rev136: día local
+        if params.get("to"): q = q.filter(R.ts <= _kiosco_limite(params["to"], fin=True))
         return [dict(r.data or {}, id=r.id, workerId=r.worker_tid, workerName=r.worker_name, type=r.tipo, timestamp=r.ts)
                 for r in q.order_by(R.ts).all()]
     finally:
@@ -4667,7 +4699,7 @@ def _ctrl_horas_rows(from_date, to_date, worker_tid=None, job_filter=None):
             if job_filter and job != job_filter:
                 continue
             rows.append({
-                "nombre": nombre, "area": area, "timestamp": dt,
+                "nombre": nombre, "area": area, "timestamp": dt, "fecha": _kiosco_fecha_local(dt),   # rev136
                 "job": job, "horas": jh.get("hours") or 0, "tid": ext or None,
             })
     rows.sort(key=lambda r: (r["timestamp"] or "", r["nombre"]))
@@ -4852,7 +4884,7 @@ def api_control_horas_exportar_mano_obra():
             wh_records.append({
                 "id": max_id,
                 "employee": row["nombre"],
-                "date_worked": (row["timestamp"][:10] if row.get("timestamp") else from_date),
+                "date_worked": (row.get("fecha") or _kiosco_fecha_local(row["timestamp"]) if row.get("timestamp") else from_date),   # rev136
                 "work_code": row["job"],
                 "hours": row["horas"],
                 "description": f"Control de Horas — semana autorizada ({report_key})",
