@@ -668,7 +668,25 @@ def scan_jobs():
             s = _orm.get_session()
             try:
                 result = [r.data for r in s.query(_orm.Job).order_by(_orm.Job.id.asc()).all()]
-                result.sort(key=lambda j: (j.get("main_index", 0), int(j.get("subindex", "0"))))
+                # rev137: Jobs con su job_info.json en disco pero sin renglón en la tabla (p. ej. si
+                # la base se restauró de un respaldo anterior) se vuelven a mostrar y a sincronizar
+                try:
+                    en_bd = {str(j.get("job_number") or "").upper() for j in result}
+                    root = jobs_root()
+                    if root.exists():
+                        for item in root.iterdir():
+                            if item.is_dir() and JOB_RE.match(item.name) and item.name.upper() not in en_bd and (item / "job_info.json").exists():
+                                try:
+                                    meta = json.loads((item / "job_info.json").read_text(encoding="utf-8"))
+                                    if meta.get("job_number"):
+                                        result.append(meta)
+                                        s.add(_orm.Job(data=meta, job_number=meta["job_number"], customer=meta.get("customer"), status=meta.get("status")))
+                                        s.commit(); print(f"[JOBS] {item.name} estaba solo en disco: se sincronizó a la base")
+                                except Exception as e2:
+                                    s.rollback(); print(f"[JOBS] No se pudo sincronizar {item.name}: {e2}")
+                except Exception as e3:
+                    print(f"[JOBS] revisión de carpetas: {e3}")
+                result.sort(key=lambda j: (j.get("main_index", 0), int(str(j.get("subindex", "0")) if str(j.get("subindex", "0")).isdigit() else 0)))
                 return result
             finally:
                 s.close()
@@ -1090,11 +1108,157 @@ def api_update_job(job_number):
 # es "Done"; se aceptan también los que llegan de importaciones o capturas anteriores.
 JOB_ESTATUS_CERRADO = {"DONE", "CLOSED", "CLOSE", "CERRADO", "TERMINADO", "FINISHED"}
 
+# ══ rev137: Jobs — papelera, referencias, diagnóstico y restauración ══════════════
+_JOBS_PAPELERA_FILE = _os.path.join(_DATA, "JOBS_ELIMINADOS.json")
+
+def _jobs_papelera_load():
+    try:
+        if _orm and _orm.DB_ENABLED: return (_kpi_snap_get("jobs_papelera").get("jobs_papelera") or {}).get("lista") or []
+        if _os.path.exists(_JOBS_PAPELERA_FILE): return json.load(open(_JOBS_PAPELERA_FILE, encoding="utf-8"))
+    except Exception as e:
+        print(f"[JOBS] papelera: {e}")
+    return []
+
+def _jobs_papelera_save(lista):
+    lista = lista[-500:]
+    if _orm and _orm.DB_ENABLED: _kpi_snap_set("jobs_papelera", {"lista": lista})
+    else:
+        with open(_JOBS_PAPELERA_FILE, "w", encoding="utf-8") as f: json.dump(lista, f, ensure_ascii=False, indent=2, default=str)
+
+def _job_referencias(jn):
+    """Dónde se usa el Job (para avisar antes de borrarlo y para reconstruirlo)."""
+    jn = str(jn or "").strip().upper(); out = {}
+    def add(k, v): out.setdefault(k, []).append(v)
+    try:
+        for r in pt_load():
+            if jn in [str(x).strip().upper() for x in r.get("jobs") or []]: add("PT", {"pt": r.get("pt_number"), "customer": r.get("customer"), "pm": r.get("pm")})
+    except Exception: pass
+    try:
+        for r in sv_load():
+            if jn in [str(x).strip().upper() for x in r.get("jobs") or []]: add("SV", {"sv": r.get("sv_number"), "customer": r.get("customer")})
+    except Exception: pass
+    try:
+        for c in projcfg_load():
+            for j in c.get("jobs") or []:
+                if str(j.get("job_number") or "").strip().upper() == jn:
+                    add("Configurar Proyecto", {"ptsv": c.get("ptsv"), "customer": j.get("customer"), "revenue": j.get("revenue")})
+    except Exception: pass
+    try:
+        for y in (cpo_available_years() or []):
+            for c in cpo_load(y):
+                if str(c.get("job") or "").strip().upper() == jn:
+                    add("CPO", {"id": c.get("id"), "po": c.get("po_number"), "customer": c.get("customer"), "value": c.get("value"), "pm": c.get("pm")})
+    except Exception: pass
+    try:
+        n = 0
+        for y in (po_available_years() or []):
+            n += sum(1 for r in po_load(y) if str(r.get("entregar_a") or "").strip().upper() == jn)
+        if n: add("Purchase Orders", {"renglones": n})
+    except Exception: pass
+    return out
+
+def _job_mover_carpeta(jn, a_papelera=True):
+    import shutil as _sh
+    root = jobs_root(); pap = root / "_eliminados"
+    try:
+        if a_papelera:
+            f = job_folder(jn)
+            if f.exists():
+                pap.mkdir(parents=True, exist_ok=True)
+                destino = pap / f"{jn}__{datetime.datetime.now():%Y%m%d%H%M%S}"
+                _sh.move(str(f), str(destino)); return str(destino)
+        else:
+            if job_folder(jn).exists() or not pap.exists(): return None
+            cands = sorted([d for d in pap.iterdir() if d.is_dir() and d.name.split("__")[0].upper() == jn.upper()], key=lambda d: d.name)
+            if cands: _sh.move(str(cands[-1]), str(job_folder(jn))); return str(cands[-1])
+    except Exception as e:
+        print(f"[JOBS] carpeta {jn}: {e}")
+    return None
+
+@app.route("/api/jobs/<job_number>/diagnostico", methods=["GET"])
+def api_job_diagnostico(job_number):
+    if not (can("view", "jobs") or is_admin()): return jsonify({"error": "Sin permiso"}), 403
+    jn = str(job_number).strip().upper()
+    if not JOB_RE.match(jn): return jsonify({"error": "Job number inválido (formato 685-01)"}), 400
+    en_bd = None
+    if _orm and _orm.DB_ENABLED:
+        try:
+            s = _orm.get_session()
+            try: en_bd = s.query(_orm.Job).filter(_orm.Job.job_number == jn).one_or_none() is not None
+            finally: s.close()
+        except Exception: en_bd = None
+    carpeta = job_folder(jn).exists(); meta_archivo = (job_folder(jn) / "job_info.json").exists()
+    papelera = [x for x in _jobs_papelera_load() if str(x.get("job_number") or "").upper() == jn]
+    eliminados_disco = []
+    try:
+        pap = jobs_root() / "_eliminados"
+        if pap.exists(): eliminados_disco = sorted(d.name for d in pap.iterdir() if d.name.split("__")[0].upper() == jn)
+    except Exception: pass
+    visible = any(str(j.get("job_number") or "").upper() == jn for j in scan_jobs())
+    refs = _job_referencias(jn)
+    return jsonify({"job": jn, "visible_en_registro": visible, "en_base_de_datos": en_bd, "carpeta": carpeta, "job_info_json": meta_archivo,
+                    "papelera": [{"eliminado": x.get("eliminado"), "por": x.get("eliminado_por"), "customer": (x.get("meta") or {}).get("customer")} for x in papelera],
+                    "carpetas_eliminadas": eliminados_disco, "referencias": refs,
+                    "se_puede_restaurar": (not visible) and bool(papelera or meta_archivo or refs)})
+
+@app.route("/api/jobs/<job_number>/restaurar", methods=["POST"])
+def api_job_restaurar(job_number):
+    if not is_admin(): return jsonify({"error": "Solo el administrador puede restaurar Jobs"}), 403
+    jn = str(job_number).strip().upper()
+    if not JOB_RE.match(jn): return jsonify({"error": "Job number inválido"}), 400
+    with lock:
+        if any(str(j.get("job_number") or "").upper() == jn for j in scan_jobs()):
+            return jsonify({"error": f"El Job {jn} ya está en el registro"}), 409
+        fuente = None; meta = None
+        pap = [x for x in _jobs_papelera_load() if str(x.get("job_number") or "").upper() == jn]
+        if pap: meta = dict(pap[-1].get("meta") or {}); fuente = "papelera"
+        if not meta and (job_folder(jn) / "job_info.json").exists():
+            try: meta = json.loads((job_folder(jn) / "job_info.json").read_text(encoding="utf-8")); fuente = "job_info.json"
+            except Exception: meta = None
+        if not meta:
+            refs = _job_referencias(jn)
+            if not refs: return jsonify({"error": f"No hay datos para reconstruir {jn}: no está en la papelera ni en ninguna PT, configuración o CPO"}), 404
+            pt = (refs.get("PT") or refs.get("SV") or [{}])[0]; cfg = (refs.get("Configurar Proyecto") or [{}])[0]; cpos = refs.get("CPO") or []
+            main, sub = jn.split("-")
+            meta = {"job_number": jn, "main_index": int(main), "subindex": sub, "subindex_label": subindex_label(sub),
+                    "customer": (cpos[0].get("customer") if cpos else None) or cfg.get("customer") or pt.get("customer") or "",
+                    "pm": pt.get("pm") or (cpos[0].get("pm") if cpos else "") or "", "description": "",
+                    "product_group": "", "product_subgroup": "",
+                    "revenue": sum(float(c.get("value") or 0) for c in cpos) or float(cfg.get("revenue") or 0),
+                    "estimated_cost": 0, "po_number": ", ".join(str(c.get("po") or "") for c in cpos if c.get("po")),
+                    "ship_date": "", "approval_fc": "ToApprove", "status": "WIP", "notes": "Reconstruido a partir de PT / Configurar Proyecto / CPO (rev137).",
+                    "created_at": datetime.datetime.now().isoformat()}
+            fuente = "referencias"
+        meta["restaurado"] = {"fecha": datetime.datetime.now().isoformat(timespec="seconds"), "por": session.get("user", ""), "fuente": fuente}
+        carpeta = _job_mover_carpeta(jn, a_papelera=False)
+        try: job_folder(jn).mkdir(parents=True, exist_ok=True)
+        except Exception: pass
+        write_meta(jn, meta)
+    print(f"[JOBS] {jn} restaurado por {session.get('user')} desde {fuente}")
+    return jsonify({"ok": True, "job": meta, "fuente": fuente, "carpeta_recuperada": carpeta})
+
 @app.route("/api/jobs/<job_number>", methods=["DELETE"])
 def api_delete_job(job_number):
     if not JOB_RE.match(job_number):
         return jsonify({"error": "Job number inválido"}), 400
+    # rev137: antes cualquier usuario con sesión podía borrar un Job y su carpeta sin dejar rastro
+    if not (can("delete", "jobs") or is_admin()): return jsonify({"error": "Sin permiso para eliminar Jobs"}), 403
+    forzar = bool((request.get_json(silent=True) or {}).get("forzar"))
+    refs = _job_referencias(job_number)
+    if refs and not (forzar and is_admin()):
+        return jsonify({"error": f"El Job {job_number} está en uso: " + "; ".join(f"{k} ({len(v)})" for k, v in refs.items())
+                                 + ". Quítalo de ahí primero, usa Fusionar/Renumerar, o pide al administrador que lo elimine.", "referencias": refs}), 409
     try:
+        try:
+            meta = read_meta(job_number)
+            pap = _jobs_papelera_load()
+            pap.append({"job_number": job_number, "meta": meta, "referencias": refs, "eliminado": datetime.datetime.now().isoformat(timespec="seconds"),
+                        "eliminado_por": session.get("user", "")})
+            _jobs_papelera_save(pap)
+        except Exception as e:
+            print(f"[JOBS] No se pudo guardar {job_number} en la papelera: {e}")
+            return jsonify({"error": f"No se pudo respaldar el Job antes de eliminarlo: {e}"}), 500
+        print(f"[JOBS] {job_number} eliminado por {session.get('user')}")
         if _orm and _orm.DB_ENABLED:
             try:
                 s = _orm.get_session()
@@ -1105,10 +1269,7 @@ def api_delete_job(job_number):
                     s.close()
             except Exception as e:
                 print(f"[DB] ⚠ Error borrando job {job_number} de PostgreSQL: {e}")
-        folder = job_folder(job_number)
-        if folder.exists():
-            import shutil as _shutil
-            _shutil.rmtree(str(folder))
+        _job_mover_carpeta(job_number, a_papelera=True)       # rev137: la carpeta va a _eliminados (no se borra)
         return jsonify({"ok": True})
     except Exception as e: return jsonify({"error": str(e)}), 500
 

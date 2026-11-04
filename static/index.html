@@ -5208,6 +5208,11 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
       </div>
 
       <!-- Fusión de Jobs -->
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.8px;color:var(--red);padding-bottom:7px;border-bottom:1px solid var(--border);margin:28px 0 16px">🩺 Buscar / restaurar Job</div>
+      <div style="font-size:12px;color:var(--muted2);margin-bottom:8px">Para un Job que ya no aparece en el Registro de Jobs: muestra si está en la base, en la papelera, quién lo eliminó y dónde se sigue usando; y permite restaurarlo.</div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px"><input id="jd-num" placeholder="ej. 685-01" style="width:140px;padding:7px 10px;font-family:'DM Mono',monospace" onkeydown="if(event.key==='Enter')jobDiagnostico()"><button class="btn btn-s" onclick="jobDiagnostico()">Buscar</button></div>
+      <div id="jd-res" style="margin-bottom:6px"></div>
+
       <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.8px;color:var(--red);padding-bottom:7px;border-bottom:1px solid var(--border);margin:28px 0 16px">🔀 Fusionar Jobs</div>
       <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;max-width:560px">
         <p style="font-size:12px;color:var(--muted2);margin-bottom:16px;line-height:1.6">

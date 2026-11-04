@@ -362,9 +362,15 @@ async function jobDelete(){
     const fileCount = Array.isArray(files) ? files.length : 0;
     const msg = fileCount > 0
       ? `⚠️ ATENCIÓN: El job ${jn} tiene ${fileCount} archivo(s) adjunto(s).\n\nSi quieres conservar los datos, usa la herramienta "Fusionar Jobs" en el panel Admin ANTES de eliminar.\n\n¿Eliminar de todas formas? Esta acción NO se puede deshacer.`
-      : `¿Eliminar el job ${jn}?\n\nEsta acción NO se puede deshacer.`;
+      : `¿Eliminar el job ${jn}?\n\nQuedará en la papelera y el administrador podrá restaurarlo.`;
     if(!confirm(msg)) return;
-    const r=await apiCall('DELETE','/jobs/'+jn);
+    let r=await apiCall('DELETE','/jobs/'+jn);
+    // rev137: si el Job está en uso (PT, Configurar Proyecto, CPO, POs) se avisa; solo el admin puede forzar
+    if(r.referencias){
+      const det = Object.entries(r.referencias).map(([k,v])=>`• ${k}: ${v.length}`).join('\n');
+      if(USER_PERMS?.is_admin && confirm(`${r.error}\n\n${det}\n\n¿Eliminarlo de todas formas? (queda en la papelera)`)) r = await apiCall('DELETE','/jobs/'+jn,{forzar:true});
+      else { toast(r.error,'er',8000); return; }
+    }
     if(r.error){toast(r.error,'er');return;}
     await loadJobs();closePanel();toast('Job '+jn+' eliminado','ok');
   }catch{toast('Error al eliminar','er');}
@@ -20694,4 +20700,33 @@ async function pcPresupuestoExport(formato){
     else { const blob = await r.blob(); const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
       a.download = (r.headers.get('Content-Disposition')||'').match(/filename="?([^";]+)/)?.[1] || `Presupuesto_${pcCurrentPTSV}.xlsx`; a.click(); }
   }catch(e){ if(w) w.close(); toast(e.message,'er'); }
+}
+
+
+// ═══ rev137: Buscar / restaurar un Job que no aparece en el registro ═══
+async function jobDiagnostico(){
+  const jn = (document.getElementById('jd-num').value||'').trim().toUpperCase();
+  const box = document.getElementById('jd-res');
+  if(!/^\d+-\d{2}$/.test(jn)){ box.innerHTML = '<span style="color:var(--red)">Escribe el Job con formato 685-01</span>'; return; }
+  box.innerHTML = 'Buscando…';
+  const d = await fetch('/api/jobs/'+encodeURIComponent(jn)+'/diagnostico').then(r=>r.json());
+  if(d.error){ box.innerHTML = `<span style="color:var(--red)">${esc(d.error)}</span>`; return; }
+  const si = v => v===true ? '<b style="color:#15803d">Sí</b>' : v===false ? '<b style="color:var(--red)">No</b>' : '—';
+  const refs = Object.entries(d.referencias||{}).map(([k,v])=>`<li><b>${esc(k)}</b>: ${v.map(x=>esc(x.pt||x.sv||x.ptsv||x.id||(x.renglones?x.renglones+' renglón(es)':''))).join(', ')}</li>`).join('');
+  box.innerHTML = `<table style="font-size:12px;border-collapse:collapse;margin-bottom:8px">
+      <tr><td style="padding:2px 10px 2px 0">Aparece en el Registro de Jobs</td><td>${si(d.visible_en_registro)}</td></tr>
+      <tr><td style="padding:2px 10px 2px 0">Renglón en la base de datos</td><td>${si(d.en_base_de_datos)}</td></tr>
+      <tr><td style="padding:2px 10px 2px 0">Carpeta de archivos</td><td>${si(d.carpeta)}${d.carpetas_eliminadas.length?` · en _eliminados: ${d.carpetas_eliminadas.map(esc).join(', ')}`:''}</td></tr>
+      <tr><td style="padding:2px 10px 2px 0">En la papelera</td><td>${d.papelera.length? d.papelera.map(x=>`eliminado ${esc(String(x.eliminado).replace('T',' '))} por <b>${esc(x.por||'?')}</b>`).join('<br>') : 'No'}</td></tr></table>
+    <div style="font-size:12px">${refs?`Se usa en:<ul style="margin:4px 0 8px 18px">${refs}</ul>`:'No se usa en PT, configuraciones, CPO ni POs.'}</div>
+    ${d.se_puede_restaurar && USER_PERMS?.is_admin ? `<button class="btn btn-p" onclick="jobRestaurar('${jn}')">♻ Restaurar ${jn}</button>
+      <div style="font-size:11px;color:var(--muted2);margin-top:4px">${d.papelera.length?'Se restaura con sus datos originales (papelera).':'No está en la papelera: se reconstruye con los datos de la PT, Configurar Proyecto y CPO (cliente, PM, revenue, PO). Revisa y completa la descripción y el grupo después.'}</div>` : (d.visible_en_registro ? '<div style="color:#15803d;font-size:12px">El Job sí aparece en el registro: revisa los filtros de la lista (estatus, búsqueda).</div>' : '')}`;
+}
+async function jobRestaurar(jn){
+  if(!confirm(`¿Restaurar el Job ${jn} en el Registro de Jobs?`)) return;
+  const r = await apiCall('POST','/jobs/'+encodeURIComponent(jn)+'/restaurar',{});
+  if(r.error){ toast(r.error,'er',7000); return; }
+  toast(`Job ${jn} restaurado (fuente: ${r.fuente})`,'ok',6000);
+  try{ await loadJobs(); }catch(e){}
+  jobDiagnostico();
 }
