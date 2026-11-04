@@ -10077,13 +10077,48 @@ async function deleteStockItem(id) {
 
 // ── Delete reassign order (admin only)
 async function deleteReassignOrder(orderNum) {
-  if(!confirm(`¿Eliminar la orden ${orderNum}?\n\nSu material REGRESA a Stock y, si salió de una requisición de compra, se devuelve la cantidad pendiente a sus renglones.`)) return;
+  if(!confirm(`¿Eliminar la orden ${orderNum}?\n\nSu material REGRESA a Stock (con el último precio de Stock), sale del costo del Job y, si salió de una requisición de compra, se devuelve la cantidad pendiente a sus renglones.`)) return;
   try {
-    const d = await fetch(`/api/reassign/order/${orderNum}`,{method:'DELETE'}).then(r=>r.json());
-    if(d.error){toast(d.error,'er');return;}
+    const d = await raEliminar(`/api/reassign/order/${encodeURIComponent(orderNum)}`);
+    if(!d) return;
     await loadReassign();
-    toast(`Orden ${orderNum} eliminada`,'ok');
+    toast(`Orden ${orderNum} eliminada · ${(d.devuelto||[]).length} material(es) de regreso a Stock`,'ok',5000);
   } catch(e){toast('Error','er');}
+}
+// rev138: si el material ya tuvo salida de almacén, el admin puede forzar con motivo
+async function raEliminar(url){
+  let d = await fetch(url,{method:'DELETE'}).then(r=>r.json());
+  if(d.error && d.puede_forzar){
+    const m = prompt(`${d.error}\n\nSi es una carga errónea y quieres eliminarla de todas formas, escribe el motivo (queda en la bitácora):`, '');
+    if(m===null) return null;
+    d = await fetch(url,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({forzar:true, motivo:m})}).then(r=>r.json());
+  }
+  if(d.error){ toast(d.error,'er',8000); return null; }
+  return d;
+}
+function raPuedeEliminar(){ return !!(USER_PERMS && (USER_PERMS.is_admin || (USER_PERMS.permissions||{})['reassign']==='full')); }
+let _raOrdenes = [];
+function raDetalle(orderNum){
+  const o = _raOrdenes.find(x=>x.order_number===orderNum); if(!o) return;
+  const fmt = v=>'$'+Number(v||0).toLocaleString('en-US',{minimumFractionDigits:2});
+  const puede = raPuedeEliminar();
+  document.getElementById('ra-det-tit').textContent = `${o.order_number} · ${o.origen||''}`;
+  document.getElementById('ra-det-tb').innerHTML = (o.items||[]).map((it,k)=>`<tr>
+      <td style="font-family:'DM Mono',monospace">${esc(it.part_number)}</td><td>${esc(it.manufacturer||'')}</td><td>${esc(it.description||'')}</td>
+      <td style="font-family:'DM Mono',monospace;color:var(--gold)">${esc(it.job||'')}</td><td style="text-align:right">${it.quantity}</td>
+      <td style="text-align:right">${fmt(it.unit_cost)}</td><td style="text-align:right;font-weight:700">${fmt(it.total_cost)}</td>
+      <td>${puede?`<button class="fi-del" onclick="raQuitarItem('${esc(o.order_number)}',${k})">Quitar</button>`:''}</td></tr>`).join('')
+    || '<tr><td colspan="8" style="color:var(--muted);text-align:center;padding:14px">Sin renglones</td></tr>';
+  document.getElementById('mo-ra-det').classList.add('on');
+}
+async function raQuitarItem(orderNum, idx){
+  const o = _raOrdenes.find(x=>x.order_number===orderNum), it = o && (o.items||[])[idx]; if(!it) return;
+  if(!confirm(`¿Quitar ${it.quantity} × ${it.part_number} (Job ${it.job}) de la orden ${orderNum}?\n\nEl material regresa a Stock y sale del costo del Job.`)) return;
+  const d = await raEliminar(`/api/reassign/order/${encodeURIComponent(orderNum)}/item/${idx}`);
+  if(!d) return;
+  toast(d.orden_eliminada ? `Renglón quitado · la orden ${orderNum} quedó vacía y se eliminó` : 'Renglón quitado · material de regreso a Stock','ok',5000);
+  await loadReassign();
+  if(d.orden_eliminada) closeMo('mo-ra-det'); else raDetalle(orderNum);
 }
 
 // ── PDF de orden de reasignación (abre en nueva pestaña como HTML imprimible)
@@ -10146,7 +10181,8 @@ loadReassign = async function() {
     if(d.error){toast(d.error,'er');return;}
     raNextNum = d.next_number;
     const fmt = v=>'$'+Number(v||0).toLocaleString('en-US',{minimumFractionDigits:2});
-    const isAdm = USER_PERMS && USER_PERMS.is_admin;
+    const isAdm = raPuedeEliminar();                       // rev138: admin o Control total en Reasignaciones
+    _raOrdenes = d.orders || [];
     document.getElementById('ra-tb').innerHTML = (d.orders||[]).map(o=>{
       const total = (o.items||[]).reduce((s,i)=>s+parseFloat(i.total_cost||0),0);
       return `<tr>
@@ -10157,6 +10193,7 @@ loadReassign = async function() {
         <td style="text-align:right;font-weight:700;color:var(--green)">${fmt(total)}</td>
         <td>
           <button onclick="printReassignOrder('${esc(o.order_number)}')" class="btn-reload" style="font-size:10px;padding:3px 8px">PDF</button>
+          <button onclick="raDetalle('${esc(o.order_number)}')" class="btn-reload" style="font-size:10px;padding:3px 8px">Detalle</button>
           ${isAdm?`<button onclick="deleteReassignOrder('${esc(o.order_number)}')" class="fi-del" style="font-size:11px;margin-left:4px">Eliminar</button>`:''}
         </td>
       </tr>`;

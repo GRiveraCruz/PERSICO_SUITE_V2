@@ -6047,6 +6047,15 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
   </div>
 </div>
 
+<!-- rev138: detalle de una orden de reasignación -->
+<div class="mo" id="mo-ra-det" style="z-index:160">
+  <div class="md" style="max-width:900px;width:calc(100% - 32px)">
+    <div class="mh"><h2>🔁 <span id="ra-det-tit"></span></h2><button class="px" onclick="closeMo('mo-ra-det')">Cerrar</button></div>
+    <div class="mb2"><div style="overflow-x:auto"><table class="tbl" style="width:100%"><thead><tr><th>No. parte</th><th>Marca</th><th>Descripción</th><th>Job</th><th style="text-align:right">Cant.</th><th style="text-align:right">Costo unit.</th><th style="text-align:right">Total</th><th></th></tr></thead><tbody id="ra-det-tb"></tbody></table></div>
+    <div style="font-size:11px;color:var(--muted2);margin-top:8px">"Quitar" regresa el material del renglón a Stock (se suma al registro existente con su último precio), lo saca del costo del Job y devuelve la cantidad a la requisición de la que salió. Si ya tuvo salida de almacén, solo el administrador puede forzarlo indicando el motivo.</div></div>
+  </div>
+</div>
+
 <!-- ══ MODULE: Órdenes de cobro (rev121) ══ -->
 <div class="module" id="mod-fin-ordenes-cobro">
   <div class="main-content" style="overflow-y:auto">

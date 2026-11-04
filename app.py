@@ -13537,12 +13537,109 @@ def _req_revert_order(order_number, jobs, order_items=None):
     finally:
         s.close()
 
+# ══ rev138: eliminar reasignaciones (orden completa o un renglón) ══════════════════
+#  · Lo puede hacer el administrador o quien tenga Control total en Reasignaciones
+#    (antes solo el rol administrador: en producción no aparecía el botón).
+#  · El material regresa a Stock (se suma al registro existente, que conserva su último
+#    precio; si ya no existe, se vuelve a dar de alta con el costo de la reasignación),
+#    sale del costo del Job (resultado de proyectos) y se devuelve a la requisición.
+#  · Si parte del material ya tuvo salida de almacén, solo el administrador puede forzar
+#    la eliminación indicando el motivo (para corregir cargas erróneas). Queda bitácora.
+def _puede_eliminar_ra():
+    return is_admin() or can("delete", "reassign")
+
+def _ra_bitacora(evento):
+    try:
+        evento = dict(evento, fecha=datetime.datetime.now().isoformat(timespec="seconds"), usuario=session.get("user", ""))
+        if _orm and _orm.DB_ENABLED:
+            lst = (_kpi_snap_get("ra_bitacora").get("ra_bitacora") or {}).get("lista") or []
+            lst.append(evento); _kpi_snap_set("ra_bitacora", {"lista": lst[-1000:]})
+        else:
+            pth = _os.path.join(_DATA, "RA_BITACORA.json")
+            lst = json.load(open(pth, encoding="utf-8")) if _os.path.exists(pth) else []
+            lst.append(evento)
+            with open(pth, "w", encoding="utf-8") as f: json.dump(lst[-1000:], f, ensure_ascii=False, indent=2, default=str)
+    except Exception as e:
+        print(f"[REASIG] bitácora: {e}")
+
+def _req_revert_item(order_number, item):
+    """Quita de la requisición solo la cantidad de UN renglón de la orden RA."""
+    if not (_orm and _orm.DB_ENABLED): return 0
+    job = str(item.get("job") or "").upper(); qty = float(item.get("quantity") or 0)
+    pns = {_req_pn(item.get("part_number")), _req_pn(item.get("label_code"))} - {""}
+    if not job or qty <= 0: return 0
+    s = _orm.get_session()
+    try:
+        n = 0
+        for row in s.query(_orm.RequisicionCompra).filter(_orm.RequisicionCompra.job == job).all():
+            if qty <= 0: break
+            d = row.data
+            if _req_pn(d.get("part_number")) not in pns: continue
+            regs = d.get("reasignaciones") or []
+            cambio = False
+            for r in regs:
+                if r.get("order_number") != order_number or qty <= 0: continue
+                q = min(qty, float(r.get("cantidad") or 0))
+                r["cantidad"] = float(r.get("cantidad") or 0) - q; qty -= q; cambio = True
+                d["cantidad_reasignada"] = max(0.0, float(d.get("cantidad_reasignada") or 0) - q)
+            if cambio:
+                d["reasignaciones"] = [r for r in regs if float(r.get("cantidad") or 0) > 0]
+                _req_aplicar_estatus(d, row); row.data = d; _orm_flag_modified(row, "data"); n += 1
+        s.commit(); return n
+    finally:
+        s.close()
+
+@app.route("/api/reassign/order/<order_number>/item/<int:idx>", methods=["DELETE"])
+def api_delete_reassign_item(order_number, idx):
+    """Elimina UN renglón de una orden RA (regresa su material a Stock)."""
+    if not _puede_eliminar_ra(): return jsonify({"error": "Sin permiso para eliminar reasignaciones"}), 403
+    b = request.get_json(silent=True) or {}
+    forzar, motivo = bool(b.get("forzar")), str(b.get("motivo") or "").strip()[:300]
+    num = order_number.upper()
+    try:
+        with lock:
+            orders = reassign_load()
+            order = next((o for o in orders if o.get("order_number") == num), None)
+            if not order: return jsonify({"error": "Orden no encontrada"}), 404
+            items = order.get("items") or []
+            if not (0 <= idx < len(items)): return jsonify({"error": "Renglón no encontrado"}), 404
+            item = items[idx]
+        err = _reasig_validar_eliminar({"order_number": num, "items": [item]}, "stock")
+        if err and not (forzar and is_admin()):
+            return jsonify({"error": err, "puede_forzar": is_admin()}), 400
+        if err and len(motivo) < 5: return jsonify({"error": "Indica el motivo para forzar la eliminación"}), 400
+        with lock:
+            orders = reassign_load()
+            order = next((o for o in orders if o.get("order_number") == num), None)
+            items = order.get("items") or []
+            if not (0 <= idx < len(items)): return jsonify({"error": "Renglón no encontrado"}), 404
+            item = items[idx]
+            records = stock_load()
+            devuelto = _return_items_to_inventory(records, [item], "STK-dev")
+            stock_save(records)
+            order["items"] = [it for k, it in enumerate(items) if k != idx]
+            order["updated_at"] = datetime.datetime.now().isoformat()
+            vacia = not order["items"]
+            reassign_save([o for o in orders if not (vacia and o is order)])
+        try: _reasig_quitar_apartados({"order_number": num, "items": [item]})
+        except Exception as e: print(f"[REASIG→APARTADOS] {e}")
+        try: req = _req_revert_item(num, item)
+        except Exception as e: print(f"[REQ] {e}"); req = None
+        _ra_bitacora({"accion": "renglón eliminado", "orden": num, "item": item, "forzado": bool(err), "motivo": motivo, "devuelto": devuelto})
+        try: _kpi_foto_inventarios_async()
+        except Exception: pass
+        return jsonify({"ok": True, "devuelto": devuelto, "orden_eliminada": vacia, "requisicion_renglones": req})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/api/reassign/order/<order_number>", methods=["DELETE"])
 def api_delete_reassign_order(order_number):
     """Elimina la orden RA y REGRESA su material a Stock (antes solo se borraba la
     orden y el material se perdía). También devuelve la cantidad pendiente a los
     renglones de Requisición de Compra de los que haya salido la orden."""
-    if not is_admin(): return jsonify({"error":"Sin permiso"}), 403
+    if not _puede_eliminar_ra(): return jsonify({"error":"Sin permiso para eliminar reasignaciones"}), 403   # rev138
+    b = request.get_json(silent=True) or {}
+    forzar, motivo = bool(b.get("forzar")), str(b.get("motivo") or "").strip()[:300]
     try:
         num = order_number.upper()
         with lock:
@@ -13550,7 +13647,8 @@ def api_delete_reassign_order(order_number):
             order = next((o for o in orders if o.get("order_number") == num), None)
             if not order: return jsonify({"error":"Orden no encontrada"}), 404
         err = _reasig_validar_eliminar(order, "stock")           # rev91
-        if err: return jsonify({"error": err}), 400
+        if err and not (forzar and is_admin()): return jsonify({"error": err, "puede_forzar": is_admin()}), 400
+        if err and len(motivo) < 5: return jsonify({"error": "Indica el motivo para forzar la eliminación"}), 400
         with lock:
             orders = reassign_load()
             order = next((o for o in orders if o.get("order_number") == num), None)
@@ -13567,6 +13665,9 @@ def api_delete_reassign_order(order_number):
         except Exception as e:
             print(f"[REQ] No se pudo revertir la requisición de {num}: {e}")
             req_ajustados = None
+        _ra_bitacora({"accion": "orden eliminada", "orden": num, "items": order.get("items") or [], "forzado": bool(err), "motivo": motivo, "devuelto": devuelto})
+        try: _kpi_foto_inventarios_async()
+        except Exception: pass
         return jsonify({"ok": True, "devuelto": devuelto, "requisicion_renglones": req_ajustados})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
