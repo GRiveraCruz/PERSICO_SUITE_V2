@@ -13589,6 +13589,121 @@ def _req_revert_item(order_number, item):
     finally:
         s.close()
 
+# ══ rev139: CORRECCIÓN DE COSTOS (material registrado con costo equivocado, p. ej. en pesos) ══
+def _cerca(a, b, tol=0.005):
+    try: return abs(float(a) - float(b)) <= max(tol, abs(float(b)) * 0.0005)
+    except (TypeError, ValueError): return False
+
+def _corregir_costos(cambios, aplicar, incluir_stock=True):
+    """cambios: [{job (o ""=cualquiera), part_number, desde (costo actual a corregir, o None=cualquiera), nuevo}].
+    Corrige reasignaciones (RA), apartados, salidas de almacén, ingresos y Stock. Regresa el detalle."""
+    det = {"reasignaciones": [], "apartados": [], "salidas": [], "ingresos": [], "stock": []}
+    def coincide(job, pn, costo, c):
+        return (str(pn or "").upper() == c["part_number"] and (not c["job"] or str(job or "").upper() == c["job"])
+                and (c["desde"] is None or _cerca(costo, c["desde"])))
+    with lock:
+        ras = reassign_load(); aps = apartado_load(); sals = salida_load(); ings = ingreso_load(); stk = stock_load()
+        for c in cambios:
+            c["part_number"] = str(c["part_number"]).upper(); c["job"] = str(c.get("job") or "").upper()
+            for o in ras:
+                for it in o.get("items") or []:
+                    if coincide(it.get("job"), it.get("part_number"), it.get("unit_cost"), c) and not _cerca(it.get("unit_cost"), c["nuevo"]):
+                        det["reasignaciones"].append({"doc": o.get("order_number"), "job": it.get("job"), "part_number": it.get("part_number"),
+                                                      "cantidad": it.get("quantity"), "antes": it.get("unit_cost"), "despues": c["nuevo"]})
+                        if aplicar:
+                            it.setdefault("costo_corregido", []).append({"antes": it.get("unit_cost"), "fecha": datetime.datetime.now().isoformat(timespec="seconds"), "por": session.get("user", "")})
+                            it["unit_cost"] = c["nuevo"]; it["total_cost"] = round(c["nuevo"] * float(it.get("quantity") or 0), 2)
+            for a in aps:
+                for j in a.get("jobs") or []:
+                    if coincide(j.get("job"), a.get("part_number"), j.get("unit_cost"), c) and not _cerca(j.get("unit_cost"), c["nuevo"]):
+                        det["apartados"].append({"doc": "apartado", "job": j.get("job"), "part_number": a.get("part_number"), "cantidad": j.get("quantity"),
+                                                 "antes": j.get("unit_cost"), "despues": c["nuevo"]})
+                        if aplicar: j["unit_cost"] = c["nuevo"]
+            for sx in sals:
+                for it in sx.get("items") or []:
+                    if coincide(sx.get("job"), it.get("part_number"), it.get("unit_cost"), c) and not _cerca(it.get("unit_cost"), c["nuevo"]):
+                        det["salidas"].append({"doc": sx.get("id"), "job": sx.get("job"), "part_number": it.get("part_number"), "cantidad": it.get("quantity"),
+                                               "antes": it.get("unit_cost"), "despues": c["nuevo"]})
+                        if aplicar: it["unit_cost"] = c["nuevo"]; it["total"] = round(c["nuevo"] * float(it.get("quantity") or 0), 2)
+            for ig in ings:
+                for it in ig.get("items") or []:
+                    if c.get("solo_po") and str(ig.get("po_number") or "").upper() != c["solo_po"]: continue
+                    if coincide(it.get("job"), it.get("part_number"), it.get("unit_cost"), c) and not _cerca(it.get("unit_cost"), c["nuevo"]):
+                        det["ingresos"].append({"doc": ig.get("id"), "job": it.get("job"), "part_number": it.get("part_number"), "cantidad": it.get("quantity_delivered"),
+                                                "antes": it.get("unit_cost"), "despues": c["nuevo"]})
+                        if aplicar: it["unit_cost"] = c["nuevo"]; it["total"] = round(c["nuevo"] * float(it.get("quantity_delivered") or 0), 2)
+            if incluir_stock:
+                for r in stk:
+                    if str(r.get("part_number") or "").upper() == c["part_number"] and (c["desde"] is None or _cerca(r.get("last_cost"), c["desde"])) and not _cerca(r.get("last_cost"), c["nuevo"]):
+                        det["stock"].append({"doc": r.get("id"), "job": "", "part_number": r.get("part_number"), "cantidad": r.get("quantity"), "antes": r.get("last_cost"), "despues": c["nuevo"]})
+                        if aplicar: r["last_cost"] = c["nuevo"]; r["updated_at"] = datetime.datetime.now().isoformat()
+        if aplicar:
+            reassign_save(ras); apartado_save(aps); salida_save(sals); ingreso_save(ings)
+            if incluir_stock: stock_save(stk)
+    return det
+
+def _puede_corregir_costos():
+    return is_admin() or can("delete", "reassign")
+
+@app.route("/api/costos/corregir", methods=["POST"])
+def api_costos_corregir():
+    """Corrige el costo unitario de un material (No. de parte, opcionalmente de un Job) en
+    reasignaciones, apartados, salidas, ingresos y Stock. {part_number, job?, desde?, nuevo|usar_stock, aplicar}"""
+    if not _puede_corregir_costos(): return jsonify({"error": "Sin permiso"}), 403
+    b = request.json or {}
+    pn = str(b.get("part_number") or "").strip().upper()
+    if not pn: return jsonify({"error": "Indica el No. de parte"}), 400
+    nuevo = b.get("nuevo")
+    if b.get("usar_stock"):
+        st = [r for r in stock_load() if str(r.get("part_number") or "").upper() == pn]
+        if not st: return jsonify({"error": f"{pn} no está en Stock"}), 404
+        nuevo = st[0].get("last_cost")
+    try: nuevo = round(float(nuevo), 4)
+    except (TypeError, ValueError): return jsonify({"error": "Indica el costo correcto (USD)"}), 400
+    if nuevo < 0: return jsonify({"error": "Costo inválido"}), 400
+    desde = b.get("desde")
+    try: desde = float(desde) if desde not in (None, "") else None
+    except (TypeError, ValueError): desde = None
+    aplicar = bool(b.get("aplicar"))
+    det = _corregir_costos([{"job": b.get("job") or "", "part_number": pn, "desde": desde, "nuevo": nuevo}], aplicar, incluir_stock=not b.get("usar_stock"))
+    if aplicar:
+        _ra_bitacora({"accion": "costo corregido", "part_number": pn, "job": b.get("job") or "", "desde": desde, "nuevo": nuevo,
+                      "afectados": {k: len(v) for k, v in det.items()}})
+    return jsonify({"ok": True, "aplicado": aplicar, "nuevo": nuevo, "detalle": det, "total": sum(len(v) for v in det.values())})
+
+@app.route("/api/costos/convertir-oc", methods=["POST"])
+def api_costos_convertir_oc():
+    """OC generada en pesos cuyos costos entraron al almacén en pesos: los convierte a USD
+    (tipo de cambio de la OC, neto de descuentos) en ingresos, apartados, salidas, reasignaciones
+    y Stock, solo donde el costo registrado coincide con el precio en pesos. {po_number, aplicar}"""
+    if not _puede_corregir_costos(): return jsonify({"error": "Sin permiso"}), 403
+    b = request.json or {}
+    po = str(b.get("po_number") or "").strip().upper()
+    g = None
+    try:
+        r_ = _gpo_buscar(gpo_load(), po) if po else None
+        g = r_[1] if isinstance(r_, tuple) and len(r_) > 1 and isinstance(r_[1], dict) else (r_ if isinstance(r_, dict) else None)
+    except Exception: g = None
+    if not g: g = next((x for x in gpo_load() if str(x.get("po_number", "")).upper() == po), None)
+    if not g: return jsonify({"error": "OC generada no encontrada"}), 404
+    if str(g.get("moneda") or "").upper() != "MXN": return jsonify({"error": f"La OC {g.get('po_number')} está en {g.get('moneda')}: no hay nada que convertir"}), 400
+    tc = float(g.get("fx_rate") or 0)
+    if tc <= 1: return jsonify({"error": "La OC no tiene tipo de cambio válido"}), 400
+    gpct = float(g.get("descuento_global_pct") or 0) if g.get("tipo_descuento") == "total" else 0.0
+    cambios = []
+    for i in g.get("items") or []:
+        q = float(i.get("quantity") or 0)
+        if q <= 0: continue
+        precio = float(i.get("unit_price") or 0); neto = float(i.get("total") or 0) * (1 - gpct / 100) / q
+        for desde in {round(precio, 4), round(neto, 4)}:
+            cambios.append({"job": i.get("job") or "", "part_number": i.get("part_number") or "", "desde": desde, "nuevo": round(neto / tc, 4),
+                            "solo_po": str(g.get("po_number") or "").upper()})
+    aplicar = bool(b.get("aplicar"))
+    det = _corregir_costos(cambios, aplicar)
+    if aplicar:
+        _ra_bitacora({"accion": "OC en pesos convertida a USD", "po": g.get("po_number"), "tc": tc, "afectados": {k: len(v) for k, v in det.items()}})
+    return jsonify({"ok": True, "aplicado": aplicar, "po": g.get("po_number"), "tipo_cambio": tc, "detalle": det, "total": sum(len(v) for v in det.values())})
+
 @app.route("/api/reassign/order/<order_number>/item/<int:idx>", methods=["DELETE"])
 def api_delete_reassign_item(order_number, idx):
     """Elimina UN renglón de una orden RA (regresa su material a Stock)."""
@@ -18232,6 +18347,48 @@ def api_get_ingreso():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# ══ rev139: los costos que entran al almacén desde una OC en pesos se convierten a USD ═══
+#  (con el tipo de cambio de la OC; para las OC de SAE, el de su fecha). Solo el PDF de la OC
+#  conserva los pesos. De ahí heredan apartados, salidas, Stock y el resultado del proyecto.
+def _ingreso_conversion_usd(tipo, po_num):
+    if not po_num: return None
+    try:
+        if tipo == "gpo":
+            g = next((x for x in gpo_load() if str(x.get("po_number", "")).upper() == po_num), None)
+            if not g: return None
+            mon = str(g.get("moneda") or "USD").upper(); tc = float(g.get("fx_rate") or 1) or 1
+            gpct = float(g.get("descuento_global_pct") or 0) if g.get("tipo_descuento") == "total" else 0.0
+            netos = {}
+            for i in g.get("items") or []:
+                q = float(i.get("quantity") or 0)
+                if q <= 0: continue
+                neto_u = float(i.get("total") or 0) * (1 - gpct / 100) / q          # con descuentos (rev135)
+                netos[(str(i.get("part_number", "")).upper(), i.get("variante") or "")] = neto_u
+                netos.setdefault((str(i.get("part_number", "")).upper(), None), neto_u)
+            if mon != "MXN" and not netos: return None
+            return {"moneda": mon, "tc": tc if mon == "MXN" else 1.0, "netos": netos}
+        if tipo == "sae":
+            fx_all = fx_load_all()
+            for y in (po_available_years() or []):
+                for r in po_load(y):
+                    c = str(r.get("clave") or "").upper()
+                    if c == po_num or c.replace("PO-", "").lstrip("0") == po_num.replace("PO-", "").lstrip("0"):
+                        if str(r.get("moneda") or "USD").upper() != "MXN": return None
+                        tc = fx_rate_for_date(r.get("fecha_recepcion") or r.get("fecha_doc") or "", fx_all) or float(r.get("tipo_cambio") or 0)
+                        return {"moneda": "MXN", "tc": float(tc) if tc else None, "netos": {}}
+    except Exception as e:
+        print(f"[INGRESO] conversión USD {po_num}: {e}")
+    return None
+
+def _ingreso_costo_usd(conv, it, uc):
+    pn = str(it.get("part_number", "")).upper()
+    neto = conv["netos"].get((pn, it.get("variante") or "")) or conv["netos"].get((pn, None))
+    base = neto if neto is not None else uc
+    if conv["moneda"] == "MXN":
+        if not conv.get("tc"): raise ValueError("La OC está en pesos y no hay tipo de cambio para convertir a USD")
+        return round(base / conv["tc"], 4)
+    return round(base, 4)
+
 @app.route("/api/ingreso", methods=["POST"])
 def api_create_ingreso():
     """
@@ -18249,6 +18406,7 @@ def api_create_ingreso():
         if not items:
             return jsonify({"error":"Debe incluir al menos un item"}), 400
 
+        conv = _ingreso_conversion_usd(tipo, po_num)                     # rev139: OC en pesos → costos en USD
         with lock:
             now = datetime.datetime.now().isoformat()
             # Build ingreso record
@@ -18262,7 +18420,12 @@ def api_create_ingreso():
                 uc = float(it.get("unit_cost", 0) or 0)
                 if qty_del <= 0: continue   # skip zero-qty rows
                 job_val = str(it.get("job","")).strip().upper()
+                uc_origen, mon_origen = uc, "USD"
+                if conv:                                               # rev139
+                    uc, mon_origen = _ingreso_costo_usd(conv, it, uc), conv["moneda"]
                 ing_items.append({
+                    "unit_cost_origen":  round(uc_origen, 4), "moneda_origen": mon_origen,
+                    "tipo_cambio":       conv["tc"] if conv else 1.0,
                     "part_number":       str(it.get("part_number","")).strip().upper(),
                     "brand":             str(it.get("brand","")).strip().upper(),
                     "description":       str(it.get("description","")).strip(),

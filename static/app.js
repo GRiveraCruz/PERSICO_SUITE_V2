@@ -10107,7 +10107,7 @@ function raDetalle(orderNum){
       <td style="font-family:'DM Mono',monospace">${esc(it.part_number)}</td><td>${esc(it.manufacturer||'')}</td><td>${esc(it.description||'')}</td>
       <td style="font-family:'DM Mono',monospace;color:var(--gold)">${esc(it.job||'')}</td><td style="text-align:right">${it.quantity}</td>
       <td style="text-align:right">${fmt(it.unit_cost)}</td><td style="text-align:right;font-weight:700">${fmt(it.total_cost)}</td>
-      <td>${puede?`<button class="fi-del" onclick="raQuitarItem('${esc(o.order_number)}',${k})">Quitar</button>`:''}</td></tr>`).join('')
+      <td style="white-space:nowrap">${puede?`<button class="btn-reload" style="font-size:10px;padding:3px 7px" onclick="raCorregirCosto('${esc(o.order_number)}',${k})">Corregir costo</button> <button class="fi-del" onclick="raQuitarItem('${esc(o.order_number)}',${k})">Quitar</button>`:''}</td></tr>`).join('')
     || '<tr><td colspan="8" style="color:var(--muted);text-align:center;padding:14px">Sin renglones</td></tr>';
   document.getElementById('mo-ra-det').classList.add('on');
 }
@@ -20766,4 +20766,49 @@ async function jobRestaurar(jn){
   toast(`Job ${jn} restaurado (fuente: ${r.fuente})`,'ok',6000);
   try{ await loadJobs(); }catch(e){}
   jobDiagnostico();
+}
+
+
+// ═══ rev139: corrección de costos ═══
+let _ccUltimo = null;
+function ccTabla(d){
+  const fmt = v => v==null ? '—' : '$'+Number(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:4});
+  const nombres = {reasignaciones:'Reasignaciones (RA)', apartados:'Apartados', salidas:'Salidas de almacén', ingresos:'Ingresos', stock:'Stock'};
+  const filas = Object.entries(d.detalle).flatMap(([k,v])=>v.map(x=>`<tr><td>${nombres[k]}</td><td style="font-family:'DM Mono',monospace">${esc(String(x.doc||''))}</td><td>${esc(x.job||'')}</td><td style="font-family:'DM Mono',monospace">${esc(x.part_number||'')}</td><td style="text-align:right">${x.cantidad??''}</td><td style="text-align:right;color:var(--red)">${fmt(x.antes)}</td><td style="text-align:right;color:#15803d;font-weight:700">${fmt(x.despues)}</td></tr>`)).join('');
+  return filas ? `<div style="max-height:300px;overflow:auto;border:1px solid var(--border);border-radius:8px"><table class="tbl" style="width:100%;font-size:12px"><thead><tr><th>Dónde</th><th>Documento</th><th>Job</th><th>No. parte</th><th style="text-align:right">Cant.</th><th style="text-align:right">Antes</th><th style="text-align:right">Después</th></tr></thead><tbody>${filas}</tbody></table></div>` : '<div style="color:var(--muted);font-size:12px">No hay registros que corregir con esos datos.</div>';
+}
+async function ccEnviar(url, body, aplicar){
+  const box = document.getElementById('cc-res');
+  const d = await apiCall('POST', url, {...body, aplicar});
+  if(d.error){ box.innerHTML = `<span style="color:var(--red)">${esc(d.error)}</span>`; toast(d.error,'er'); return null; }
+  _ccUltimo = {url, body};
+  box.innerHTML = `<div style="font-size:12px;margin-bottom:6px">${aplicar?'<b style="color:#15803d">✓ Corrección aplicada</b>':'<b>Vista previa</b>'} · ${d.total} registro(s)${d.tipo_cambio?` · tipo de cambio de la OC ${d.tipo_cambio}`:''}${d.nuevo!=null?` · costo correcto $${d.nuevo}`:''}</div>${ccTabla(d)}
+    ${!aplicar && d.total ? `<button class="btn btn-p" style="margin-top:8px" onclick="ccAplicar()">Aplicar corrección (${d.total})</button>` : ''}`;
+  return d;
+}
+function ccPrevia(){
+  const body = {part_number: document.getElementById('cc-pn').value, job: document.getElementById('cc-job').value, desde: document.getElementById('cc-desde').value,
+                nuevo: document.getElementById('cc-nuevo').value, usar_stock: document.getElementById('cc-stock').checked};
+  return ccEnviar('/costos/corregir', body, false);
+}
+function ccPreviaOC(){ return ccEnviar('/costos/convertir-oc', {po_number: document.getElementById('cc-po').value}, false); }
+async function ccAplicar(){
+  if(!_ccUltimo || !confirm('¿Aplicar la corrección de costos? Queda registrada en la bitácora.')) return;
+  const d = await ccEnviar(_ccUltimo.url, _ccUltimo.body, true);
+  if(d){ toast(`Costos corregidos: ${d.total} registro(s)`,'ok',5000); try{ loadReassign && loadReassign(); }catch(e){} }
+}
+async function raCorregirCosto(orderNum, idx){
+  const o = _raOrdenes.find(x=>x.order_number===orderNum), it = o && (o.items||[])[idx]; if(!it) return;
+  const v = prompt(`Costo correcto en USD para ${it.part_number} (Job ${it.job}).\nCosto actual: $${it.unit_cost}\n\nEscribe el costo, o deja vacío para usar el precio actual de Stock:`, '');
+  if(v===null) return;
+  const body = v.trim() ? {part_number: it.part_number, job: it.job, desde: it.unit_cost, nuevo: v} : {part_number: it.part_number, job: it.job, desde: it.unit_cost, usar_stock: true};
+  const pre = await apiCall('POST','/costos/corregir',{...body, aplicar:false});
+  if(pre.error){ toast(pre.error,'er'); return; }
+  const res = Object.entries(pre.detalle).filter(([,x])=>x.length).map(([k,x])=>`• ${k}: ${x.length}`).join('\n');
+  if(!pre.total){ toast('No hay nada que corregir (el costo ya es ese)','if'); return; }
+  if(!confirm(`Costo ${it.unit_cost} → ${pre.nuevo} USD\n\nSe corregirá en:\n${res}\n\n¿Aplicar?`)) return;
+  const d = await apiCall('POST','/costos/corregir',{...body, aplicar:true});
+  if(d.error){ toast(d.error,'er'); return; }
+  toast(`Costo corregido en ${d.total} registro(s)`,'ok',5000);
+  await loadReassign(); raDetalle(orderNum);
 }
