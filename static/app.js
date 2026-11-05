@@ -20783,6 +20783,7 @@ async function ccEnviar(url, body, aplicar){
   if(d.error){ box.innerHTML = `<span style="color:var(--red)">${esc(d.error)}</span>`; toast(d.error,'er'); return null; }
   _ccUltimo = {url, body};
   box.innerHTML = `<div style="font-size:12px;margin-bottom:6px">${aplicar?'<b style="color:#15803d">✓ Corrección aplicada</b>':'<b>Vista previa</b>'} · ${d.total} registro(s)${d.tipo_cambio?` · tipo de cambio de la OC ${d.tipo_cambio}`:''}${d.nuevo!=null?` · costo correcto $${d.nuevo}`:''}</div>${ccTabla(d)}
+    ${(d.sin_coincidir||[]).length ? `<div style="margin-top:8px;font-size:12px;color:var(--amber)"><b>Renglones de la OC sin corrección:</b><ul style="margin:4px 0 0 18px">${d.sin_coincidir.map(x=>`<li><b>${esc(x.part_number)}</b> (Job ${esc(x.job||'—')}, precio OC $${x.precio_oc} → $${x.usd} USD): ${esc(x.motivo)}${(x.registros||[]).length && !/USD/.test(x.motivo) ? ` <button class="btn-reload" style="font-size:10px;padding:2px 7px" onclick="ccCorregirLinea('${esc(x.part_number)}', ${x.registros[0].costo}, ${x.usd})">Corregir a $${x.usd}</button>` : ''}</li>`).join('')}</ul></div>` : ''}
     ${!aplicar && d.total ? `<button class="btn btn-p" style="margin-top:8px" onclick="ccAplicar()">Aplicar corrección (${d.total})</button>` : ''}`;
   return d;
 }
@@ -20811,4 +20812,11 @@ async function raCorregirCosto(orderNum, idx){
   if(d.error){ toast(d.error,'er'); return; }
   toast(`Costo corregido en ${d.total} registro(s)`,'ok',5000);
   await loadReassign(); raDetalle(orderNum);
+}
+
+// rev140: corregir a mano un renglón de la OC cuyo costo no coincidió con el precio de la OC
+function ccCorregirLinea(pn, desde, usd){
+  document.getElementById('cc-pn').value = pn; document.getElementById('cc-job').value = '';
+  document.getElementById('cc-desde').value = desde; document.getElementById('cc-nuevo').value = usd; document.getElementById('cc-stock').checked = false;
+  ccPrevia();
 }

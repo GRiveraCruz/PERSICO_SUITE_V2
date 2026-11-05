@@ -13594,17 +13594,21 @@ def _cerca(a, b, tol=0.005):
     try: return abs(float(a) - float(b)) <= max(tol, abs(float(b)) * 0.0005)
     except (TypeError, ValueError): return False
 
+def _pn_norm(v):
+    """rev140: No. de parte comparable (sin espacios, guiones ni puntos; mayúsculas)."""
+    return re.sub(r"[^A-Z0-9]", "", str(v or "").upper())
+
 def _corregir_costos(cambios, aplicar, incluir_stock=True):
     """cambios: [{job (o ""=cualquiera), part_number, desde (costo actual a corregir, o None=cualquiera), nuevo}].
     Corrige reasignaciones (RA), apartados, salidas de almacén, ingresos y Stock. Regresa el detalle."""
     det = {"reasignaciones": [], "apartados": [], "salidas": [], "ingresos": [], "stock": []}
     def coincide(job, pn, costo, c):
-        return (str(pn or "").upper() == c["part_number"] and (not c["job"] or str(job or "").upper() == c["job"])
+        return (_pn_norm(pn) == _pn_norm(c["part_number"]) and (not c["job"] or str(job or "").strip().upper() == c["job"])
                 and (c["desde"] is None or _cerca(costo, c["desde"])))
     with lock:
         ras = reassign_load(); aps = apartado_load(); sals = salida_load(); ings = ingreso_load(); stk = stock_load()
         for c in cambios:
-            c["part_number"] = str(c["part_number"]).upper(); c["job"] = str(c.get("job") or "").upper()
+            c["part_number"] = str(c["part_number"]).strip().upper(); c["job"] = str(c.get("job") or "").strip().upper()
             for o in ras:
                 for it in o.get("items") or []:
                     if coincide(it.get("job"), it.get("part_number"), it.get("unit_cost"), c) and not _cerca(it.get("unit_cost"), c["nuevo"]):
@@ -13628,13 +13632,14 @@ def _corregir_costos(cambios, aplicar, incluir_stock=True):
             for ig in ings:
                 for it in ig.get("items") or []:
                     if c.get("solo_po") and str(ig.get("po_number") or "").upper() != c["solo_po"]: continue
-                    if coincide(it.get("job"), it.get("part_number"), it.get("unit_cost"), c) and not _cerca(it.get("unit_cost"), c["nuevo"]):
+                    c_ing = dict(c, job="") if c.get("solo_po") else c          # rev140: en la misma OC no se exige el Job
+                    if coincide(it.get("job"), it.get("part_number"), it.get("unit_cost"), c_ing) and not _cerca(it.get("unit_cost"), c["nuevo"]):
                         det["ingresos"].append({"doc": ig.get("id"), "job": it.get("job"), "part_number": it.get("part_number"), "cantidad": it.get("quantity_delivered"),
                                                 "antes": it.get("unit_cost"), "despues": c["nuevo"]})
                         if aplicar: it["unit_cost"] = c["nuevo"]; it["total"] = round(c["nuevo"] * float(it.get("quantity_delivered") or 0), 2)
             if incluir_stock:
                 for r in stk:
-                    if str(r.get("part_number") or "").upper() == c["part_number"] and (c["desde"] is None or _cerca(r.get("last_cost"), c["desde"])) and not _cerca(r.get("last_cost"), c["nuevo"]):
+                    if _pn_norm(r.get("part_number")) == _pn_norm(c["part_number"]) and (c["desde"] is None or _cerca(r.get("last_cost"), c["desde"])) and not _cerca(r.get("last_cost"), c["nuevo"]):
                         det["stock"].append({"doc": r.get("id"), "job": "", "part_number": r.get("part_number"), "cantidad": r.get("quantity"), "antes": r.get("last_cost"), "despues": c["nuevo"]})
                         if aplicar: r["last_cost"] = c["nuevo"]; r["updated_at"] = datetime.datetime.now().isoformat()
         if aplicar:
@@ -13702,7 +13707,22 @@ def api_costos_convertir_oc():
     det = _corregir_costos(cambios, aplicar)
     if aplicar:
         _ra_bitacora({"accion": "OC en pesos convertida a USD", "po": g.get("po_number"), "tc": tc, "afectados": {k: len(v) for k, v in det.items()}})
-    return jsonify({"ok": True, "aplicado": aplicar, "po": g.get("po_number"), "tipo_cambio": tc, "detalle": det, "total": sum(len(v) for v in det.values())})
+    # rev140: renglones de la OC sin nada que corregir y renglones de sus ingresos que no coincidieron
+    tocados = {_pn_norm(x["part_number"]) for v in det.values() for x in v}
+    sin_coincidir = []
+    for i in g.get("items") or []:
+        if _pn_norm(i.get("part_number")) in tocados or float(i.get("quantity") or 0) <= 0: continue
+        q = float(i.get("quantity") or 0); precio = float(i.get("unit_price") or 0); neto = float(i.get("total") or 0) * (1 - gpct / 100) / q
+        regs = [{"doc": ig.get("id"), "part_number": it.get("part_number"), "job": it.get("job"), "costo": it.get("unit_cost")}
+                for ig in ingreso_load() if str(ig.get("po_number") or "").upper() == str(g.get("po_number") or "").upper()
+                for it in ig.get("items") or [] if _pn_norm(it.get("part_number")) == _pn_norm(i.get("part_number"))]
+        motivo = ("sin ingresos de esta OC con ese No. de parte" if not regs else
+                  ("el costo registrado ya está en USD" if all(_cerca(r["costo"], neto / tc) for r in regs) else
+                   f"el costo registrado ({', '.join(str(r['costo']) for r in regs)}) no coincide con el precio de la OC ({precio:g} / neto {round(neto, 2):g})"))
+        sin_coincidir.append({"part_number": i.get("part_number"), "job": i.get("job"), "precio_oc": precio, "usd": round(neto / tc, 4),
+                              "registros": regs, "motivo": motivo})
+    return jsonify({"ok": True, "aplicado": aplicar, "po": g.get("po_number"), "tipo_cambio": tc, "detalle": det,
+                    "total": sum(len(v) for v in det.values()), "sin_coincidir": sin_coincidir})
 
 @app.route("/api/reassign/order/<order_number>/item/<int:idx>", methods=["DELETE"])
 def api_delete_reassign_item(order_number, idx):
