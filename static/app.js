@@ -5099,6 +5099,12 @@ function rptRender(d){
     </tr>` : '';
 
   // ── PO table ──────────────────────────────────────────────────
+  // rev141: material ingresado con OC que no está en Purchase Orders para este Job (no suma en compras)
+  { const box = document.getElementById('rpt-ing-sin-oc'), L = d.ingresos_sin_oc || [];
+    if(box){ box.style.display = L.length ? '' : 'none';
+      box.innerHTML = L.length ? `<b style="color:var(--amber)">⚠ Material ingresado al almacén que no suma en compras (${L.length})</b>
+        <div style="color:var(--muted2);margin:3px 0 6px">Entró con una OC pero esa OC no tiene el renglón en Purchase Orders para este Job, así que su costo no aparece arriba.</div>
+        <table style="width:100%;border-collapse:collapse">${L.map(x=>`<tr style="border-top:1px solid var(--border)"><td style="padding:3px 6px;font-family:'DM Mono',monospace">${esc(x.po)}</td><td style="padding:3px 6px;font-family:'DM Mono',monospace">${esc(x.part_number||'')}</td><td style="padding:3px 6px">${esc(x.description||'')}</td><td style="padding:3px 6px;text-align:right">${x.cantidad} × $${Number(x.unit_cost||0).toLocaleString('en-US',{minimumFractionDigits:2})}</td><td style="padding:3px 6px;text-align:right;font-weight:700">$${Number(x.total||0).toLocaleString('en-US',{minimumFractionDigits:2})}</td><td style="padding:3px 6px;color:var(--amber)">${esc(x.motivo)} · ${esc(x.ingreso)}</td></tr>`).join('')}</table>` : ''; } }
   const ptb = document.getElementById('rpt-po-tb');
   if(d.po_items.length){
     ptb.innerHTML = d.po_items.map((p,i)=>{
@@ -20783,6 +20789,7 @@ async function ccEnviar(url, body, aplicar){
   if(d.error){ box.innerHTML = `<span style="color:var(--red)">${esc(d.error)}</span>`; toast(d.error,'er'); return null; }
   _ccUltimo = {url, body};
   box.innerHTML = `<div style="font-size:12px;margin-bottom:6px">${aplicar?'<b style="color:#15803d">✓ Corrección aplicada</b>':'<b>Vista previa</b>'} · ${d.total} registro(s)${d.tipo_cambio?` · tipo de cambio de la OC ${d.tipo_cambio}`:''}${d.nuevo!=null?` · costo correcto $${d.nuevo}`:''}</div>${ccTabla(d)}
+    ${(d.ingresados_fuera_de_oc||[]).length ? `<div style="margin-top:8px;font-size:12px;color:var(--red)"><b>Ingresado con esta OC pero NO está en la OC:</b> ${d.ingresados_fuera_de_oc.map(x=>`${esc(x.part_number)} (${esc(x.doc)}, Job ${esc(x.job||'—')}, ${x.cantidad} × $${x.costo})`).join('; ')}. Por eso no aparece en Purchase Orders ni en el costo del proyecto: agrégalo a la OC con "Nueva versión" o regístralo como reasignación.</div>` : ''}
     ${(d.sin_coincidir||[]).length ? `<div style="margin-top:8px;font-size:12px;color:var(--amber)"><b>Renglones de la OC sin corrección:</b><ul style="margin:4px 0 0 18px">${d.sin_coincidir.map(x=>`<li><b>${esc(x.part_number)}</b> (Job ${esc(x.job||'—')}, precio OC $${x.precio_oc} → $${x.usd} USD): ${esc(x.motivo)}${(x.registros||[]).length && !/USD/.test(x.motivo) ? ` <button class="btn-reload" style="font-size:10px;padding:2px 7px" onclick="ccCorregirLinea('${esc(x.part_number)}', ${x.registros[0].costo}, ${x.usd})">Corregir a $${x.usd}</button>` : ''}</li>`).join('')}</ul></div>` : ''}
     ${!aplicar && d.total ? `<button class="btn btn-p" style="margin-top:8px" onclick="ccAplicar()">Aplicar corrección (${d.total})</button>` : ''}`;
   return d;

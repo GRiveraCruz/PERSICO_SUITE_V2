@@ -7883,9 +7883,45 @@ def api_report_data():
         job_number = request.args.get("job", "").strip()
         if not job_number:
             return jsonify({"error": "job_number requerido"}), 400
-        return jsonify(_report_data_desde_request(job_number, request.args))
+        d = _report_data_desde_request(job_number, request.args)
+        try: d["ingresos_sin_oc"] = _ingresos_sin_renglon_po(job_number)          # rev141
+        except Exception as e: print(f"[REPORT] ingresos sin OC: {e}")
+        return jsonify(d)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+def _ingresos_sin_renglon_po(job_number):
+    """rev141: material ingresado al almacén para el Job con una OC, cuyo renglón NO está en
+    Purchase Orders para ese Job (por eso no suma en el costo de compras del reporte)."""
+    jn = str(job_number or "").strip().upper()
+    por_po = {}
+    for y in (po_available_years() or []):
+        for r in po_load(y):
+            if str(r.get("entregar_a") or "").strip().upper() != jn: continue
+            c = re.sub(r"\D", "", str(r.get("clave") or "")).lstrip("0")
+            por_po.setdefault(c, set()).add(_pn_norm(r.get("part_number")))
+    gpos = {re.sub(r"\D", "", str(g.get("po_number") or "")).lstrip("0"): g for g in gpo_load()}
+    out = []
+    for ig in ingreso_load():
+        po = str(ig.get("po_number") or "").strip()
+        if not po: continue
+        c = re.sub(r"\D", "", po).lstrip("0")
+        for it in ig.get("items") or []:
+            if str(it.get("job") or "").strip().upper() != jn: continue
+            pn = _pn_norm(it.get("part_number"))
+            if pn and pn in por_po.get(c, set()): continue
+            g = gpos.get(c)
+            en_oc = None
+            if g:
+                gi = next((x for x in g.get("items") or [] if _pn_norm(x.get("part_number")) == pn), None)
+                en_oc = {"job": gi.get("job"), "total": gi.get("total")} if gi else False
+            out.append({"ingreso": ig.get("id"), "po": po, "part_number": it.get("part_number"), "description": it.get("description"),
+                        "cantidad": it.get("quantity_delivered"), "unit_cost": it.get("unit_cost"),
+                        "total": round(float(it.get("unit_cost") or 0) * float(it.get("quantity_delivered") or 0), 2),
+                        "motivo": ("el renglón no existe en la OC" if en_oc is False else
+                                   (f"en la OC está asignado al Job {en_oc['job']}" if en_oc and str(en_oc.get('job') or '').upper() != jn else
+                                    "la OC no tiene ese renglón en Purchase Orders"))})
+    return out
 
 
 @app.route("/api/report/export-excel")
@@ -13721,8 +13757,12 @@ def api_costos_convertir_oc():
                    f"el costo registrado ({', '.join(str(r['costo']) for r in regs)}) no coincide con el precio de la OC ({precio:g} / neto {round(neto, 2):g})"))
         sin_coincidir.append({"part_number": i.get("part_number"), "job": i.get("job"), "precio_oc": precio, "usd": round(neto / tc, 4),
                               "registros": regs, "motivo": motivo})
+    pns_oc = {_pn_norm(i.get("part_number")) for i in g.get("items") or []}
+    fuera_oc = [{"doc": ig.get("id"), "part_number": it.get("part_number"), "job": it.get("job"), "costo": it.get("unit_cost"), "cantidad": it.get("quantity_delivered")}
+                for ig in ingreso_load() if str(ig.get("po_number") or "").upper() == str(g.get("po_number") or "").upper()
+                for it in ig.get("items") or [] if _pn_norm(it.get("part_number")) not in pns_oc]
     return jsonify({"ok": True, "aplicado": aplicar, "po": g.get("po_number"), "tipo_cambio": tc, "detalle": det,
-                    "total": sum(len(v) for v in det.values()), "sin_coincidir": sin_coincidir})
+                    "total": sum(len(v) for v in det.values()), "sin_coincidir": sin_coincidir, "ingresados_fuera_de_oc": fuera_oc})
 
 @app.route("/api/reassign/order/<order_number>/item/<int:idx>", methods=["DELETE"])
 def api_delete_reassign_item(order_number, idx):
