@@ -9846,10 +9846,32 @@ async function saveStockIngress() {
 function openStockImport(){stkImpFile=null;document.getElementById('stk-imp-file').value='';document.getElementById('stk-imp-fname').textContent='—';document.getElementById('stk-imp-result').style.display='none';document.getElementById('btn-stk-imp-run').disabled=true;document.getElementById('mo-stk-imp').classList.add('on');}
 function onStkImpFile(inp){if(inp.files.length){stkImpFile=inp.files[0];document.getElementById('stk-imp-fname').textContent=stkImpFile.name;document.getElementById('btn-stk-imp-run').disabled=false;}}
 function stkDropImport(e){e.preventDefault();document.getElementById('stk-dz-imp').classList.remove('dg');const f=e.dataTransfer.files[0];if(f){stkImpFile=f;document.getElementById('stk-imp-fname').textContent=f.name;document.getElementById('btn-stk-imp-run').disabled=false;}}
+async function stkImpMoneda(){                                            // rev142
+  const mxn = document.getElementById('stk-imp-moneda').value === 'MXN';
+  document.getElementById('stk-imp-tc-box').style.display = mxn ? '' : 'none';
+  if(mxn && !document.getElementById('stk-imp-tc').value){
+    try{ const d = await fetch('/api/fx/lookup?date='+new Date().toISOString().slice(0,10)).then(r=>r.json());
+      const v = d.rate || d.fx || d.value; if(v){ document.getElementById('stk-imp-tc').placeholder = Number(v).toFixed(4); document.getElementById('stk-imp-tc-hint').textContent = 'Vacío = tipo de cambio del día ('+Number(v).toFixed(4)+')'; } }catch(e){}
+  }
+}
 async function runStkImport(){
   if(!stkImpFile)return;
-  const btn=document.getElementById('btn-stk-imp-run');btn.disabled=true;btn.textContent='Importando…';
-  const fd=new FormData();fd.append('file',stkImpFile);fd.append('mode',document.getElementById('stk-imp-mode').value);
+  const btn=document.getElementById('btn-stk-imp-run');btn.disabled=true;btn.textContent='Revisando…';
+  const datos = () => { const fd=new FormData(); fd.append('file',stkImpFile); fd.append('mode',document.getElementById('stk-imp-mode').value);
+    fd.append('moneda', document.getElementById('stk-imp-moneda').value); fd.append('tipo_cambio', document.getElementById('stk-imp-tc').value || ''); return fd; };
+  // rev142: vista previa de la conversión antes de guardar
+  try{
+    const fdp = datos(); fdp.append('previa','1');
+    const p = await fetch('/api/stock/import',{method:'POST',body:fdp}).then(r=>r.json());
+    if(p.error){ toast(p.error,'er',8000); btn.disabled=false; btn.textContent='Importar →'; return; }
+    const c = p.conversion || {};
+    let msg = `Se importarán ${p.imported} renglones (${p.updated} actualizados, ${p.created} nuevos).`;
+    if(c.filas_mxn) msg += `\n\n${c.filas_mxn} renglón(es) en PESOS se convertirán a USD con tipo de cambio ${c.tipo_cambio} (${c.tipo_cambio_origen === 'capturado' ? 'capturado' : 'del '+c.tipo_cambio_origen}).\nEjemplos:\n` + (c.ejemplos||[]).map(e=>`• ${e.part_number}: $${e.mxn} MXN → $${e.usd} USD`).join('\n');
+    if(c.filas_usd) msg += `\n\n${c.filas_usd} renglón(es) se toman como USD.`;
+    if(!confirm(msg + '\n\n¿Importar?')){ btn.disabled=false; btn.textContent='Importar →'; return; }
+  }catch(e){ toast('Error: '+e.message,'er'); btn.disabled=false; btn.textContent='Importar →'; return; }
+  btn.textContent='Importando…';
+  const fd=datos();
   try{
     const resp=await fetch('/api/stock/import',{method:'POST',body:fd});
     const ct=resp.headers.get('content-type')||'';
@@ -9857,7 +9879,8 @@ async function runStkImport(){
     const d=await resp.json();
     if(d.error){toast(d.error,'er');return;}
     const res=document.getElementById('stk-imp-result');
-    res.style.display='';res.textContent=(d.created!=null?`✓ ${d.imported} filas procesadas · ${d.updated} actualizados · ${d.created} nuevos · Total en stock: ${d.total}`:`✓ ${d.imported} items importados · Total: ${d.total}`);
+    res.style.display='';res.textContent=(d.created!=null?`✓ ${d.imported} filas procesadas · ${d.updated} actualizados · ${d.created} nuevos · Total en stock: ${d.total}`:`✓ ${d.imported} items importados · Total: ${d.total}`)
+      + (d.conversion && d.conversion.filas_mxn ? ` · ${d.conversion.filas_mxn} costo(s) convertidos de MXN a USD (TC ${d.conversion.tipo_cambio})` : '');
     await loadStock();toast(d.imported+' materiales importados ✓','ok',5000);
   }catch(e){toast('Error: '+e.message,'er');}
   finally{btn.disabled=false;btn.textContent='Importar →';}

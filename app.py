@@ -13279,6 +13279,12 @@ def api_import_stock():
         f = request.files.get("file")
         if not f: return jsonify({"error":"No se recibio archivo"}), 400
         mode = request.form.get("mode","append")
+        # rev142: moneda de los costos del archivo (USD / MXN) y tipo de cambio; columna MONEDA opcional
+        moneda_def = str(request.form.get("moneda") or "USD").strip().upper()
+        if moneda_def not in ("USD", "MXN"): moneda_def = "USD"
+        try: tc_form = float(request.form.get("tipo_cambio") or 0)
+        except (TypeError, ValueError): tc_form = 0.0
+        previa = str(request.form.get("previa") or "") in ("1", "true", "si")
         wb = openpyxl.load_workbook(io.BytesIO(f.read()), read_only=True, data_only=True)
         ws = wb.active
         # Encabezados normalizados: sin acentos, mayúsculas, espacios colapsados,
@@ -13305,6 +13311,9 @@ def api_import_stock():
         ci_box  = col("CAJA","BOX")
         ci_rec  = col("RECUPERACION","RECOVERY","RECOVERY_JOB")
         ci_label = col("ETIQUETA","LABEL","LABEL_CODE","QR","CODIGO DE BARRAS","BARCODE","COD. ETIQUETA")
+        ci_mon  = col("MONEDA","CURRENCY","DIVISA")                      # rev142
+        tc, tc_fecha = (tc_form, "capturado") if tc_form > 0 else _fx_hoy_o_ultimo()
+        conv = {"usd": 0, "mxn": 0, "monto_mxn": 0.0, "monto_usd": 0.0, "ejemplos": []}
         missing = [n for n,c in (("FABRICANTE",ci_mfr),("NUMERO DE PARTE",ci_pnum),("EXISTENCIA",ci_qty)) if c is None]
         if missing:
             return jsonify({"error": "Faltan columnas requeridas en la primera fila de la hoja activa: " + ", ".join(missing)}), 400
@@ -13328,8 +13337,18 @@ def api_import_stock():
                 mfr = (cell(row, ci_mfr) or "").upper()
                 existing = next((r for r in records
                     if r.get("part_number","")==pnum and r.get("manufacturer","")==mfr), None)
-                try: cost = float(cell(row, ci_cost)) if cell(row, ci_cost) else 0.0
+                try: cost = float(str(cell(row, ci_cost)).replace("$", "").replace(",", "")) if cell(row, ci_cost) else 0.0
                 except: cost = 0.0
+                mon = (cell(row, ci_mon) or moneda_def).strip().upper()          # rev142
+                mon = "MXN" if mon in ("MXN", "MN", "PESOS", "PESO", "M.N.", "MXP") else ("USD" if mon in ("USD", "DLS", "DOLARES", "DÓLARES", "US", "DLLS") else moneda_def)
+                cost_origen = cost
+                if mon == "MXN" and cost:
+                    if not tc: return jsonify({"error": "El archivo tiene costos en pesos y no hay tipo de cambio: escríbelo en la importación o actualiza Finanzas ▸ Tipo de cambio"}), 400
+                    cost = round(cost / float(tc), 4)
+                    conv["mxn"] += 1; conv["monto_mxn"] += cost_origen; conv["monto_usd"] += cost
+                    if len(conv["ejemplos"]) < 5: conv["ejemplos"].append({"part_number": pnum, "mxn": cost_origen, "usd": cost})
+                else:
+                    conv["usd"] += 1
                 try: qty = int(float(cell(row, ci_qty))) if cell(row, ci_qty) else 0
                 except: qty = 0
                 label   = (cell(row, ci_label) or "").upper()
@@ -13337,9 +13356,11 @@ def api_import_stock():
                 unit    = cell(row, ci_unit) or ""
                 section = cell(row, ci_sec) or ""
                 box     = cell(row, ci_box) or ""
+                origen = {"costo_origen": cost_origen, "moneda_origen": mon, "tipo_cambio_import": float(tc) if mon == "MXN" else 1.0}
                 if existing:
                     existing["quantity"]   = qty
                     existing["last_cost"]  = cost
+                    existing.update(origen)                                            # rev142
                     if label:   existing["label_code"] = label
                     # Ubicación/unidad del conteo físico: se actualizan solo si vienen
                     # en el archivo, para no borrar datos con celdas vacías.
@@ -13361,11 +13382,15 @@ def api_import_stock():
                         "recovery_job": cell(row, ci_rec) or "",
                         "label_code":   label,
                         "created_at":   now.isoformat(),
+                        **origen,
                     })
                     created += 1
                 imported += 1
-            stock_save(records)
-        return jsonify({"ok":True,"imported":imported,"created":created,"updated":updated,"total":len(records)})
+            if not previa: stock_save(records)
+        resumen = {"filas_usd": conv["usd"], "filas_mxn": conv["mxn"], "tipo_cambio": float(tc) if conv["mxn"] else None,
+                   "tipo_cambio_origen": tc_fecha if conv["mxn"] else None, "moneda_archivo": moneda_def, "columna_moneda": ci_mon is not None,
+                   "ejemplos": conv["ejemplos"]}
+        return jsonify({"ok":True,"previa":previa,"imported":imported,"created":created,"updated":updated,"total":len(records),"conversion":resumen})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
