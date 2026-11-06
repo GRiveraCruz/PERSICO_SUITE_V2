@@ -14327,6 +14327,8 @@ def api_requisiciones_excel(job):
 @app.route("/api/requisiciones/template", methods=["GET"])
 def api_requisiciones_template():
     if not can("view", "compras-requisicion"): return jsonify({"error": "Sin permiso"}), 403
+    if (request.args.get("tipo") or "").strip() == "manufactura":
+        return _req_template_manufactura()                                  # rev143
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Purchased"
@@ -14353,6 +14355,28 @@ def api_requisiciones_template():
     return send_file(buf, as_attachment=True, download_name="Plantilla_Requisicion_Compra.xlsx",
                       mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
+def _req_template_manufactura():
+    """rev143: plantilla del BOM de Manufactura con el formato de la hoja DETAILS."""
+    wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Details"
+    headers = ["ITEM", "JOB#", "RESPONSIBLE", "DATE RELEASED", "VENDOR", "DETL #", "REV", "DESCRIPTION", "MATERIAL",
+               "FINISHING", "PRODUCT GROUP", "QTY.", "QTY. MIRROR", "NOTAS"]
+    ws.append(["", "", "", "", "", "DETAILS"])
+    ws["F1"].font = Font(bold=True, size=14, color="C8102E")
+    ws.append(headers)
+    for c in ws[2]:
+        c.font = Font(bold=True, color="FFFFFF"); c.fill = PatternFill("solid", fgColor="1F3864"); c.alignment = Alignment(horizontal="center")
+    ejemplos = [[1, "5260", "CART", datetime.date.today(), "", "5260-D2001", "V000", "MAIN PLATE LOWER", "ALUMINUM T&J", "NONE", "TD001", 1, 0, ""],
+                [2, "5260", "CART", datetime.date.today(), "", "5260-D2002", "V000", "NEST 2", "UHMW-BLUE", "NONE", "TD012", 1, 1, "La pieza espejo puede ir en QTY. MIRROR o en su propio renglón con S al final (5260-D2002S)"]]
+    for e in ejemplos: ws.append(e)
+    for r in (3, 4):
+        ws.cell(row=r, column=4).number_format = "DD/MM/YYYY"; ws.cell(row=r, column=6).number_format = "@"
+    for i, w in enumerate([7, 9, 14, 15, 16, 18, 7, 34, 20, 18, 16, 8, 12, 50], start=1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+    ws.freeze_panes = "A3"
+    buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+    return send_file(buf, as_attachment=True, download_name="Plantilla_BOM_Manufactura_DETAILS.xlsx",
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
 @app.route("/api/requisiciones/upload", methods=["POST"])
 def api_requisiciones_upload():
     if not can("create", "compras-requisicion"): return jsonify({"error": "Sin permiso"}), 403
@@ -14370,9 +14394,9 @@ def api_requisiciones_upload():
         ws = wb.active
         # rev78: si el libro trae las hojas del formato de listas (PURCHASED / CONTROLS),
         # se toma la que corresponde al BOM, aunque no sea la hoja activa.
-        _hoja = {"mecanico": "PURCHASED", "electrico": "CONTROLS"}.get(tipo)
+        _hoja = {"mecanico": ("PURCHASED",), "electrico": ("CONTROLS",), "manufactura": ("DETAILS", "DETAIL")}.get(tipo)   # rev143: Manufactura = hoja DETAILS
         for _n in wb.sheetnames:
-            if _hoja and _n.strip().upper() == _hoja:
+            if _hoja and _n.strip().upper() in _hoja:
                 ws = wb[_n]; break
         # rev67: encabezados tolerantes. Antes la marca solo se reconocía como BRAND o
         # MARCA; los BOM mecánicos la traen como FABRICANTE (formato normalizado
@@ -14395,7 +14419,15 @@ def api_requisiciones_upload():
             "uom":   ("UOM", "U M", "UNIDAD", "UNIDAD DE MEDIDA", "UNIT"),
             "notas": ("NOTAS", "NOTES", "NOTA", "NOTE", "COMMENTS", "COMENTARIOS", "OBSERVACIONES"),
             "item":  ("ITEM", "NO", "#"),
+            # rev143: columnas del BOM de Manufactura (hoja DETAILS)
+            "rev":     ("REV", "REVISION", "REV PLANO", "REVISION PLANO"),
+            "material":("MATERIAL", "MATERIALES"),
+            "acabado": ("FINISHING", "FINISH", "ACABADO", "TRATAMIENTO"),
+            "grupo":   ("PRODUCT GROUP", "GRUPO", "GROUP", "GRUPO DE PRODUCTO", "PRODUCT GRP"),
+            "qtym":    ("QTY MIRROR", "QTY MIR", "MIRROR", "QTY M", "CANTIDAD MIRROR", "CANT MIRROR", "QTY ESPEJO", "CANTIDAD ESPEJO"),
         }
+        if tipo == "manufactura":   # el número de pieza es el DETL # del plano
+            ALIAS["pn"] = ("DETL #", "DETL", "DETL NO", "DETAIL #", "DETAIL", "DETAIL NO", "DETAIL NUMBER", "NO PLANO", "PLANO", "ID PIEZA") + ALIAS["pn"]
         filas_top = [list(r) for r in ws.iter_rows(min_row=1, max_row=15, values_only=True)]
         fila_hdr, headers = None, {}
         for i, r in enumerate(filas_top):
@@ -14409,10 +14441,13 @@ def api_requisiciones_upload():
             return None
         ci_brand, ci_pn, ci_desc, ci_qty, ci_stat = (col(k) for k in ("brand", "pn", "desc", "qty", "stat"))
         ci_resp, ci_fecha, ci_vendor, ci_uom, ci_notas, ci_item = (col(k) for k in ("resp", "fecha", "vendor", "uom", "notas", "item"))
+        ci_rev, ci_mat, ci_acab, ci_grupo, ci_qtym = (col(k) for k in ("rev", "material", "acabado", "grupo", "qtym"))   # rev143
         if ci_pn is None:
+            if tipo == "manufactura":
+                return jsonify({"error": "No se encontró la columna DETL # (número de pieza) en los primeros 15 renglones. Usa la plantilla de Manufactura (formato DETAILS) o la hoja DETAILS de la lista."}), 400
             return jsonify({"error": "No se encontró la columna de número de parte (PART NUMBER / NUMERO DE PARTE) en los primeros 15 renglones del Excel"}), 400
         avisos = []
-        if ci_brand is None:
+        if ci_brand is None and tipo != "manufactura":
             avisos.append("No se encontró columna de marca (BRAND, MARCA o FABRICANTE). Encabezados leídos: "
                           + ", ".join(sorted(headers, key=headers.get)))
 
@@ -14437,8 +14472,15 @@ def api_requisiciones_upload():
             try: qty = float(qty_raw) if qty_raw else 0
             except: qty = 0
             k = _req_pn(pn)
+            if tipo == "manufactura":                                       # rev143: QTY. MIRROR
+                try: qtym = float(g(row, ci_qtym) or 0)
+                except: qtym = 0.0
+            else:
+                qtym = 0.0
             if k in archivo:
-                archivo[k]["quantity"] += qty; repetidos += 1
+                archivo[k]["quantity"] += qty + qtym; repetidos += 1
+                if tipo == "manufactura":
+                    archivo[k]["qty_normal"] = archivo[k].get("qty_normal", 0) + qty; archivo[k]["qty_mirror"] = archivo[k].get("qty_mirror", 0) + qtym
                 if not archivo[k]["brand"]: archivo[k]["brand"] = g(row, ci_brand)
                 if not archivo[k]["description"]: archivo[k]["description"] = g(row, ci_desc)
                 continue
@@ -14449,6 +14491,13 @@ def api_requisiciones_upload():
                           "responsable": g(row, ci_resp), "fecha_liberacion": gfecha(row, ci_fecha),
                           "vendor": g(row, ci_vendor), "uom": g(row, ci_uom), "notas": g(row, ci_notas),
                           "item_no": g(row, ci_item)}
+            if tipo == "manufactura":                                       # rev143: campos de la hoja DETAILS
+                pid = pn.strip().upper(); formato = _plano_formato(pid)
+                archivo[k].update({"part_number": pid, "quantity": qty + qtym, "qty_normal": qty, "qty_mirror": qtym,
+                                   "status": estatus_excel if estatus_excel in REQ_STATUS_MANUF else "Solicitado",
+                                   "material": g(row, ci_mat), "acabado": g(row, ci_acab), "grupo": g(row, ci_grupo),
+                                   "rev_plano": g(row, ci_rev).upper(), "origen": formato, "espejo": pid.endswith("S") and bool(formato),
+                                   "fabricacion": "", "brand": archivo[k]["brand"] or ""})
             orden.append(k)
 
         # 2) Comparar contra los renglones que ya existen para este Job + tipo.
@@ -14498,9 +14547,13 @@ def api_requisiciones_upload():
                 # cargó antes sin la columna FABRICANTE), se completan con lo del archivo. Lo
                 # que ya tenía valor no se sobrescribe.
                 lleno = False
-                for campo in ("responsable", "fecha_liberacion", "vendor", "uom", "notas"):     # rev78
+                for campo in ("responsable", "fecha_liberacion", "vendor", "uom", "notas", "material", "acabado", "grupo"):     # rev78 / rev143
                     if nuevo.get(campo) and not str(d.get(campo) or "").strip():
                         d[campo] = nuevo[campo]
+                if tipo == "manufactura":
+                    # rev143: revisión del plano informada en la lista (no reemplaza la de los PDF subidos)
+                    if nuevo.get("rev_plano") and not d.get("revisiones") and not d.get("rev_plano"): d["rev_plano"] = nuevo["rev_plano"]
+                    if nuevo.get("origen") and not d.get("origen"): d["origen"] = nuevo["origen"]; d["espejo"] = nuevo.get("espejo")
                 if nuevo.get("item_no"): d["item_no"] = nuevo["item_no"]
                 for campo in ("brand", "description"):
                     if nuevo.get(campo) and not str(d.get(campo) or "").strip():
@@ -14517,6 +14570,7 @@ def api_requisiciones_upload():
                     # reasignado, el historial y el estatus. Si estaba "Reasignado" y ahora
                     # vuelve a faltar material, regresa a "Solicitado".
                     d["quantity"] = nueva
+                    if tipo == "manufactura": d["qty_normal"] = nuevo.get("qty_normal", nueva); d["qty_mirror"] = nuevo.get("qty_mirror", 0)   # rev143
                     d.pop("revision", None)
                     d.setdefault("cambios_cantidad", []).append({"de": actual, "a": nueva, "fecha": ahora, "usuario": user, "origen": "carga de requisición"})
                     marca(d, "quantity", actual, nueva)

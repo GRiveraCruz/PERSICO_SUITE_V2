@@ -8773,7 +8773,9 @@ function reqOpenUpload(){
 }
 
 function reqDownloadTemplate(){
-  window.open('/api/requisiciones/template', '_blank');
+  // rev143: Manufactura tiene su propia plantilla (formato DETAILS)
+  const t = document.getElementById('req-up-tipo')?.value || reqCurrentTipo || '';
+  window.open('/api/requisiciones/template' + (t === 'manufactura' ? '?tipo=manufactura' : ''), '_blank');
 }
 
 async function reqUploadFile(file){
