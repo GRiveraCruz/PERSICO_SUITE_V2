@@ -121,6 +121,7 @@ function switchMenu(mod, groupId) {
   if(mod==='personal-tipos-puesto') { setTimeout(loadTiposPuesto,100); }
   if(mod==='rrhh-kpis') { setTimeout(kpiCargar,100); }
   if(mod==='ops-piso') { setTimeout(pisoCargar,100); }
+  if(mod==='proj-timeline') { setTimeout(tlCargar,100); }
   if(mod==='fin-datos-fiscales') { setTimeout(dfCargar,100); }
   if(mod==='fin-ordenes-cobro') { setTimeout(ocCargar,100); }
   if(mod==='mgmt-income-forecast') { setTimeout(ifCargar,100); }
@@ -6027,7 +6028,7 @@ let USER_PERMS = null;
 
 // rev77: módulos que heredan el nivel de otro mientras el administrador no les fije uno
 const MODULOS_HEREDAN = {'projconfig-dashboard':'projconfig','projconfig-presupuesto':'projconfig','projconfig-timing':'projconfig',
-  'projconfig-abiertos':'projconfig','projconfig-cambios':'projconfig','projconfig-documentos':'projconfig','personal-tipos-puesto':'personal-perfiles','rrhh-kpis':'personal-listado','fin-cpc':'fin-cpp','ops-piso':'ops-capacidad','fin-datos-fiscales':'fin-esquemas','fin-ordenes-cobro':'fin-cpc','mgmt-income-forecast':'fin-cpc','fin-prog-pagos':'fin-cpp','mgmt-costo-mo':'rrhh-sueldos','fin-cashflow':'fin-cpp'};
+  'projconfig-abiertos':'projconfig','projconfig-cambios':'projconfig','projconfig-documentos':'projconfig','personal-tipos-puesto':'personal-perfiles','rrhh-kpis':'personal-listado','fin-cpc':'fin-cpp','ops-piso':'ops-capacidad','proj-timeline':'projconfig','fin-datos-fiscales':'fin-esquemas','fin-ordenes-cobro':'fin-cpc','mgmt-income-forecast':'fin-cpc','fin-prog-pagos':'fin-cpp','mgmt-costo-mo':'rrhh-sueldos','fin-cashflow':'fin-cpp'};
 const MODULE_LABELS = {
   'compras-requisicion':'Requisición de Compra', 'fin-cpc':'Cuentas por Cobrar (CPC)', 'fin-datos-fiscales':'Datos fiscales', 'fin-ordenes-cobro':'Órdenes de cobro', 'mgmt-income-forecast':'Management — Income Forecast', 'fin-prog-pagos':'Programación de pagos', 'mgmt-costo-mo':'Management — Costo de mano de obra', 'fin-cashflow':'Cash Flow Forecast',
   // Proyectos
@@ -6051,7 +6052,7 @@ const MODULE_LABELS = {
   'viaticos':'Viáticos', 'gastos-viaje':'Gastos de Viaje', 'envios':'Envíos de Mensajería',
   // Reportes y Config
   'wh':'Work Hours', 'report':'Job Report', 'multirpt':'Multi-Job Report', 'fx':'Exchange Rate',
-  'projconfig':'Configurar Proyecto',
+  'projconfig':'Configurar Proyecto', 'proj-timeline':'Línea de tiempo WIP',
   'projconfig-dashboard':'↳ Pestaña Dashboard', 'projconfig-presupuesto':'↳ Pestaña Presupuesto',
   'projconfig-timing':'↳ Pestaña Timing', 'projconfig-abiertos':'↳ Pestaña Puntos Abiertos',
   'projconfig-cambios':'↳ Pestaña Control de Cambios', 'projconfig-documentos':'↳ Pestaña Documentación',
@@ -6089,7 +6090,7 @@ const MODULE_GROUPS = [
   { label: '💹 Finanzas',             mods: ['fin-recepciones','fin-procesarcompra','fin-cpp','fin-prog-pagos','fin-cashflow','fin-cpc','fin-ordenes-cobro','fin-pagos','fin-esquemas','fin-datos-fiscales'] },
   { label: '🧑‍💼 Recursos Humanos',    mods: ['rrhh-asistencia','rrhh-vacaciones','rrhh-permisos','rrhh-salario','rrhh-sueldos','rrhh-nomina','personal-areas','personal-tipos-puesto','personal-perfiles','personal-listado'] },
   { label: '📈 Management',           mods: ['rrhh-kpis','mgmt-income-forecast','mgmt-costo-mo'] },
-  { label: '🏭 Operaciones',           mods: ['ops-capacidad','ops-ot','ops-op','ops-os','ops-piso'] },
+  { label: '🏭 Operaciones',           mods: ['ops-capacidad','ops-ot','ops-op','ops-os','ops-piso','proj-timeline'] },
 ];
 
 let _adminUsersData = null;
@@ -6352,6 +6353,7 @@ function applyPermsToDom(d) {
     'fin-prog-pagos':     ["switchMenu('fin-prog-pagos'"],
     'mgmt-costo-mo':      ["switchMenu('mgmt-costo-mo'"],
     'fin-cashflow':       ["switchMenu('fin-cashflow'"],
+    'proj-timeline':      ["switchMenu('proj-timeline'"],
     'compras-requisicion':["switchMenu('requisicion'"],
     'fin-pagos':          ["switchMenu('fin-pagos'"],
     'fin-esquemas':       ["switchMenu('fin-esquemas'"],
@@ -20851,4 +20853,81 @@ function ccCorregirLinea(pn, desde, usd){
   document.getElementById('cc-pn').value = pn; document.getElementById('cc-job').value = '';
   document.getElementById('cc-desde').value = desde; document.getElementById('cc-nuevo').value = usd; document.getElementById('cc-stock').checked = false;
   ccPrevia();
+}
+
+
+// ════════════════════════════════════════════════════════
+//  rev144 — Proyectos ▸ Línea de tiempo WIP
+// ════════════════════════════════════════════════════════
+let _tl = null, _tlAbiertos = new Set();
+const TL_COL = {'Atrasado':'#c8102e','En riesgo':'#d97706','Por enviar':'#1d4ed8','En tiempo':'#15803d','Sin fecha de envío':'#94a3b8'};
+async function tlCargar(){
+  try{ _tl = await fetch('/api/timeline-wip').then(r=>r.json()); if(_tl.error) throw new Error(_tl.error); }
+  catch(e){ document.getElementById('tl-wrap').innerHTML = `<div style="padding:20px;color:var(--red)">⚠ ${esc(e.message)}</div>`; return; }
+  const pms = [...new Set(_tl.jobs.map(j=>j.pm).filter(Boolean))].sort();
+  const sel = document.getElementById('tl-pm'), v = sel.value;
+  sel.innerHTML = '<option value="">Todos los PM</option>' + pms.map(p=>`<option ${p===v?'selected':''}>${esc(p)}</option>`).join('');
+  tlRender();
+}
+function tlRender(){
+  if(!_tl) return;
+  const q=(document.getElementById('tl-q').value||'').toLowerCase(), pm=document.getElementById('tl-pm').value, est=document.getElementById('tl-est').value;
+  const L = _tl.jobs.filter(j=>(!pm||j.pm===pm)&&(!est||j.estado===est)&&(!q||[j.job,j.customer,j.description,j.ptsv,j.pm].join(' ').toLowerCase().includes(q)));
+  const cnt = {}; _tl.jobs.forEach(j=>cnt[j.estado]=(cnt[j.estado]||0)+1);
+  document.getElementById('tl-cards').innerHTML = `<div style="padding:8px 14px;border:1px solid var(--border);border-radius:8px;font-size:12px"><b style="font-size:18px">${_tl.jobs.length}</b> Jobs en WIP</div>` +
+    Object.keys(TL_COL).filter(k=>cnt[k]).map(k=>`<div onclick="document.getElementById('tl-est').value='${k}';tlRender()" style="cursor:pointer;padding:8px 14px;border:1px solid var(--border);border-left:4px solid ${TL_COL[k]};border-radius:8px;font-size:12px"><b style="font-size:18px;color:${TL_COL[k]}">${cnt[k]}</b> ${k}</div>`).join('');
+  if(!L.length){ document.getElementById('tl-wrap').innerHTML = '<div style="padding:24px;text-align:center;color:var(--muted)">Sin Jobs en el filtro</div>'; return; }
+  // rango de fechas
+  const fechas = [_tl.hoy]; L.forEach(j=>{ [j.inicio,j.envio].forEach(f=>f&&fechas.push(f)); j.hitos.concat(j.pagos).forEach(h=>h.fecha&&fechas.push(h.fecha)); if(_tlAbiertos.has(j.job)) j.actividades.forEach(a=>{a.inicio&&fechas.push(a.inicio); a.fin&&fechas.push(a.fin);}); });
+  fechas.sort();
+  const D = s => new Date(s+'T12:00:00');
+  const ini = D(fechas[0]); ini.setDate(1); ini.setMonth(ini.getMonth()); 
+  const fin = D(fechas[fechas.length-1]); fin.setMonth(fin.getMonth()+1); fin.setDate(1);
+  const ppd = parseFloat(document.getElementById('tl-zoom').value), dias = Math.round((fin-ini)/864e5), W = Math.max(600, dias*ppd), IZQ = 300;
+  const x = s => s ? Math.round((D(s)-ini)/864e5*ppd) : null;
+  // encabezado de meses (y semanas si hay zoom)
+  let cab = '', grid = '';
+  for(let d=new Date(ini); d<fin; d.setMonth(d.getMonth()+1)){
+    const xs = Math.round((d-ini)/864e5*ppd), sig = new Date(d); sig.setMonth(sig.getMonth()+1); const w = Math.round((sig-d)/864e5*ppd);
+    cab += `<div style="position:absolute;left:${xs}px;width:${w}px;top:0;height:22px;border-left:1px solid var(--border);font-size:10.5px;font-weight:700;padding:4px 6px;color:var(--muted2);white-space:nowrap;overflow:hidden">${d.toLocaleDateString('es-MX',{month:'short',year:'numeric'})}</div>`;
+    grid += `<div style="position:absolute;left:${xs}px;top:0;bottom:0;border-left:1px solid var(--border)"></div>`;
+  }
+  if(ppd >= 6){ for(let d=new Date(ini); d<fin; d.setDate(d.getDate()+1)){ if(d.getDay()===1){ const xs=Math.round((d-ini)/864e5*ppd); cab += `<div style="position:absolute;left:${xs}px;top:22px;font-size:9px;color:var(--muted);padding-left:2px">${d.getDate()}</div>`; grid += `<div style="position:absolute;left:${xs}px;top:0;bottom:0;border-left:1px dashed rgba(0,0,0,.06)"></div>`; } } }
+  const xh = x(_tl.hoy);
+  const filas = L.map(j=>{
+    const col = TL_COL[j.estado]||'#94a3b8', x0 = x(j.inicio), x1 = x(j.envio);
+    let barra = '';
+    if(x0!=null && x1!=null && x1>=x0){
+      const xt = Math.min(Math.max(xh, x0), x1);
+      barra = `<div title="${esc(j.job)} · ${j.inicio} → ${j.envio} (${j.duracion_dias} días, ${j.pct_tiempo??'—'}% transcurrido)" style="position:absolute;left:${x0}px;width:${Math.max(4,x1-x0)}px;top:13px;height:14px;border-radius:7px;background:#c7d2e6;overflow:hidden"><div style="width:${xt-x0}px;height:100%;background:#1f3864"></div></div>
+        <div title="Envío ${j.envio}" style="position:absolute;left:${x1-6}px;top:6px;font-size:13px;color:${col}">▼</div>`;
+    } else if(x0!=null){ barra = `<div title="Sin fecha de envío" style="position:absolute;left:${x0}px;width:${Math.max(30,xh-x0)}px;top:13px;height:14px;border-radius:7px;background:repeating-linear-gradient(45deg,#c7d2e6,#c7d2e6 6px,#e5e7eb 6px,#e5e7eb 12px)"></div>`; }
+    const mk = j.hitos.map(h=>`<div title="${esc(h.nombre)} · ${h.fecha}${h.vencido?' (pasó la fecha)':''}" style="position:absolute;left:${x(h.fecha)-6}px;top:11px;font-size:14px;color:${h.vencido?'#c8102e':'#d97706'};text-shadow:0 0 2px #fff">◆</div>`).join('')
+      + j.pagos.filter(p=>p.fecha).map(p=>`<div title="Milestone de pago: ${esc(p.nombre)} (${p.porcentaje}%) · ${p.fecha}${p.cumplido?' · cumplido':''}${p.orden_cobro?' · '+p.orden_cobro:''}" style="position:absolute;left:${x(p.fecha)-6}px;top:30px;width:11px;height:11px;border-radius:50%;border:2px solid #fff;background:${p.cumplido?'#15803d':(p.vencido?'#c8102e':'#94a3b8')};box-shadow:0 0 0 1px rgba(0,0,0,.15)"></div>`).join('');
+    const abierto = _tlAbiertos.has(j.job);
+    const sub = abierto ? (j.actividades.length ? j.actividades.map(a=>{ const a0=x(a.inicio), a1=x(a.fin); const c = a.cumplido?'#15803d':(a.atrasada?'#c8102e':'#3b82f6');
+        return `<div style="display:flex;border-top:1px solid rgba(0,0,0,.04)"><div style="position:sticky;left:0;z-index:2;width:${IZQ}px;min-width:${IZQ}px;padding:3px 10px 3px 26px;font-size:11px;background:var(--card,#fff);border-right:1px solid var(--border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(a.actividad)}">${esc(a.actividad||'')}${a.recurso?` <span style="color:var(--muted)">· ${esc(a.recurso)}</span>`:''}</div>
+          <div style="position:relative;width:${W}px;height:22px">${a0!=null?`<div title="${esc(a.actividad)} · ${a.inicio} → ${a.fin}${a.real?' · real '+a.real:''}${a.atrasada?' · ATRASADA':''}" style="position:absolute;left:${a0}px;width:${Math.max(5,(a1??a0)-a0)}px;top:6px;height:9px;border-radius:4px;background:${c};opacity:${a.cumplido?.7:1}"></div>`:''}${a.real?`<div title="Terminada ${a.real}" style="position:absolute;left:${x(a.real)-4}px;top:3px;font-size:10px;color:#15803d">✔</div>`:''}</div></div>`; }).join('')
+        : `<div style="padding:6px 26px;font-size:11px;color:var(--muted)">${j.ptsv?'El Timing de '+esc(j.ptsv)+' no tiene actividades con fecha.':'El Job no está en ninguna configuración de proyecto.'}</div>`) : '';
+    return `<div style="display:flex;border-top:1px solid var(--border);cursor:pointer" onclick="tlToggle('${esc(j.job)}')">
+        <div style="position:sticky;left:0;z-index:2;width:${IZQ}px;min-width:${IZQ}px;padding:6px 10px;background:var(--card,#fff);border-right:1px solid var(--border);border-left:4px solid ${col}">
+          <div style="display:flex;gap:6px;align-items:baseline"><span style="font-size:10px;color:var(--muted)">${abierto?'▾':'▸'}</span><b style="font-family:'DM Mono',monospace;color:var(--gold)">${esc(j.job)}</b><span style="font-size:10.5px;color:${col};font-weight:700">${esc(j.estado)}</span><span style="margin-left:auto;font-size:10.5px;color:var(--muted2)">${j.pct_tiempo!=null?Math.round(j.pct_tiempo)+'%':''}</span></div>
+          <div style="font-size:11px;color:var(--muted2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(j.customer||'')} · ${esc((j.description||'').slice(0,40))}</div>
+          <div style="font-size:10px;color:var(--muted)">${esc(j.ptsv||'sin configuración')} · ${esc(j.pm||'')} · envío ${j.envio||'—'}</div></div>
+        <div style="position:relative;width:${W}px;height:48px">${barra}${mk}</div></div>${sub}`;
+  }).join('');
+  document.getElementById('tl-wrap').innerHTML = `<div style="position:relative;min-width:${IZQ+W}px">
+      <div style="display:flex;position:sticky;top:0;z-index:3;background:var(--card,#fff);border-bottom:1px solid var(--border)"><div style="position:sticky;left:0;z-index:4;width:${IZQ}px;min-width:${IZQ}px;padding:8px 10px;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted);background:var(--card,#fff);border-right:1px solid var(--border)">Job · cliente · PT</div><div style="position:relative;width:${W}px;height:36px">${cab}</div></div>
+      <div style="position:absolute;left:${IZQ}px;top:36px;bottom:0;width:${W}px;pointer-events:none">${grid}${xh!=null?`<div style="position:absolute;left:${xh}px;top:0;bottom:0;border-left:2px solid #c8102e;z-index:1"></div>`:''}</div>
+      <div style="position:relative">${filas}</div></div>`;
+  // desplazar para que "hoy" quede visible la primera vez
+  const w = document.getElementById('tl-wrap'); if(!w.dataset.scrolled && xh!=null){ w.scrollLeft = Math.max(0, xh + IZQ - w.clientWidth * 0.6); w.dataset.scrolled = '1'; }
+}
+function tlToggle(job){ _tlAbiertos.has(job) ? _tlAbiertos.delete(job) : _tlAbiertos.add(job); tlRender(); }
+
+// rev145: reporte PDF de la línea de tiempo (con los filtros actuales)
+function tlPDF(){
+  const q = new URLSearchParams({pm: document.getElementById('tl-pm').value, estado: document.getElementById('tl-est').value,
+                                 q: document.getElementById('tl-q').value, actividades: document.getElementById('tl-pdf-act').checked ? '1' : ''});
+  window.open('/api/timeline-wip/pdf?' + q.toString(), '_blank');
 }

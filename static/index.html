@@ -580,6 +580,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
         <button onclick="switchMenu('ops-ot','ng-ops')">Tareas Asignadas</button>
         <button onclick="switchMenu('ops-op','ng-ops')">Órdenes de Producción</button>
         <button onclick="switchMenu('ops-os','ng-ops')">Órdenes de Servicio</button>
+        <button onclick="switchMenu('proj-timeline','ng-ops')">Línea de tiempo WIP</button>
         <button onclick="switchMenu('ops-piso','ng-ops')">Piso de ensamble</button>
       </div>
     </div>
@@ -6035,6 +6036,29 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
         <div class="fi"><label>Prima riesgo %</label><input type="number" id="cfc-pr" step="0.0001"></div></div>
     </div>
     <div class="mf"><button class="btn btn-s" onclick="closeMo('mo-cf-config')">Cancelar</button><button class="btn btn-p" onclick="cfcGuardar()">Guardar</button></div>
+  </div>
+</div>
+
+<!-- ══ MODULE: Línea de tiempo WIP (rev144) ══ -->
+<div class="module" id="mod-proj-timeline">
+  <div class="main-content" style="overflow-y:auto">
+    <div class="bar-top"><h1>🗓 Línea de tiempo · proyectos en WIP</h1>
+      <input id="tl-q" placeholder="Buscar Job, cliente, PT…" oninput="tlRender()" style="font-size:12px;padding:6px 10px;min-width:200px;margin-left:12px">
+      <select id="tl-pm" onchange="tlRender()" style="font-size:12px;padding:5px 8px"><option value="">Todos los PM</option></select>
+      <select id="tl-est" onchange="tlRender()" style="font-size:12px;padding:5px 8px"><option value="">Todos los estados</option><option>Atrasado</option><option>En riesgo</option><option>Por enviar</option><option>En tiempo</option><option>Sin fecha de envío</option></select>
+      <select id="tl-zoom" onchange="tlRender()" style="font-size:12px;padding:5px 8px"><option value="2.2" selected>Vista: meses</option><option value="6">Vista: semanas</option><option value="16">Vista: días</option></select>
+      <label style="font-size:11px;display:flex;gap:4px;align-items:center;margin-left:auto"><input type="checkbox" id="tl-pdf-act"> con actividades</label>
+      <button class="btn-reload" onclick="tlPDF()">⬇ PDF</button>
+      <button class="btn-reload" onclick="tlCargar()">Recargar</button></div>
+    <div style="padding:14px 18px">
+      <div id="tl-cards" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px"></div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--muted2);margin-bottom:8px;align-items:center">
+        <span><span style="display:inline-block;width:22px;height:9px;border-radius:5px;background:#1f3864;vertical-align:middle"></span> transcurrido</span>
+        <span><span style="display:inline-block;width:22px;height:9px;border-radius:5px;background:#c7d2e6;vertical-align:middle"></span> por transcurrir (inicio → envío)</span>
+        <span style="color:#d97706">◆ Run Off</span><span style="color:#15803d">● milestone de pago cumplido</span><span style="color:#94a3b8">● pendiente</span><span style="color:#c8102e">● vencido</span>
+        <span style="color:#c8102e">│ hoy</span><span>Clic en un Job para ver las actividades del Timing</span></div>
+      <div id="tl-wrap" style="border:1px solid var(--border);border-radius:10px;overflow:auto;max-height:calc(100vh - 260px);background:var(--card,#fff)"></div>
+    </div>
   </div>
 </div>
 

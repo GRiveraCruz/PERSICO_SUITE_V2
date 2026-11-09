@@ -10905,7 +10905,7 @@ MODULES = [
     # Servicio
     "viaticos", "gastos-viaje", "envios",
     # Reportes y Configuración
-    "wh", "report", "multirpt", "fx", "projconfig",
+    "wh", "report", "multirpt", "fx", "projconfig", "proj-timeline",
     # rev69: pestañas de Configurar Proyecto. Si un usuario no tiene la llave, la pestaña
     # hereda el nivel de "projconfig" (así los usuarios existentes no pierden nada).
     "projconfig-dashboard", "projconfig-presupuesto", "projconfig-timing",
@@ -11391,6 +11391,7 @@ MODULOS_HEREDAN = {"projconfig-dashboard": "projconfig", "projconfig-presupuesto
                    "personal-tipos-puesto": "personal-perfiles",
                    "rrhh-kpis": "personal-listado",
                    "ops-piso": "ops-capacidad",
+                   "proj-timeline": "projconfig",          # rev144: Línea de tiempo WIP toma el nivel de Configurar Proyecto
                    "fin-datos-fiscales": "fin-esquemas",
                    "fin-ordenes-cobro": "fin-cpc",
                    "mgmt-income-forecast": "fin-cpc",
@@ -23845,6 +23846,172 @@ def api_pc_presupuesto_export():
     <div class="dos" style="margin-top:12px"><table><tr><th>Materiales y servicios (proyecto)</th><th class="r">Disponible</th></tr>{"".join(f'<tr><td>{e(k)}</td><td class="r">{m(v)}</td></tr>' for k, v in tot_mat.items())}</table>
       <table><tr><th>Horas por línea (proyecto)</th><th class="r">Horas</th><th class="r">Importe</th></tr>{horas_lin or '<tr><td colspan="3" class="muted">Sin horas estimadas</td></tr>'}</table></div>
     {"".join(bloques)}</body></html>"""
+    return Response(html, mimetype="text/html")
+
+# ══════════════════════════════════════════════════════════════════
+#  rev144 — PROYECTOS ▸ LÍNEA DE TIEMPO WIP
+#  Vida de cada Job en WIP: inicio → Run Off interno → Run Off cliente → envío, con los
+#  milestones de pago y las actividades del Timing de su PT/SV.
+# ══════════════════════════════════════════════════════════════════
+def _fecha_iso(v):
+    v = str(v or "").strip()
+    if not v: return None
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%Y-%m-%dT%H:%M:%S", "%d-%m-%Y"):
+        try: return datetime.datetime.strptime(v[:19] if "T" in v else v[:10], fmt).date().isoformat()
+        except ValueError: pass
+    return None
+
+@app.route("/api/timeline-wip", methods=["GET"])
+def api_timeline_wip():
+    if not (can("view", "proj-timeline") or is_admin()): return jsonify({"error": "Sin permiso"}), 403
+    hoy = datetime.date.today().isoformat()
+    incluir = (request.args.get("estatus") or "WIP").upper()
+    jobs = [j for j in scan_jobs() if incluir == "TODOS" or str(j.get("status") or "").strip().upper() == incluir]
+    cfg_por_job = {}
+    for c in projcfg_load():
+        for jc in c.get("jobs") or []:
+            cfg_por_job[str(jc.get("job_number") or "").upper()] = (c, jc)
+    cpo_fecha = {}
+    for y in (cpo_available_years() or []):
+        for c in cpo_load(y):
+            jn = str(c.get("job") or "").upper(); f = _fecha_iso(c.get("date"))
+            if jn and f and (jn not in cpo_fecha or f < cpo_fecha[jn]): cpo_fecha[jn] = f
+    out = []
+    for j in jobs:
+        jn = str(j.get("job_number") or "").upper()
+        cfg, jc = cfg_por_job.get(jn, (None, {}))
+        inicio = (_fecha_iso(jc.get("fecha_inicio")) or cpo_fecha.get(jn) or _fecha_iso(j.get("created_at")))
+        envio = _fecha_iso(jc.get("fecha_envio")) or _fecha_iso(j.get("ship_date"))
+        hitos = []
+        for nombre, campo in (("Run Off interno", "runoff_interno"), ("Run Off cliente", "runoff_cliente")):
+            f = _fecha_iso(jc.get(campo))
+            if f: hitos.append({"tipo": "runoff", "nombre": nombre, "fecha": f, "vencido": f < hoy})
+        pagos = [{"tipo": "pago", "nombre": m.get("nombre"), "fecha": _fecha_iso(m.get("fecha_estimada")), "porcentaje": m.get("porcentaje"),
+                  "cumplido": bool(m.get("cumplido")), "orden_cobro": m.get("orden_cobro"),
+                  "vencido": bool(_fecha_iso(m.get("fecha_estimada")) and _fecha_iso(m.get("fecha_estimada")) < hoy and not m.get("cumplido"))}
+                 for m in jc.get("terminos_pago") or []]
+        actividades = []
+        if cfg:
+            for a in cfg.get("timing") or []:
+                fi = _fecha_iso(a.get("fecha_inicial")) or _fecha_iso(a.get("fecha_condicionada"))
+                fo = _fecha_iso(a.get("fecha_objetivo"))
+                if not fo and fi and a.get("dias_estimados"):
+                    try: fo = (datetime.date.fromisoformat(fi) + datetime.timedelta(days=int(float(a["dias_estimados"])))).isoformat()
+                    except Exception: fo = None
+                real = _fecha_iso(a.get("fecha_real_finalizacion"))
+                if not (fi or fo): continue
+                actividades.append({"actividad": a.get("actividad"), "grupo": a.get("grupo"), "tipo": a.get("tipo"), "inicio": fi or fo, "fin": fo or fi,
+                                    "real": real, "cumplido": bool(a.get("cumplido")) or bool(real), "recurso": a.get("recurso"),
+                                    "atrasada": bool(fo and fo < hoy and not (a.get("cumplido") or real))})
+        dur = trans = None
+        if inicio and envio:
+            try:
+                d0, d1 = datetime.date.fromisoformat(inicio), datetime.date.fromisoformat(envio)
+                dur = (d1 - d0).days; trans = (datetime.date.today() - d0).days
+            except Exception: pass
+        if envio and envio < hoy: estado = "Atrasado"
+        elif any(a["atrasada"] for a in actividades) or any(h["vencido"] for h in hitos): estado = "En riesgo"
+        elif envio and dur and dur > 0 and (datetime.date.fromisoformat(envio) - datetime.date.today()).days <= 14: estado = "Por enviar"
+        else: estado = "En tiempo" if envio else "Sin fecha de envío"
+        out.append({"job": jn, "customer": j.get("customer"), "description": j.get("description"), "pm": j.get("pm"), "status": j.get("status"),
+                    "ptsv": cfg.get("ptsv") if cfg else None, "inicio": inicio, "envio": envio, "hitos": hitos, "pagos": pagos,
+                    "actividades": sorted(actividades, key=lambda a: a["inicio"] or ""), "duracion_dias": dur, "transcurridos_dias": trans,
+                    "pct_tiempo": round(min(max(trans / dur * 100, 0), 999), 1) if dur and trans is not None and dur > 0 else None,
+                    "estado": estado, "revenue": jc.get("revenue") or j.get("revenue")})
+    orden = {"Atrasado": 0, "En riesgo": 1, "Por enviar": 2, "En tiempo": 3, "Sin fecha de envío": 4}
+    out.sort(key=lambda r: (orden.get(r["estado"], 9), r["envio"] or "9999"))
+    return jsonify({"hoy": hoy, "jobs": out})
+
+# ── rev145: Línea de tiempo WIP en PDF (HTML listo para imprimir, horizontal) ──
+@app.route("/api/timeline-wip/pdf", methods=["GET"])
+def api_timeline_wip_pdf():
+    if not (can("view", "proj-timeline") or is_admin()): return jsonify({"error": "Sin permiso"}), 403
+    d = api_timeline_wip().get_json()
+    e = _html.escape
+    pm, est, q = request.args.get("pm") or "", request.args.get("estado") or "", (request.args.get("q") or "").lower()
+    con_act = str(request.args.get("actividades") or "") in ("1", "true", "si")
+    L = [j for j in d["jobs"] if (not pm or j.get("pm") == pm) and (not est or j["estado"] == est)
+         and (not q or q in " ".join(str(j.get(k) or "") for k in ("job", "customer", "description", "ptsv", "pm")).lower())]
+    COL = {"Atrasado": "#c8102e", "En riesgo": "#d97706", "Por enviar": "#1d4ed8", "En tiempo": "#15803d", "Sin fecha de envío": "#94a3b8"}
+    hoy = d["hoy"]
+    fechas = [hoy] + [f for j in L for f in [j["inicio"], j["envio"]] + [h["fecha"] for h in j["hitos"] + j["pagos"]] if f]
+    if con_act: fechas += [f for j in L for a in j["actividades"] for f in (a["inicio"], a["fin"]) if f]
+    fechas.sort()
+    D = lambda s: datetime.date.fromisoformat(s)
+    ini = D(fechas[0]).replace(day=1)
+    f1 = D(fechas[-1]); fin = (f1.replace(day=1) + datetime.timedelta(days=32)).replace(day=1)
+    IZQ, W, RH, SH = 250, 760, 30, 15
+    dias = max(1, (fin - ini).days); ppd = W / dias
+    X = lambda s: IZQ + (D(s) - ini).days * ppd if s else None
+    filas = []
+    for j in L:
+        filas.append(("job", j))
+        if con_act:
+            for a in j["actividades"]: filas.append(("act", a))
+    H = 34 + sum(RH if t == "job" else SH for t, _ in filas) + 6
+    sv = [f'<svg viewBox="0 0 {IZQ + W + 10} {H}" width="100%" style="font-family:Arial;font-size:9px">']
+    m = ini
+    while m < fin:
+        sig = (m + datetime.timedelta(days=32)).replace(day=1); x0 = X(m.isoformat())
+        sv.append(f'<line x1="{x0:.1f}" y1="18" x2="{x0:.1f}" y2="{H}" stroke="#e5e7eb"/><text x="{x0 + 3:.1f}" y="13" fill="#555" font-weight="bold">{["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"][m.month - 1]} {str(m.year)[2:]}</text>')
+        m = sig
+    xh = X(hoy)
+    y = 34
+    for t, it in filas:
+        if t == "job":
+            j = it; col = COL.get(j["estado"], "#94a3b8")
+            sv.append(f'<line x1="0" y1="{y - 3}" x2="{IZQ + W}" y2="{y - 3}" stroke="#ddd"/>')
+            sv.append(f'<rect x="0" y="{y}" width="3" height="{RH - 6}" fill="{col}"/>')
+            sv.append(f'<text x="7" y="{y + 9}" font-weight="bold" fill="#8a6d1d">{e(j["job"])}</text><text x="52" y="{y + 9}" fill="{col}" font-weight="bold">{e(j["estado"])}</text>'
+                      f'<text x="{IZQ - 6}" y="{y + 9}" text-anchor="end" fill="#555">{"" if j["pct_tiempo"] is None else str(round(j["pct_tiempo"])) + "%"}</text>'
+                      f'<text x="7" y="{y + 20}" fill="#666">{e((j.get("customer") or "")[:26])}{(" · " + e(j["ptsv"])) if j.get("ptsv") else ""}</text>')
+            x0, x1 = X(j["inicio"]), X(j["envio"])
+            if x0 is not None and x1 is not None and x1 >= x0:
+                xt = min(max(xh, x0), x1)
+                sv.append(f'<rect x="{x0:.1f}" y="{y + 4}" width="{max(3, x1 - x0):.1f}" height="9" rx="4" fill="#c7d2e6"/><rect x="{x0:.1f}" y="{y + 4}" width="{max(0, xt - x0):.1f}" height="9" rx="4" fill="#1f3864"/>'
+                          f'<path d="M{x1 - 4:.1f},{y - 1} L{x1 + 4:.1f},{y - 1} L{x1:.1f},{y + 5} Z" fill="{col}"/>')
+            elif x0 is not None:
+                sv.append(f'<rect x="{x0:.1f}" y="{y + 4}" width="{max(20, xh - x0):.1f}" height="9" rx="4" fill="#e5e7eb" stroke="#c7d2e6" stroke-dasharray="3 2"/>')
+            for h in j["hitos"]:
+                xx = X(h["fecha"]); c = "#c8102e" if h["vencido"] else "#d97706"
+                sv.append(f'<path d="M{xx:.1f},{y + 3} L{xx + 4:.1f},{y + 8.5} L{xx:.1f},{y + 14} L{xx - 4:.1f},{y + 8.5} Z" fill="{c}" stroke="#fff" stroke-width="0.8"/>')
+            for p in j["pagos"]:
+                if not p["fecha"]: continue
+                c = "#15803d" if p["cumplido"] else ("#c8102e" if p["vencido"] else "#94a3b8")
+                sv.append(f'<circle cx="{X(p["fecha"]):.1f}" cy="{y + 19}" r="3.2" fill="{c}" stroke="#fff" stroke-width="0.8"/>')
+            y += RH
+        else:
+            a = it; a0, a1 = X(a["inicio"]), X(a["fin"]); c = "#15803d" if a["cumplido"] else ("#c8102e" if a["atrasada"] else "#3b82f6")
+            sv.append(f'<text x="18" y="{y + 9}" fill="#555" font-size="8">{e((a.get("actividad") or "")[:40])}</text>')
+            if a0 is not None: sv.append(f'<rect x="{a0:.1f}" y="{y + 3}" width="{max(3, (a1 or a0) - a0):.1f}" height="6" rx="3" fill="{c}" opacity="{0.7 if a["cumplido"] else 1}"/>')
+            y += SH
+    if xh is not None: sv.append(f'<line x1="{xh:.1f}" y1="18" x2="{xh:.1f}" y2="{H}" stroke="#c8102e" stroke-width="1.4"/><text x="{xh + 2:.1f}" y="27" fill="#c8102e" font-size="8">hoy</text>')
+    sv.append("</svg>")
+    cnt = {}
+    for j in L: cnt[j["estado"]] = cnt.get(j["estado"], 0) + 1
+    def proximo(j):
+        futuros = sorted([(h["fecha"], h["nombre"]) for h in j["hitos"] if h["fecha"] >= hoy] + [(p["fecha"], "Pago: " + str(p["nombre"])) for p in j["pagos"] if p["fecha"] and not p["cumplido"] and p["fecha"] >= hoy])
+        return f"{futuros[0][1]} · {futuros[0][0]}" if futuros else "—"
+    vencidos = lambda j: [h["nombre"] for h in j["hitos"] if h["vencido"]] + ["Pago " + str(p["nombre"]) for p in j["pagos"] if p["vencido"]] + [a["actividad"] for a in j["actividades"] if a["atrasada"]]
+    tabla = "".join(f'<tr><td class="mono"><b>{e(j["job"])}</b></td><td style="color:{COL.get(j["estado"])};font-weight:bold">{e(j["estado"])}</td><td>{e(j.get("customer") or "")}</td><td>{e((j.get("description") or "")[:45])}</td>'
+                    f'<td>{e(j.get("ptsv") or "—")}</td><td>{e(j.get("pm") or "")}</td><td>{j["inicio"] or "—"}</td><td>{j["envio"] or "—"}</td><td class="r">{"" if j["pct_tiempo"] is None else str(round(j["pct_tiempo"])) + " %"}</td>'
+                    f'<td>{e(proximo(j))}</td><td class="bad">{e(", ".join(str(x) for x in vencidos(j))[:120])}</td></tr>' for j in L)
+    filtros = " · ".join(x for x in (f"PM: {pm}" if pm else "", f"Estado: {est}" if est else "", f"Búsqueda: {q}" if q else "") if x) or "todos los Jobs en WIP"
+    html = f"""<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Línea de tiempo WIP {hoy}</title><style>
+    @page{{size:letter landscape;margin:10mm}} body{{font-family:Arial,Helvetica,sans-serif;color:#1a1a2e;margin:0;padding:16px 22px;font-size:10.5px}}
+    header{{display:flex;align-items:center;gap:14px;border-bottom:3px solid #c8102e;padding-bottom:8px;margin-bottom:10px}} header img{{height:28px}} h1{{margin:0;font-size:18px}} .sub{{color:#666;font-size:10px}}
+    .kpis{{display:flex;gap:8px;margin:8px 0}} .kpis div{{border:1px solid #e3e3e3;border-radius:6px;padding:4px 10px}} .kpis b{{font-size:15px}}
+    .ley{{font-size:9px;color:#666;margin:4px 0 8px}} table{{width:100%;border-collapse:collapse;margin-top:10px}} th{{background:#1f3864;color:#fff;text-align:left;padding:4px 5px;font-size:9px}} td{{padding:3px 5px;border-bottom:1px solid #eee;font-size:9.5px}}
+    .r{{text-align:right}} .mono{{font-family:monospace}} .bad{{color:#c8102e}} .noprint{{margin-bottom:8px}} section{{page-break-inside:avoid}} @media print{{.noprint{{display:none}} body{{padding:4px}}}}</style></head><body>
+    <div class="noprint"><button onclick="window.print()" style="padding:7px 14px;background:#c8102e;color:#fff;border:none;border-radius:6px;cursor:pointer">🖨 Imprimir / Guardar como PDF</button>
+      <span style="font-size:11px;color:#666;margin-left:8px">Sugerencia: orientación horizontal.</span></div>
+    <header><img src="/static/persico_logo.webp" onerror="this.style.display='none'"><div><h1>Línea de tiempo · proyectos en WIP</h1>
+    <div class="sub">{e(_datos_fiscales().get("razon_social") or "")} · al {datetime.date.today():%d/%m/%Y} · {e(filtros)} · generado por {e(session.get("user", ""))}</div></div></header>
+    <div class="kpis"><div><b>{len(L)}</b> Jobs</div>{"".join(f'<div style="border-left:4px solid {COL[k]}"><b style="color:{COL[k]}">{cnt[k]}</b> {k}</div>' for k in COL if cnt.get(k))}</div>
+    <div class="ley">Barra: inicio → envío (oscuro = transcurrido) · ▼ envío · ◆ Run Off (rojo = fecha pasada) · ● milestone de pago (verde cumplido, gris pendiente, rojo vencido){" · sub-barras: actividades del Timing (verde terminada, rojo atrasada, azul en curso)" if con_act else ""} · línea roja = hoy</div>
+    <section>{"".join(sv)}</section>
+    <table><tr><th>Job</th><th>Estado</th><th>Cliente</th><th>Descripción</th><th>PT/SV</th><th>PM</th><th>Inicio</th><th>Envío</th><th class="r">Tiempo</th><th>Próximo hito</th><th>Vencido / atrasado</th></tr>{tabla or '<tr><td colspan="11">Sin Jobs en el filtro</td></tr>'}</table>
+    </body></html>"""
     return Response(html, mimetype="text/html")
 
 if __name__ == "__main__":
