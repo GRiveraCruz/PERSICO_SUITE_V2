@@ -531,6 +531,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
         <button onclick="switchMenu('report','ng-costo')">Reporte por Job</button>
         <button onclick="switchMenu('multirpt','ng-costo')">Reporte Múltiple</button>
         <button onclick="switchMenu('fx','ng-costo')">Tipo de Cambio</button>
+        <button onclick="switchMenu('centros-costo','ng-costo')">Centros de costo</button>
       </div>
     </div>
     <!-- FINANZAS -->
@@ -6062,6 +6063,38 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
   </div>
 </div>
 
+<!-- ══ MODULE: Centros de costo (rev147) ══ -->
+<div class="module" id="mod-centros-costo">
+  <div class="main-content" style="overflow-y:auto">
+    <div class="bar-top"><h1>🏷 Centros de costo</h1>
+      <select id="cc-anio" onchange="ccCargar()" style="font-size:12px;padding:5px 8px;margin-left:12px"></select>
+      <input id="cc-q" placeholder="Buscar ID o nombre…" oninput="ccRender()" style="font-size:12px;padding:6px 10px;min-width:180px">
+      <label style="font-size:11px;display:flex;gap:4px;align-items:center"><input type="checkbox" id="cc-inactivos" onchange="ccRender()"> ver inactivos</label>
+      <button class="btn btn-p" onclick="ccNuevo()" style="margin-left:auto">＋ Nuevo centro de costo</button></div>
+    <div style="padding:14px 18px">
+      <div style="font-size:12px;color:var(--muted2);margin-bottom:10px">Horas, compras y activos que no corresponden a un proyecto. El ID se usa como "Job" en órdenes de compra, reasignaciones y en el kiosco de asistencia; a cada trabajador se le asigna su centro de costo en Control de Personal (sus horas de ADMIN se acumulan ahí).</div>
+      <div id="cc-cards" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px"></div>
+      <div style="overflow-x:auto"><table class="tbl" style="width:100%"><thead><tr><th>ID</th><th>Nombre</th><th>Tipo</th><th>Responsable</th><th style="text-align:right">Compras</th><th style="text-align:right">Reasignaciones</th><th style="text-align:right">Horas</th><th style="text-align:right">Mano de obra</th><th style="text-align:right">Total USD</th><th style="text-align:right">Presupuesto</th><th>Personal</th><th></th></tr></thead><tbody id="cc-tb"></tbody></table></div>
+      <div id="cc-detalle" style="margin-top:16px"></div>
+    </div>
+  </div>
+</div>
+<div class="mo" id="mo-cc" style="z-index:160">
+  <div class="md" style="max-width:560px;width:calc(100% - 32px)">
+    <div class="mh"><h2 id="cc-mo-tit">Centro de costo</h2><button class="px" onclick="closeMo('mo-cc')">Cerrar</button></div>
+    <div class="mb2">
+      <div class="fr"><div class="fi"><label>ID *</label><input id="ccf-cid" placeholder="ej. CC-ADM-01" style="font-family:'DM Mono',monospace;text-transform:uppercase"></div>
+        <div class="fi"><label>Tipo</label><select id="ccf-tipo"></select></div></div>
+      <div class="fi"><label>Nombre *</label><input id="ccf-nombre" placeholder="ej. Administración y Finanzas"></div>
+      <div class="fr"><div class="fi"><label>Responsable</label><input id="ccf-resp"></div>
+        <div class="fi"><label>Presupuesto anual (USD)</label><input id="ccf-pres" type="number" min="0" step="100"></div></div>
+      <div class="fi"><label>Descripción</label><textarea id="ccf-desc" rows="2"></textarea></div>
+      <label style="font-size:12px;display:flex;gap:6px;align-items:center;text-transform:none;letter-spacing:0;font-weight:400" id="ccf-activo-box"><input type="checkbox" id="ccf-activo" checked> Activo (aparece en órdenes de compra, reasignaciones y en el kiosco)</label>
+      <div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-p" onclick="ccGuardar()">Guardar</button><button class="btn btn-s" id="ccf-borrar" onclick="ccBorrar()" style="margin-left:auto;color:var(--red)">Eliminar</button></div>
+    </div>
+  </div>
+</div>
+
 <!-- ══ MODULE: Income Forecast (rev122) ══ -->
 <div class="module" id="mod-mgmt-income-forecast">
   <div class="main-content" style="overflow-y:auto">
@@ -6475,7 +6508,8 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
         <div class="fi"><label>Tipo de Actividad</label><input type="text" id="te-tipo" placeholder="Ej. Operativo, Administrativo…"></div>
         <div class="fi"><label>Fecha de Ingreso</label><input type="date" id="te-ingreso"></div>
       </div>
-      <div class="fr"><div class="fi"><label>Jefe Directo</label><select id="te-jefe"><option value="">— Sin jefe directo asignado —</option></select></div></div>
+      <div class="fr"><div class="fi"><label>Jefe Directo</label><select id="te-jefe"><option value="">— Sin jefe directo asignado —</option></select></div>
+        <div class="fi"><label>Centro de costo</label><select id="te-cc"><option value="">— Sin centro de costo —</option></select></div></div>
       <div class="fi" style="margin-top:10px"><label>Antigüedad</label><div style="font-size:13px;font-weight:600;color:var(--gold)" id="te-antiguedad">—</div></div>
       <div class="fi" style="margin-top:10px"><label>Tipo de puesto y jornada (heredado del perfil)</label><div style="font-size:12px" id="te-tipo-puesto">—</div></div>
       <div class="sl">Estatus Laboral</div>

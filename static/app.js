@@ -122,6 +122,7 @@ function switchMenu(mod, groupId) {
   if(mod==='rrhh-kpis') { setTimeout(kpiCargar,100); }
   if(mod==='ops-piso') { setTimeout(pisoCargar,100); }
   if(mod==='proj-timeline') { setTimeout(tlCargar,100); }
+  if(mod==='centros-costo') { setTimeout(ccCargar,100); }
   if(mod==='fin-datos-fiscales') { setTimeout(dfCargar,100); }
   if(mod==='fin-ordenes-cobro') { setTimeout(ocCargar,100); }
   if(mod==='mgmt-income-forecast') { setTimeout(ifCargar,100); }
@@ -1541,6 +1542,9 @@ function personalOpen(row){
   document.getElementById('te-ingreso').value=r.fecha_ingreso||'';
   document.getElementById('te-jefe').innerHTML=personalJefeOptions(r.tid);
   document.getElementById('te-jefe').value=r.jefe_directo||'';
+  ccLista().then(()=>{ const el=document.getElementById('te-cc'); if(!el) return;                   // rev147
+    el.innerHTML='<option value="">— Sin centro de costo —</option>'+(_cc.records||[]).filter(c=>c.activo!==false||c.cid===r.centro_costo).map(c=>`<option value="${esc(c.cid)}">${esc(c.cid)} — ${esc(c.nombre)}</option>`).join('');
+    el.value=r.centro_costo||''; });
   document.getElementById('te-antiguedad').textContent=personalAntiguedad(r.fecha_ingreso);
   const tpEl=document.getElementById('te-tipo-puesto'); if(tpEl) tpEl.innerHTML=tpResumenPersona(r);
   document.getElementById('te-estado').value=r.estado||'Activo';
@@ -1580,6 +1584,7 @@ async function personalSave(){
     estado:document.getElementById('te-estado').value||'Activo',
     fecha_baja:document.getElementById('te-fecha-baja').value||null,
     record_disciplinario:document.getElementById('te-rec').value.trim()||null,
+    centro_costo:document.getElementById('te-cc')?.value||null,                                     // rev147
   };
   if(!payload.nombre){toast('El nombre es obligatorio','er');return;}
   try{
@@ -6028,7 +6033,7 @@ let USER_PERMS = null;
 
 // rev77: módulos que heredan el nivel de otro mientras el administrador no les fije uno
 const MODULOS_HEREDAN = {'projconfig-dashboard':'projconfig','projconfig-presupuesto':'projconfig','projconfig-timing':'projconfig',
-  'projconfig-abiertos':'projconfig','projconfig-cambios':'projconfig','projconfig-documentos':'projconfig','personal-tipos-puesto':'personal-perfiles','rrhh-kpis':'personal-listado','fin-cpc':'fin-cpp','ops-piso':'ops-capacidad','proj-timeline':'projconfig','fin-datos-fiscales':'fin-esquemas','fin-ordenes-cobro':'fin-cpc','mgmt-income-forecast':'fin-cpc','fin-prog-pagos':'fin-cpp','mgmt-costo-mo':'rrhh-sueldos','fin-cashflow':'fin-cpp'};
+  'projconfig-abiertos':'projconfig','projconfig-cambios':'projconfig','projconfig-documentos':'projconfig','personal-tipos-puesto':'personal-perfiles','rrhh-kpis':'personal-listado','fin-cpc':'fin-cpp','ops-piso':'ops-capacidad','proj-timeline':'projconfig','centros-costo':'report','fin-datos-fiscales':'fin-esquemas','fin-ordenes-cobro':'fin-cpc','mgmt-income-forecast':'fin-cpc','fin-prog-pagos':'fin-cpp','mgmt-costo-mo':'rrhh-sueldos','fin-cashflow':'fin-cpp'};
 const MODULE_LABELS = {
   'compras-requisicion':'Requisición de Compra', 'fin-cpc':'Cuentas por Cobrar (CPC)', 'fin-datos-fiscales':'Datos fiscales', 'fin-ordenes-cobro':'Órdenes de cobro', 'mgmt-income-forecast':'Management — Income Forecast', 'fin-prog-pagos':'Programación de pagos', 'mgmt-costo-mo':'Management — Costo de mano de obra', 'fin-cashflow':'Cash Flow Forecast',
   // Proyectos
@@ -6051,7 +6056,7 @@ const MODULE_LABELS = {
   // Servicio
   'viaticos':'Viáticos', 'gastos-viaje':'Gastos de Viaje', 'envios':'Envíos de Mensajería',
   // Reportes y Config
-  'wh':'Work Hours', 'report':'Job Report', 'multirpt':'Multi-Job Report', 'fx':'Exchange Rate',
+  'wh':'Work Hours', 'report':'Job Report', 'multirpt':'Multi-Job Report', 'fx':'Exchange Rate', 'centros-costo':'Centros de costo',
   'projconfig':'Configurar Proyecto', 'proj-timeline':'Línea de tiempo WIP',
   'projconfig-dashboard':'↳ Pestaña Dashboard', 'projconfig-presupuesto':'↳ Pestaña Presupuesto',
   'projconfig-timing':'↳ Pestaña Timing', 'projconfig-abiertos':'↳ Pestaña Puntos Abiertos',
@@ -6086,7 +6091,7 @@ const MODULE_GROUPS = [
   { label: '🏬 Almacenes',            mods: ['stock','consignacion','ingreso','apartados','manuf-stock','salida'] },
   { label: '✈ Servicio',             mods: ['viaticos','gastos-viaje','envios'] },
   { label: '⚙ Configurar Proyecto',   mods: ['projconfig','projconfig-dashboard','projconfig-presupuesto','projconfig-timing','projconfig-abiertos','projconfig-cambios','projconfig-documentos'] },
-  { label: '📊 Control de Costo',     mods: ['wh','report','multirpt','fx'] },
+  { label: '📊 Control de Costo',     mods: ['centros-costo','wh','report','multirpt','fx'] },
   { label: '💹 Finanzas',             mods: ['fin-recepciones','fin-procesarcompra','fin-cpp','fin-prog-pagos','fin-cashflow','fin-cpc','fin-ordenes-cobro','fin-pagos','fin-esquemas','fin-datos-fiscales'] },
   { label: '🧑‍💼 Recursos Humanos',    mods: ['rrhh-asistencia','rrhh-vacaciones','rrhh-permisos','rrhh-salario','rrhh-sueldos','rrhh-nomina','personal-areas','personal-tipos-puesto','personal-perfiles','personal-listado'] },
   { label: '📈 Management',           mods: ['rrhh-kpis','mgmt-income-forecast','mgmt-costo-mo'] },
@@ -6354,6 +6359,7 @@ function applyPermsToDom(d) {
     'mgmt-costo-mo':      ["switchMenu('mgmt-costo-mo'"],
     'fin-cashflow':       ["switchMenu('fin-cashflow'"],
     'proj-timeline':      ["switchMenu('proj-timeline'"],
+    'centros-costo':      ["switchMenu('centros-costo'"],
     'compras-requisicion':["switchMenu('requisicion'"],
     'fin-pagos':          ["switchMenu('fin-pagos'"],
     'fin-esquemas':       ["switchMenu('fin-esquemas'"],
@@ -9764,6 +9770,7 @@ async function populateJobSelector(selId, withOptions=false) {
   const opts = withOptions ? ['<option value="Rezagado">Rezagado</option>','<option value="Shopfloor">Shopfloor</option>'] : [];
   const jobOpts = jobs.map(j=>`<option value="${esc(j.job_number)}">${esc(j.job_number)} — ${esc(j.customer||'')}</option>`);
   sel.innerHTML = '<option value="">— Seleccionar —</option>' + opts.join('') + jobOpts.join('');
+  try{ await ccLista(); sel.insertAdjacentHTML('beforeend', ccOpcionesHTML()); }catch(e){}     // rev147
 }
 
 function stockSearch(q) {
@@ -11072,6 +11079,9 @@ async function gpoUpdateJobList() {
   };
   makeOpts('gpo-job-unico');
   makeOpts('gi-job');
+  // rev147: centros de costo como destino de la OC
+  await ccLista();
+  ['gpo-job-unico','gi-job'].forEach(id=>{ const el=document.getElementById(id); if(el) el.insertAdjacentHTML('beforeend', ccOpcionesHTML()); });
 }
 
 function gpoJobTypeChange() {
@@ -20930,4 +20940,82 @@ function tlPDF(){
   const q = new URLSearchParams({pm: document.getElementById('tl-pm').value, estado: document.getElementById('tl-est').value,
                                  q: document.getElementById('tl-q').value, actividades: document.getElementById('tl-pdf-act').checked ? '1' : ''});
   window.open('/api/timeline-wip/pdf?' + q.toString(), '_blank');
+}
+
+
+// ════════════════════════════════════════════════════════
+//  rev147 — Control de Costo ▸ Centros de costo
+// ════════════════════════════════════════════════════════
+let _cc = { records: [], tipos: [], resumen: [] }, _ccEdit = null;
+async function ccLista(){ try{ const d = await fetch('/api/centros-costo').then(r=>r.json()); if(!d.error){ _cc.records = d.records||[]; _cc.tipos = d.tipos||[]; } }catch(e){} return _cc.records; }
+async function ccCargar(){
+  const sel = document.getElementById('cc-anio');
+  if(sel && !sel.options.length){ const y = new Date().getFullYear(); sel.innerHTML = [y, y-1, y-2].map(v=>`<option>${v}</option>`).join(''); }
+  await ccLista();
+  try{ const d = await fetch('/api/centros-costo/resumen?anio='+sel.value).then(r=>r.json()); _cc.resumen = d.records||[]; }catch(e){ _cc.resumen = []; }
+  ccRender();
+}
+function ccRender(){
+  const fmt = v=>'$'+Number(v||0).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0});
+  const q=(document.getElementById('cc-q').value||'').toLowerCase(), inact=document.getElementById('cc-inactivos').checked;
+  const L = _cc.resumen.filter(r=>(inact||r.activo)&&(!q||(r.cid+' '+r.nombre).toLowerCase().includes(q)));
+  const tot = L.reduce((a,r)=>({c:a.c+r.compras_usd,m:a.m+r.mano_obra_usd,t:a.t+r.total_usd,h:a.h+r.horas}),{c:0,m:0,t:0,h:0});
+  document.getElementById('cc-cards').innerHTML = [['Centros de costo',L.length],['Compras',fmt(tot.c)],['Horas',Math.round(tot.h)+' h'],['Mano de obra',fmt(tot.m)],['Total',fmt(tot.t)]]
+    .map(([k,v])=>`<div style="padding:8px 14px;border:1px solid var(--border);border-radius:8px;font-size:12px"><b style="font-size:17px">${v}</b><div style="color:var(--muted2)">${k}</div></div>`).join('');
+  document.getElementById('cc-tb').innerHTML = L.map(r=>{ const sobre = r.pct_presupuesto!=null && r.pct_presupuesto>100;
+    return `<tr style="cursor:pointer;${r.activo?'':'opacity:.55'}" onclick="ccDetalle('${esc(r.cid)}')"><td style="font-family:'DM Mono',monospace;color:var(--gold);font-weight:700">${esc(r.cid)}</td><td>${esc(r.nombre)}</td><td style="font-size:11px">${esc(r.tipo||'')}</td><td style="font-size:11px">${esc(r.responsable||'')}</td>
+      <td style="text-align:right">${fmt(r.compras_usd)}</td><td style="text-align:right">${fmt(r.reasignaciones_usd)}</td><td style="text-align:right">${r.horas}</td><td style="text-align:right">${fmt(r.mano_obra_usd)}</td>
+      <td style="text-align:right;font-weight:700">${fmt(r.total_usd)}</td><td style="text-align:right;color:${sobre?'var(--red)':'inherit'}">${r.presupuesto_usd?fmt(r.presupuesto_usd)+` <span style="font-size:10px">(${r.pct_presupuesto}%)</span>`:'—'}</td>
+      <td>${r.personal||''}</td><td><button class="btn-reload" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation();ccEditar('${esc(r.cid)}')">Editar</button></td></tr>`; }).join('')
+    || '<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:20px">Aún no hay centros de costo. Crea el primero con "＋ Nuevo centro de costo".</td></tr>';
+}
+function ccForm(rec){
+  _ccEdit = rec ? rec.cid : null;
+  document.getElementById('cc-mo-tit').textContent = rec ? `Editar ${rec.cid}` : 'Nuevo centro de costo';
+  document.getElementById('ccf-tipo').innerHTML = _cc.tipos.map(t=>`<option ${rec&&rec.tipo===t?'selected':''}>${esc(t)}</option>`).join('');
+  document.getElementById('ccf-cid').value = rec ? rec.cid : ''; document.getElementById('ccf-cid').disabled = !!rec;
+  document.getElementById('ccf-nombre').value = rec ? rec.nombre||'' : ''; document.getElementById('ccf-resp').value = rec ? rec.responsable||'' : '';
+  document.getElementById('ccf-pres').value = rec && rec.presupuesto_usd ? rec.presupuesto_usd : ''; document.getElementById('ccf-desc').value = rec ? rec.descripcion||'' : '';
+  document.getElementById('ccf-activo').checked = rec ? rec.activo!==false : true; document.getElementById('ccf-activo-box').style.display = rec ? '' : 'none';
+  document.getElementById('ccf-borrar').style.display = rec ? '' : 'none';
+  document.getElementById('mo-cc').classList.add('on');
+}
+function ccNuevo(){ ccForm(null); }
+function ccEditar(cid){ ccForm(_cc.records.find(c=>c.cid===cid)); }
+async function ccGuardar(){
+  const body = {cid: document.getElementById('ccf-cid').value, nombre: document.getElementById('ccf-nombre').value, tipo: document.getElementById('ccf-tipo').value,
+                responsable: document.getElementById('ccf-resp').value, presupuesto_usd: document.getElementById('ccf-pres').value||0, descripcion: document.getElementById('ccf-desc').value,
+                activo: document.getElementById('ccf-activo').checked};
+  const d = _ccEdit ? await apiCall('PUT','/centros-costo/'+encodeURIComponent(_ccEdit), body) : await apiCall('POST','/centros-costo', body);
+  if(d.error){ toast(d.error,'er',6000); return; }
+  toast(_ccEdit?'Centro de costo actualizado':`Centro de costo ${d.record.cid} creado`,'ok'); closeMo('mo-cc'); ccCargar();
+}
+async function ccBorrar(){
+  if(!_ccEdit || !confirm(`¿Eliminar el centro de costo ${_ccEdit}? Solo se puede si no tiene movimientos ni personal.`)) return;
+  const d = await apiCall('DELETE','/centros-costo/'+encodeURIComponent(_ccEdit)); if(d.error){ toast(d.error,'er',7000); return; }
+  toast('Eliminado','ok'); closeMo('mo-cc'); ccCargar();
+}
+async function ccDetalle(cid){
+  const box = document.getElementById('cc-detalle'); box.innerHTML = 'Cargando…';
+  const d = await fetch(`/api/centros-costo/${encodeURIComponent(cid)}/reporte?anio=${document.getElementById('cc-anio').value}`).then(r=>r.json());
+  if(d.error){ box.innerHTML = `<span style="color:var(--red)">${esc(d.error)}</span>`; return; }
+  const fmt = v=>'$'+Number(v||0).toLocaleString('en-US',{minimumFractionDigits:2});
+  const tabla = (cab, filas) => `<div style="overflow-x:auto;max-height:280px;border:1px solid var(--border);border-radius:8px"><table class="tbl" style="width:100%;font-size:12px"><thead><tr>${cab.map(c=>`<th>${c}</th>`).join('')}</tr></thead><tbody>${filas||`<tr><td colspan="${cab.length}" style="color:var(--muted);text-align:center;padding:10px">Sin registros</td></tr>`}</tbody></table></div>`;
+  box.innerHTML = `<div style="border:1px solid var(--border);border-radius:10px;padding:14px">
+    <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><h3 style="margin:0;font-family:'DM Mono',monospace;color:var(--gold)">${esc(cid)}</h3><b>${esc(d.centro.nombre||'')}</b><span style="font-size:12px;color:var(--muted2)">${esc(d.centro.tipo||'')} · ${esc(d.centro.responsable||'')} · ${d.anio}</span>
+      <span style="margin-left:auto;font-size:15px">Total <b>${fmt(d.total_usd)}</b>${d.presupuesto_usd?` de ${fmt(d.presupuesto_usd)} (${d.pct_presupuesto}%)`:''}</span></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:14px;margin-top:12px">
+      <div><div style="font-weight:700;margin-bottom:4px">🛒 Compras · ${fmt(d.compras.usd)}</div>${tabla(['OC','Proveedor','No. parte','Fecha','Estatus','USD'], d.compras.detalle.map(c=>`<tr><td style="font-family:'DM Mono',monospace">${esc(c.clave||'')}</td><td>${esc(c.proveedor||'')}</td><td>${esc(c.part_number||'')}</td><td>${esc(c.fecha||'')}</td><td>${esc(c.estatus||'')}</td><td style="text-align:right">${fmt(c.usd)}</td></tr>`).join(''))}</div>
+      <div><div style="font-weight:700;margin-bottom:4px">🔁 Reasignaciones · ${fmt(d.reasignaciones.usd)}</div>${tabla(['Orden','Fecha','No. parte','Cant.','USD'], d.reasignaciones.detalle.map(r=>`<tr><td style="font-family:'DM Mono',monospace">${esc(r.orden||'')}</td><td>${esc(r.fecha||'')}</td><td>${esc(r.part_number||'')}</td><td>${r.cantidad}</td><td style="text-align:right">${fmt(r.usd)}</td></tr>`).join(''))}</div>
+      <div><div style="font-weight:700;margin-bottom:4px">⏱ Horas · ${d.horas.total} h · ${fmt(d.horas.mano_obra_usd)}</div>
+        <div style="font-size:11px;color:var(--muted2);margin-bottom:4px">Directas al centro de costo: ${d.horas.directas} h · ADMIN del personal asignado: ${d.horas.admin_personal} h · costo con Hourly Rates ${d.anio}${d.horas.error?` · <span style="color:var(--red)">${esc(d.horas.error)}</span>`:''}</div>
+        ${tabla(['Trabajador','Directas','ADMIN','Tarifa','USD'], d.horas.detalle.map(h=>`<tr><td>${esc(h.nombre)}</td><td style="text-align:right">${h.directas}</td><td style="text-align:right">${h.admin_personal}</td><td style="text-align:right">${h.rate?fmt(h.rate):'<span style="color:var(--amber)">sin tarifa</span>'}</td><td style="text-align:right">${fmt(h.usd)}</td></tr>`).join(''))}</div>
+      <div><div style="font-weight:700;margin-bottom:4px">👥 Personal asignado (${d.personal.length})</div>${tabla(['ID','Nombre','Área','Estado'], d.personal.map(p=>`<tr><td>${esc(p.tid)}</td><td>${esc(p.nombre)}</td><td>${esc(p.area||'')}</td><td>${esc(p.estado||'')}</td></tr>`).join(''))}</div>
+    </div></div>`;
+  box.scrollIntoView({behavior:'smooth', block:'start'});
+}
+// Centros de costo como opción en los selectores de Job (OC y reasignaciones)
+function ccOpcionesHTML(){
+  const act = (_cc.records||[]).filter(c=>c.activo!==false);
+  return act.length ? `<optgroup label="Centros de costo">${act.map(c=>`<option value="${esc(c.cid)}">${esc(c.cid)} — ${esc(c.nombre)}</option>`).join('')}</optgroup>` : '';
 }

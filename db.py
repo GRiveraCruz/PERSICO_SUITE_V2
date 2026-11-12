@@ -220,6 +220,13 @@ class KpiSnapshot(Base, JSONBMixin):
     clave = Column(String, unique=True, index=True)
 
 
+class CentroCosto(Base, JSONBMixin):
+    """rev147: centros de costo (horas, compras y activos que no son de un proyecto).
+    El kiosco de asistencia también lee esta tabla para ofrecerlos al repartir horas."""
+    __tablename__ = "centros_costo"
+    cid = Column(String, unique=True, index=True)
+
+
 class PisoEnsamble(Base, JSONBMixin):
     """rev115: piso de ensamble — espacio que ocupa cada máquina/Job (y la configuración
     de la planta en el registro pid='__config__')."""

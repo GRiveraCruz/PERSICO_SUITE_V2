@@ -2087,6 +2087,7 @@ def write_personal_record(data, target_row=None):
                 "jefe_directo":         data.get("jefe_directo") or None,
                 "estado":               data.get("estado") or "Activo",
                 "fecha_baja":           data.get("fecha_baja") or None,
+                "centro_costo":         (data.get("centro_costo") or None),       # rev147
                 "created_at":           datetime.datetime.now().isoformat(),
             }
             records.append(rec)
@@ -2112,6 +2113,7 @@ def write_personal_record(data, target_row=None):
                 "jefe_directo":         jefe_directo,
                 "estado":               estado,
                 "fecha_baja":           data.get("fecha_baja", rec.get("fecha_baja")) or None,
+                "centro_costo":         data.get("centro_costo", rec.get("centro_costo")) or None,   # rev147
                 "updated_at":           datetime.datetime.now().isoformat(),
             })
         _save_personal(records)
@@ -10905,7 +10907,7 @@ MODULES = [
     # Servicio
     "viaticos", "gastos-viaje", "envios",
     # Reportes y Configuración
-    "wh", "report", "multirpt", "fx", "projconfig", "proj-timeline",
+    "wh", "report", "multirpt", "fx", "projconfig", "proj-timeline", "centros-costo",
     # rev69: pestañas de Configurar Proyecto. Si un usuario no tiene la llave, la pestaña
     # hereda el nivel de "projconfig" (así los usuarios existentes no pierden nada).
     "projconfig-dashboard", "projconfig-presupuesto", "projconfig-timing",
@@ -11392,6 +11394,7 @@ MODULOS_HEREDAN = {"projconfig-dashboard": "projconfig", "projconfig-presupuesto
                    "rrhh-kpis": "personal-listado",
                    "ops-piso": "ops-capacidad",
                    "proj-timeline": "projconfig",          # rev144: Línea de tiempo WIP toma el nivel de Configurar Proyecto
+                   "centros-costo": "report",              # rev147: Centros de costo toma el nivel de Reporte por Job
                    "fin-datos-fiscales": "fin-esquemas",
                    "fin-ordenes-cobro": "fin-cpc",
                    "mgmt-income-forecast": "fin-cpc",
@@ -24013,6 +24016,172 @@ def api_timeline_wip_pdf():
     <table><tr><th>Job</th><th>Estado</th><th>Cliente</th><th>Descripción</th><th>PT/SV</th><th>PM</th><th>Inicio</th><th>Envío</th><th class="r">Tiempo</th><th>Próximo hito</th><th>Vencido / atrasado</th></tr>{tabla or '<tr><td colspan="11">Sin Jobs en el filtro</td></tr>'}</table>
     </body></html>"""
     return Response(html, mimetype="text/html")
+
+# ══════════════════════════════════════════════════════════════════
+#  rev147 — CONTROL DE COSTO ▸ CENTROS DE COSTO
+#  Horas, compras, reasignaciones y activos que no corresponden a un proyecto.
+#  ID libre (ej. CC-ADM-01), nombre, tipo, responsable, presupuesto anual (USD), activo.
+#  Se usan como "Job" en órdenes de compra, reasignaciones y en el kiosco; a cada trabajador
+#  se le asigna su centro de costo (sus horas de ADMIN se acumulan ahí).
+# ══════════════════════════════════════════════════════════════════
+CC_TIPOS = ("Área administrativa", "Proyecto interno", "Inversión e infraestructura",
+            "Activos, herramientas y licencias", "Otro")
+CC_RE = re.compile(r"^[A-Z0-9][A-Z0-9_\-\.]{1,24}$")
+_CC_FILE = _os.path.join(_DATA, "CENTROS_COSTO.json")
+
+def cc_load():
+    if _orm and _orm.DB_ENABLED:
+        s = _orm.get_session()
+        try: return [dict(r.data, cid=r.cid) for r in s.query(_orm.CentroCosto).order_by(_orm.CentroCosto.cid).all()]
+        finally: s.close()
+    try: return json.load(open(_CC_FILE, encoding="utf-8"))
+    except Exception: return []
+
+def cc_save_one(rec, borrar=False):
+    if _orm and _orm.DB_ENABLED:
+        s = _orm.get_session()
+        try:
+            row = s.query(_orm.CentroCosto).filter(_orm.CentroCosto.cid == rec["cid"]).one_or_none()
+            if borrar:
+                if row: s.delete(row)
+            elif row: row.data = rec; _orm_flag_modified(row, "data")
+            else: s.add(_orm.CentroCosto(cid=rec["cid"], data=rec))
+            s.commit()
+        finally: s.close()
+        return
+    lst = [x for x in cc_load() if x.get("cid") != rec["cid"]]
+    if not borrar: lst.append(rec)
+    lst.sort(key=lambda x: x.get("cid", ""))
+    with open(_CC_FILE, "w", encoding="utf-8") as f: json.dump(lst, f, ensure_ascii=False, indent=2)
+
+def cc_ids_activos():
+    return {c["cid"] for c in cc_load() if c.get("activo", True)}
+
+@app.route("/api/centros-costo", methods=["GET"])
+def api_cc_list():
+    # la lista la pueden leer quienes generan OC, reasignan o administran personal
+    if not (can("view", "centros-costo") or can("view", "gpo") or can("view", "personal-listado") or is_admin()):
+        return jsonify({"error": "Sin permiso"}), 403
+    return jsonify({"records": cc_load(), "tipos": list(CC_TIPOS)})
+
+@app.route("/api/centros-costo", methods=["POST"])
+def api_cc_crear():
+    if not (can("create", "centros-costo") or is_admin()): return jsonify({"error": "Sin permiso"}), 403
+    b = request.json or {}
+    cid = str(b.get("cid") or "").strip().upper().replace(" ", "-")
+    if not CC_RE.match(cid): return jsonify({"error": "ID inválido: 2 a 25 caracteres (letras, números, guion, punto o guion bajo). Ej. CC-ADM-01"}), 400
+    if JOB_RE.match(cid): return jsonify({"error": "El ID no puede tener formato de Job (ej. 652-50). Usa por ejemplo CC-652"}), 400
+    nombre = str(b.get("nombre") or "").strip()
+    if len(nombre) < 3: return jsonify({"error": "Escribe el nombre del centro de costo"}), 400
+    with lock:
+        if any(c["cid"] == cid for c in cc_load()): return jsonify({"error": f"Ya existe el centro de costo {cid}"}), 409
+        if job_exists(cid): return jsonify({"error": f"{cid} ya existe como Job"}), 409
+        rec = {"cid": cid, "nombre": nombre, "tipo": b.get("tipo") if b.get("tipo") in CC_TIPOS else "Otro",
+               "responsable": str(b.get("responsable") or "").strip(), "presupuesto_usd": float(b.get("presupuesto_usd") or 0),
+               "descripcion": str(b.get("descripcion") or "").strip(), "activo": True,
+               "creado": datetime.datetime.now().isoformat(timespec="seconds"), "creado_por": session.get("user", "")}
+        cc_save_one(rec)
+    return jsonify({"ok": True, "record": rec})
+
+@app.route("/api/centros-costo/<cid>", methods=["PUT"])
+def api_cc_editar(cid):
+    if not (can("create", "centros-costo") or is_admin()): return jsonify({"error": "Sin permiso"}), 403
+    b = request.json or {}
+    with lock:
+        rec = next((c for c in cc_load() if c["cid"] == cid.upper()), None)
+        if not rec: return jsonify({"error": "Centro de costo no encontrado"}), 404
+        for k in ("nombre", "responsable", "descripcion"):
+            if k in b: rec[k] = str(b[k] or "").strip()
+        if "tipo" in b and b["tipo"] in CC_TIPOS: rec["tipo"] = b["tipo"]
+        if "presupuesto_usd" in b: rec["presupuesto_usd"] = float(b["presupuesto_usd"] or 0)
+        if "activo" in b: rec["activo"] = bool(b["activo"])
+        rec["modificado"] = datetime.datetime.now().isoformat(timespec="seconds"); rec["modificado_por"] = session.get("user", "")
+        cc_save_one(rec)
+    return jsonify({"ok": True, "record": rec})
+
+@app.route("/api/centros-costo/<cid>", methods=["DELETE"])
+def api_cc_borrar(cid):
+    if not (can("delete", "centros-costo") or is_admin()): return jsonify({"error": "Sin permiso"}), 403
+    cid = cid.upper()
+    rep_ = _cc_reporte(cid, None)
+    if rep_["compras"]["renglones"] or rep_["horas"]["total"] or rep_["reasignaciones"]["renglones"] or rep_["personal"]:
+        return jsonify({"error": f"{cid} ya tiene movimientos o personal asignado: desactívalo en lugar de eliminarlo"}), 409
+    cc_save_one({"cid": cid}, borrar=True)
+    return jsonify({"ok": True})
+
+def _cc_reporte(cid, anio):
+    """Compras (Purchase Orders), reasignaciones, horas (kiosco) y personal del centro de costo."""
+    cid = cid.upper(); fx_all = fx_load_all()
+    def en_anio(f): return not anio or str(f or "")[:4] == str(anio)
+    compras = []
+    for y in (po_available_years() or []):
+        if anio and int(y) != int(anio): continue
+        for r in po_load(y):
+            if str(r.get("entregar_a") or "").strip().upper() != cid or r.get("estatus") == "Cancelada": continue
+            compras.append({"clave": r.get("clave"), "proveedor": r.get("nombre", ""), "part_number": r.get("part_number"), "descripcion": r.get("descripcion") or r.get("description"),
+                            "fecha": r.get("fecha_doc"), "moneda": r.get("moneda"), "subtotal": float(r.get("subtotal") or 0), "usd": round(_po_usd(r, fx_all), 2), "estatus": r.get("estatus")})
+    reas = []
+    for o in reassign_load():
+        if not en_anio(o.get("created_at")): continue
+        for it in o.get("items") or []:
+            if str(it.get("job") or "").strip().upper() == cid:
+                reas.append({"orden": o.get("order_number"), "fecha": str(o.get("created_at", ""))[:10], "part_number": it.get("part_number"),
+                             "cantidad": it.get("quantity"), "usd": round(float(it.get("total_cost") or 0), 2)})
+    personal = [{"tid": p.get("tid"), "nombre": p.get("nombre"), "area": p.get("area"), "estado": p.get("estado")}
+                for p in _load_personal() if str(p.get("centro_costo") or "").upper() == cid]
+    tids_cc = {p["tid"] for p in personal}
+    # horas: las reportadas directo al centro de costo + las de ADMIN del personal asignado a él
+    horas = {"directas": 0.0, "admin_personal": 0.0, "detalle": {}}
+    try:
+        desde = f"{anio}-01-01" if anio else "2000-01-01"; hasta = f"{anio}-12-31" if anio else "2100-12-31"
+        rows = _ctrl_horas_rows(desde, hasta, None, None)
+        for r in rows:
+            job = str(r.get("job") or "").upper()
+            if job == cid: k = "directas"
+            elif job == "ADMIN" and r.get("tid") in tids_cc: k = "admin_personal"
+            else: continue
+            h = float(r.get("horas") or 0); horas[k] += h
+            d = horas["detalle"].setdefault(r.get("nombre") or r.get("tid") or "", {"directas": 0.0, "admin_personal": 0.0})
+            d[k] += h
+    except Exception as e:
+        horas["error"] = "No se pudieron leer las horas del kiosco de asistencia"; print(f"[CC] horas: {e}")
+    rate_map = {}
+    try: rate_map = {normalize_name(x["employee"]): float(x["rate"]) for x in load_rates(int(anio or datetime.date.today().year)) if x.get("employee")}
+    except Exception: pass
+    det = []
+    for nombre, d in horas["detalle"].items():
+        rate = rate_map.get(normalize_name(nombre), 0.0); h = d["directas"] + d["admin_personal"]
+        det.append({"nombre": nombre, "directas": round(d["directas"], 2), "admin_personal": round(d["admin_personal"], 2), "rate": rate, "usd": round(h * rate, 2)})
+    det.sort(key=lambda x: -(x["directas"] + x["admin_personal"]))
+    total_h = round(horas["directas"] + horas["admin_personal"], 2)
+    mo_usd = round(sum(x["usd"] for x in det), 2)
+    compras_usd = round(sum(c["usd"] for c in compras), 2); reas_usd = round(sum(r["usd"] for r in reas), 2)
+    cc = next((c for c in cc_load() if c["cid"] == cid), {})
+    total = round(compras_usd + reas_usd + mo_usd, 2)
+    return {"centro": cc, "anio": anio, "compras": {"renglones": len(compras), "usd": compras_usd, "detalle": compras},
+            "reasignaciones": {"renglones": len(reas), "usd": reas_usd, "detalle": reas},
+            "horas": {"total": total_h, "directas": round(horas["directas"], 2), "admin_personal": round(horas["admin_personal"], 2), "mano_obra_usd": mo_usd, "detalle": det, "error": horas.get("error")},
+            "personal": personal, "total_usd": total, "presupuesto_usd": float(cc.get("presupuesto_usd") or 0),
+            "pct_presupuesto": round(total / float(cc["presupuesto_usd"]) * 100, 1) if cc.get("presupuesto_usd") else None}
+
+@app.route("/api/centros-costo/<cid>/reporte", methods=["GET"])
+def api_cc_reporte(cid):
+    if not (can("view", "centros-costo") or is_admin()): return jsonify({"error": "Sin permiso"}), 403
+    anio = request.args.get("anio") or None
+    return jsonify(_cc_reporte(cid, int(anio) if anio else None))
+
+@app.route("/api/centros-costo/resumen", methods=["GET"])
+def api_cc_resumen():
+    if not (can("view", "centros-costo") or is_admin()): return jsonify({"error": "Sin permiso"}), 403
+    anio = int(request.args.get("anio") or datetime.date.today().year)
+    out = []
+    for c in cc_load():
+        r = _cc_reporte(c["cid"], anio)
+        out.append({"cid": c["cid"], "nombre": c.get("nombre"), "tipo": c.get("tipo"), "activo": c.get("activo", True), "responsable": c.get("responsable"),
+                    "compras_usd": r["compras"]["usd"], "reasignaciones_usd": r["reasignaciones"]["usd"], "horas": r["horas"]["total"],
+                    "mano_obra_usd": r["horas"]["mano_obra_usd"], "total_usd": r["total_usd"], "presupuesto_usd": r["presupuesto_usd"],
+                    "pct_presupuesto": r["pct_presupuesto"], "personal": len(r["personal"])})
+    return jsonify({"anio": anio, "records": out})
 
 if __name__ == "__main__":
     print("=" * 60)
