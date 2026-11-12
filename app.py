@@ -16009,6 +16009,9 @@ def api_update_catalogo_item(tipo, code):
             if not rec: return jsonify({"error":"Item no encontrado"}), 404
             for k in ["brand","part_number","description","label_code"]:
                 if k in data: rec[k] = str(data[k]).strip()
+            if "por_revisar" in data:                                   # rev148
+                rec["por_revisar"] = bool(data["por_revisar"])
+                if not rec["por_revisar"]: rec["revisado_por"] = session.get("user", ""); rec["revisado"] = datetime.datetime.now().isoformat(timespec="seconds")
             rec["brand"] = rec.get("brand","").upper()
             rec["part_number"] = rec.get("part_number","").upper()
             rec["label_code"] = rec.get("label_code","").upper()
@@ -16342,7 +16345,11 @@ def api_create_gpo():
                     "req_item_id": str(it.get("req_item_id") or ""),
                     "variante":    str(it.get("variante") or ""),      # Normal / Mirror (piezas de manufactura)
                     "descuento_pct": _pct_seguro(it.get("descuento_pct")),          # rev135
+                    "no_catalogo": bool(it.get("no_catalogo")),                     # rev148
                 })
+            # rev148: alta automática en el catálogo de lo que no estaba dado de alta
+            try: cat_altas = _cat_alta_desde_oc(po_items, str(data.get("supplier", {}).get("nombre") if isinstance(data.get("supplier"), dict) else data.get("supplier_name") or ""), moneda)
+            except Exception as e: cat_altas = {"error": str(e)}; print(f"[CATÁLOGO] alta desde OC: {e}")
             _desc = _po_aplicar_descuentos({"items": po_items, "tipo_descuento": str(data.get("tipo_descuento") or ""),
                                             "descuento_global_pct": data.get("descuento_global_pct")})
             subtotal     = _desc["subtotal"]                     # rev135: base de impuestos = subtotal después de descuento
@@ -16442,7 +16449,7 @@ def api_create_gpo():
             return jsonify({"ok": True, "po_number": po_number, "record": rec, "requisicion_renglones": None,
                             "advertencia": f"La orden {po_number} se emitió, pero no se pudo actualizar la requisición ({e}). "
                                            "Revísala: los renglones pueden seguir como pendientes."})
-        return jsonify({"ok": True, "po_number": po_number, "record": rec, "requisicion_renglones": req_actualizados})
+        return jsonify({"ok": True, "po_number": po_number, "record": rec, "requisicion_renglones": req_actualizados, "catalogo": cat_altas})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -24182,6 +24189,46 @@ def api_cc_resumen():
                     "mano_obra_usd": r["horas"]["mano_obra_usd"], "total_usd": r["total_usd"], "presupuesto_usd": r["presupuesto_usd"],
                     "pct_presupuesto": r["pct_presupuesto"], "personal": len(r["personal"])})
     return jsonify({"anio": anio, "records": out})
+
+# ══ rev148: ALTA AUTOMÁTICA EN EL CATÁLOGO AL EMITIR UNA OC ═════════════════════
+#  Cada renglón sin código de catálogo, con No. de parte y categoría eléctrico / mecánico /
+#  servicios, se da de alta (código consecutivo CE/CM/CS) marcado "Nuevo — por revisar", o se
+#  liga al registro existente con el mismo No. de parte y marca (sin espacios ni guiones).
+#  El renglón queda con su cat_code. Se omite si el renglón trae "no_catalogo".
+def _cat_alta_desde_oc(po_items, proveedor, moneda):
+    norm = lambda v: re.sub(r"[^A-Z0-9]", "", str(v or "").upper())
+    res = {"nuevos": [], "ligados": [], "omitidos": 0}
+    por_tipo = {}
+    for it in po_items:
+        ct = it.get("cat_type") or ""
+        if it.get("cat_code") or it.get("no_catalogo") or not it.get("part_number") or ct not in CAT_CONFIG:
+            if not it.get("cat_code"): res["omitidos"] += 1
+            continue
+        por_tipo.setdefault(ct, []).append(it)
+    if not por_tipo: return res
+    ahora = datetime.datetime.now().isoformat()
+    if True:                     # se llama desde la creación de la OC, que ya tiene el candado (lock)
+        for ct, its in por_tipo.items():
+            records = cat_load(ct); cambio = False
+            for it in its:
+                pn, br = norm(it["part_number"]), norm(it.get("brand"))
+                ex = next((r for r in records if norm(r.get("part_number")) == pn and (not br or not norm(r.get("brand")) or norm(r.get("brand")) == br)), None)
+                if ex:
+                    it["cat_code"] = ex.get("code")
+                    if it.get("unit_price"): ex["last_price"] = it["unit_price"]; ex["moneda"] = moneda; ex["updated_at"] = ahora
+                    res["ligados"].append({"code": ex.get("code"), "part_number": it["part_number"]}); cambio = True
+                    continue
+                prefix = CAT_CONFIG[ct]["prefix"]
+                nums = [int(str(r.get("code", "")).split("-")[-1]) for r in records if str(r.get("code", "")).startswith(prefix + "-") and str(r.get("code", "")).split("-")[-1].isdigit()]
+                code = f"{prefix}-{(max(nums) + 1) if nums else 1:05d}"
+                rec = {"code": code, "brand": str(it.get("brand") or "").upper(), "part_number": it["part_number"].upper(), "description": it.get("description") or "",
+                       "label_code": str(it.get("label_code") or "").upper(), "last_price": it.get("unit_price") or 0, "moneda": moneda, "proveedor": proveedor,
+                       "por_revisar": True, "origen": "OC", "created_at": ahora, "updated_at": ahora, "creado_por": session.get("user", "")}
+                records.append(rec); it["cat_code"] = code; cambio = True
+                res["nuevos"].append({"code": code, "part_number": rec["part_number"], "catalogo": ct})
+            if cambio: cat_save(ct, records)
+    if res["nuevos"]: print(f"[CATÁLOGO] {len(res['nuevos'])} material(es) dados de alta desde una OC: {', '.join(x['code'] for x in res['nuevos'])}")
+    return res
 
 if __name__ == "__main__":
     print("=" * 60)

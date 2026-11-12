@@ -10847,20 +10847,28 @@ async function loadCatalogo(tipo) {
 
 function catRender(tipo) {
   const gs = (document.getElementById(`cat-${tipo}-gs`).value||'').toLowerCase();
-  const rows = catData[tipo].filter(r=>
+  const soloRev = document.getElementById(`cat-${tipo}-rev`)?.checked;                       // rev148
+  const rows = catData[tipo].filter(r=>(!soloRev || r.por_revisar) &&
     [r.brand,r.part_number,r.description,r.code,r.label_code].join(' ').toLowerCase().includes(gs));
   const fmt = v=>v?'$'+Number(v).toLocaleString('en-US',{minimumFractionDigits:2}):'—';
   const hasLabel = tipo!=='servicios';
   document.getElementById(`cat-${tipo}-tb`).innerHTML = rows.map(r=>`
     <tr class="tr-hover" onclick="catOpenEdit('${tipo}','${r.code}')">
-      <td style="font-family:'DM Mono',monospace;color:var(--gold);font-weight:700;font-size:12px">${esc(r.code||'')}</td>
+      <td style="font-family:'DM Mono',monospace;color:var(--gold);font-weight:700;font-size:12px">${esc(r.code||'')}${r.por_revisar?`<div><span onclick="event.stopPropagation();catMarcarRevisado('${tipo}','${esc(r.code)}')" title="Dado de alta automáticamente desde una OC${r.proveedor?' ('+esc(r.proveedor)+')':''}. Clic para marcarlo como revisado." style="cursor:pointer;font-family:Arial;font-size:9px;font-weight:700;color:#b45309;background:#fef3c7;border-radius:8px;padding:1px 6px">NUEVO · POR REVISAR</span></div>`:''}</td>
       <td><b>${esc(r.brand||'')}</b></td>
       <td style="font-family:'DM Mono',monospace;color:var(--text)">${esc(r.part_number||'')}</td>
       <td style="color:var(--muted2)">${esc(r.description||'')}</td>
       ${hasLabel?`<td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted2)">${esc(r.label_code||'—')}</td>`:''}
       <td style="text-align:right;font-weight:600;color:var(--green)">${fmt(r.last_price)}</td>
     </tr>`).join('');
-  document.getElementById(`cat-${tipo}-count`).textContent=`${rows.length} items`;
+  const nRev = catData[tipo].filter(r=>r.por_revisar).length;
+  document.getElementById(`cat-${tipo}-count`).innerHTML=`${rows.length} items` + (nRev ? ` · <label style="color:#b45309;cursor:pointer;text-transform:none;letter-spacing:0"><input type="checkbox" id="cat-${tipo}-rev" ${soloRev?'checked':''} onchange="catRender('${tipo}')" style="width:11px;height:11px"> ${nRev} por revisar</label>` : '');
+}
+async function catMarcarRevisado(tipo, code){                                                  // rev148
+  if(!confirm(`¿Marcar ${code} como revisado? (verifica antes descripción, marca y categoría)`)) return;
+  const d = await fetch(`/api/catalogo/${tipo}/${encodeURIComponent(code)}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({por_revisar:false})}).then(r=>r.json());
+  if(d.error){ toast(d.error,'er'); return; }
+  const r = catData[tipo].find(x=>x.code===code); if(r) r.por_revisar = false; catRender(tipo); toast(`${code} revisado`,'ok');
 }
 
 function catOpenNew(tipo) {
@@ -11307,7 +11315,10 @@ function gpoRenderItems() {
     <tr>
       <td style="color:var(--muted)">${i.line}</td>
       <td>${catBadge[i.cat_type]||''}</td>
-      <td style="font-family:'DM Mono',monospace;font-size:10px;color:var(--gold)">${esc(i.cat_code||'—')}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:10px;color:var(--gold)">${i.cat_code ? esc(i.cat_code)
+        : (['electrico','mecanico','servicios'].includes(i.cat_type) && i.part_number
+            ? `<span style="color:${i.no_catalogo?'var(--muted)':'#15803d'};font-family:inherit" title="Al emitir la OC se da de alta en el catálogo (o se liga si ya existe)">${i.no_catalogo?'—':'＋ nuevo'}</span><br><label style="font-size:9px;color:var(--muted2);font-family:Arial;text-transform:none;letter-spacing:0;display:flex;gap:3px;align-items:center;white-space:nowrap"><input type="checkbox" ${i.no_catalogo?'checked':''} onchange="gpoItems[${idx}].no_catalogo=this.checked;gpoRenderItems()" style="width:11px;height:11px"> no agregar</label>`
+            : '—')}</td>
       <td style="font-weight:600">${esc(i.brand)}</td>
       <td style="font-family:'DM Mono',monospace;font-size:11px">${esc(i.part_number)}</td>
       <td style="color:var(--muted2);white-space:normal;word-break:break-word;min-width:220px;max-width:340px;line-height:1.35">${esc(i.description)}</td>
@@ -11504,7 +11515,7 @@ async function saveGPO() {
     if(d.advertencia) setTimeout(()=>alert('⚠ '+d.advertencia), 400);
     if(gpoItems.some(i=>i.req_item_id) && typeof reqRenderTab==='function' && reqCurrentJob) setTimeout(()=>reqRenderTab(),300);
     closeMo('mo-gpo');
-    toast(`PO emitida: ${d.po_number} · ${gpoItems.length} items ✓`,'ok',6000);
+    toast(`PO emitida: ${d.po_number} · ${gpoItems.length} items ✓` + (d.catalogo && d.catalogo.nuevos && d.catalogo.nuevos.length ? ` · ${d.catalogo.nuevos.length} material(es) nuevo(s) en el catálogo: ${d.catalogo.nuevos.map(x=>x.code).join(', ')}` : ''),'ok',8000);
     // Abrir PDF en nueva pestaña
     setTimeout(()=>window.open(`/api/gpo/${d.po_number}/pdf`,'_blank'),500);
     await loadPO();
