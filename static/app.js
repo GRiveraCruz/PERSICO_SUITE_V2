@@ -12444,18 +12444,35 @@ async function ipoBuscarPO(val, force=false) {
   }
   try {
     const d = await fetch('/api/gpo').then(r=>r.json());
-    const po = (d.records||[]).find(r=>
-      r.po_number?.toUpperCase()===q ||
-      r.po_number?.split('-').pop()===q.replace(/^0+/,''));
-    if(!po){
+    const recs = (d.records||[]).filter(r=>r.status!=='Cancelada');
+    // rev149: búsqueda por No. de PO **o** por No. de SAE
+    const sinEsp = v => String(v||'').replace(/\s+/g,'').toUpperCase();
+    const dig = v => String(v||'').replace(/\D/g,'').replace(/^0+/,'');
+    const qSae = sinEsp(q.replace(/^PO-(?=.)/,''));            // si dejó el "PO-" precargado y escribió el No. de SAE
+    let cand = recs.filter(r=>sinEsp(r.po_number)===sinEsp(q));                                   // 1) PO exacta
+    if(!cand.length) cand = recs.filter(r=>r.po_sae && (sinEsp(r.po_sae)===sinEsp(q) || sinEsp(r.po_sae)===qSae));   // 2) SAE exacto
+    if(!cand.length && dig(q)) cand = recs.filter(r=>dig(r.po_number)===dig(q) || (r.po_sae && dig(r.po_sae)===dig(q)));   // 3) solo números
+    if(!cand.length){
       document.getElementById('ipo-po-content').style.display='none';
-      document.getElementById('ipo-po-empty').innerHTML='<span style="color:var(--red)">⚠ OC no encontrada: '+esc(q)+'</span>';
+      document.getElementById('ipo-po-empty').innerHTML='<span style="color:var(--red)">⚠ No se encontró una OC con ese No. de PO ni de SAE: '+esc(q)+'</span>';
       document.getElementById('ipo-po-empty').style.display='';
       return;
     }
-    ipoCurrentPO = po;
-    ipoRenderPO(po);
+    if(cand.length>1){
+      document.getElementById('ipo-po-content').style.display='none';
+      document.getElementById('ipo-po-empty').innerHTML = `<div style="margin-bottom:6px">Hay ${cand.length} órdenes que coinciden con <b>${esc(q)}</b>. Elige una:</div>` +
+        cand.map(r=>`<button class="btn btn-s" style="margin:3px" onclick="ipoElegirPO('${esc(r.po_number)}')">${esc(r.po_number)} · SAE ${esc(r.po_sae||'—')} · ${esc(r.supplier_name||'')}</button>`).join('');
+      document.getElementById('ipo-po-empty').style.display='';
+      window._ipoCand = cand; return;
+    }
+    ipoCurrentPO = cand[0];
+    ipoRenderPO(cand[0]);
+    if(sinEsp(cand[0].po_number)!==sinEsp(q)) toast(`Encontrada por No. de SAE ${cand[0].po_sae}: ${cand[0].po_number}`,'ok');
   } catch(e){ toast('Error buscando OC','er'); }
+}
+function ipoElegirPO(poNum){                                                     // rev149
+  const po = (window._ipoCand||[]).find(r=>r.po_number===poNum); if(!po) return;
+  ipoCurrentPO = po; ipoRenderPO(po);
 }
 
 function ipoRenderPO(po) {
@@ -12463,6 +12480,8 @@ function ipoRenderPO(po) {
   document.getElementById('ipo-po-header').innerHTML=`
     <div><div style="font-size:9px;color:var(--muted);text-transform:uppercase">Orden</div>
       <div style="font-family:'DM Mono',monospace;font-weight:700;color:var(--gold);font-size:14px">${esc(po.po_number)}</div></div>
+    <div><div style="font-size:9px;color:var(--muted);text-transform:uppercase">No. SAE</div>
+      <div style="font-family:'DM Mono',monospace;font-weight:700;font-size:13px">${esc(po.po_sae||'—')}</div></div>
     <div><div style="font-size:9px;color:var(--muted);text-transform:uppercase">Proveedor</div>
       <div style="font-weight:600;color:var(--text)">${esc(sup.nombre||po.supplier_name||'—')}</div></div>
     <div><div style="font-size:9px;color:var(--muted);text-transform:uppercase">Estatus OC</div>
