@@ -18558,6 +18558,9 @@ def api_create_ingreso():
 
         conv = _ingreso_conversion_usd(tipo, po_num)                     # rev139: OC en pesos → costos en USD
         with lock:
+            # rev150: candado — no se puede ingresar más de lo comprado en la OC
+            err_exceso = _ingreso_validar_excedente(tipo, po_num, items)
+            if err_exceso: return jsonify({"error": err_exceso["mensaje"], "excedentes": err_exceso["detalle"]}), 400
             now = datetime.datetime.now().isoformat()
             # Build ingreso record
             ing_items = []
@@ -18706,12 +18709,9 @@ def api_create_ingreso():
                 gpos = gpo_load()
                 gpo_rec = next((g for g in gpos if g.get("po_number","").upper()==po_num), None)
                 if gpo_rec:
-                    for gpo_item in gpo_rec.get("items",[]):
-                        match = next((it for it in ing_items
-                            if it["part_number"]==gpo_item.get("part_number","").upper()), None)
-                        if match:
-                            prev_del = float(gpo_item.get("quantity_delivered",0))
-                            gpo_item["quantity_delivered"] = prev_del + match["quantity_delivered"]
+                    # rev150: se reparte lo recibido entre los renglones del mismo No. de parte (y Job),
+                    # sin pasar lo pendiente de cada renglón (antes cada renglón repetido sumaba todo)
+                    _asignar_recibido_gpo(gpo_rec, ing_items)
                     all_delivered = all(
                         float(gi.get("quantity_delivered",0)) >= float(gi.get("quantity",1))
                         for gi in gpo_rec.get("items",[])
@@ -24229,6 +24229,67 @@ def _cat_alta_desde_oc(po_items, proveedor, moneda):
             if cambio: cat_save(ct, records)
     if res["nuevos"]: print(f"[CATÁLOGO] {len(res['nuevos'])} material(es) dados de alta desde una OC: {', '.join(x['code'] for x in res['nuevos'])}")
     return res
+
+# ══ rev150: CANDADO DE INGRESO — no más de lo comprado ═══════════════════════════
+def _pn_job(pn, job): return (re.sub(r"[^A-Z0-9]", "", str(pn or "").upper()), str(job or "").strip().upper())
+
+def _asignar_recibido_gpo(gpo_rec, ing_items):
+    """Suma lo recibido a los renglones de la OC: primero al renglón con el mismo No. de parte y
+    Job, después a cualquier renglón de ese No. de parte con pendiente."""
+    for it in ing_items:
+        resto = float(it.get("quantity_delivered") or 0)
+        if resto <= 0: continue
+        pn, job = _pn_job(it.get("part_number"), it.get("job"))
+        lineas = [g for g in gpo_rec.get("items", []) if _pn_job(g.get("part_number"), "")[0] == pn]
+        lineas.sort(key=lambda g: 0 if str(g.get("job") or "").strip().upper() == job else 1)
+        for g in lineas:
+            pend = max(0.0, float(g.get("quantity") or 0) - float(g.get("quantity_delivered") or 0))
+            if pend <= 0: continue
+            q = min(pend, resto); g["quantity_delivered"] = float(g.get("quantity_delivered") or 0) + q; resto -= q
+            if resto <= 0: break
+        if resto > 0 and lineas:      # no debería pasar (lo bloquea la validación); se registra en el primero
+            lineas[0]["quantity_delivered"] = float(lineas[0].get("quantity_delivered") or 0) + resto
+
+def _ingreso_validar_excedente(tipo, po_num, items):
+    """Regresa None si todo cabe en lo pendiente de la OC; si no, el detalle del excedente."""
+    if tipo not in ("gpo", "sae") or not po_num: return None
+    pedido, recibido = {}, {}
+    if tipo == "gpo":
+        g = _gpo_buscar(gpo_load(), po_num)
+        if not g: return None
+        for gi in g.get("items", []):
+            pn = _pn_job(gi.get("part_number"), "")[0]
+            pedido[pn] = pedido.get(pn, 0.0) + float(gi.get("quantity") or 0)
+            recibido[pn] = recibido.get(pn, 0.0) + float(gi.get("quantity_delivered") or 0)
+    else:
+        q = po_num.replace("PO-", "").lstrip("0")
+        for yr in range(CURRENT_YEAR - 3, CURRENT_YEAR + 2):
+            for ir in po_load(yr):
+                c = str(ir.get("clave", "") or ir.get("gpo_number", "")).upper()
+                if c != po_num and c.replace("PO-", "").lstrip("0") != q: continue
+                pn = _pn_job(ir.get("part_number"), "")[0]
+                if not pn: continue
+                pedido[pn] = pedido.get(pn, 0.0) + float(ir.get("quantity") or ir.get("quantity_ordered") or 0)
+                recibido[pn] = recibido.get(pn, 0.0) + float(ir.get("quantity_delivered") or 0)
+        if not pedido: return None          # OC de SAE sin renglones con cantidad: no se puede validar
+    nuevo = {}
+    for it in items:
+        q = float(it.get("quantity_delivered") or 0)
+        if q <= 0: continue
+        pn = _pn_job(it.get("part_number"), "")[0]
+        nuevo[pn] = nuevo.get(pn, 0.0) + q
+    det = []
+    for pn, q in nuevo.items():
+        if pn not in pedido:
+            det.append({"part_number": pn, "pedido": 0, "recibido": 0, "pendiente": 0, "intenta": q, "motivo": "no está en la orden de compra"}); continue
+        pend = max(0.0, pedido[pn] - recibido[pn])
+        if q > pend + 1e-9:
+            det.append({"part_number": pn, "pedido": pedido[pn], "recibido": recibido[pn], "pendiente": pend, "intenta": q,
+                        "motivo": "ya se recibió todo lo comprado" if pend <= 0 else f"solo quedan {pend:g} por recibir"})
+    if not det: return None
+    msg = "No se puede ingresar más de lo comprado en la orden " + po_num + ": " + "; ".join(
+        f"{d['part_number']} — {d['motivo']} (comprado {d['pedido']:g}, recibido {d['recibido']:g}, intenta {d['intenta']:g})" for d in det)
+    return {"mensaje": msg, "detalle": det}
 
 if __name__ == "__main__":
     print("=" * 60)

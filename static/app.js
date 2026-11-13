@@ -12505,9 +12505,11 @@ function ipoRenderPO(po) {
       <td style="text-align:right">${qOrd}</td>
       <td style="text-align:right;color:${qDel>=qOrd?'var(--green)':'var(--muted)'}">${qDel}</td>
       <td style="text-align:right">
+        ${qPend <= 0 ? `<span style="font-size:11px;color:var(--green);font-weight:700" title="Ya se recibió todo lo comprado">✓ Completo</span><input type="hidden" id="ipo-qty-${i}" value="0">` : `
         <input type="number" min="0" max="${qPend}" step="1" value="0"
-          id="ipo-qty-${i}" oninput="ipoUpdateEstatus()"
+          id="ipo-qty-${i}" oninput="ipoLimitar(this,${qPend});ipoUpdateEstatus()"
           style="width:70px;background:var(--inp);border:1px solid var(--border);border-radius:4px;color:var(--gold);padding:4px 7px;font-size:12px;text-align:right;font-family:'DM Mono',monospace;font-weight:700">
+        <div style="font-size:9px;color:var(--muted)">máx. ${qPend}</div>`}
       </td>
       <td style="text-align:right;font-family:'DM Mono',monospace">${'$'+Number(it.unit_price||0).toFixed(2)}</td>
     </tr>`;
@@ -12515,14 +12517,23 @@ function ipoRenderPO(po) {
 
   document.getElementById('ipo-po-empty').style.display='none';
   document.getElementById('ipo-po-content').style.display='';
-  document.getElementById('btn-ipo-save').disabled=false;
+  const pendTotal = (po.items||[]).reduce((a,it)=>a+Math.max(0,(parseFloat(it.quantity)||0)-(parseFloat(it.quantity_delivered)||0)),0);
+  document.getElementById('btn-ipo-save').disabled = pendTotal <= 0;               // rev150: OC ya recibida completa
   ipoUpdateEstatus();
+  if(pendTotal <= 0){ const el=document.getElementById('ipo-estatus-preview'); el.style.background='rgba(72,199,142,.15)'; el.style.color='var(--green)';
+    el.textContent='✓ Esta orden ya se recibió completa: no hay nada pendiente por ingresar.'; }
+}
+function ipoLimitar(inp, max){                                                   // rev150: no más de lo pendiente
+  let v = parseFloat(inp.value)||0;
+  if(v > max){ inp.value = max; toast(`Solo quedan ${max} por recibir de este renglón`,'er'); }
+  if(v < 0) inp.value = 0;
 }
 
 function ipoUpdateEstatus() {
   if(!ipoCurrentPO) return;
   const items = ipoCurrentPO.items||[];
   let allFull=true, anyPos=false;
+  if(items.every(it=>(parseFloat(it.quantity_delivered)||0) >= (parseFloat(it.quantity)||0))){ /* ya completa */ }
   items.forEach((it,i)=>{
     const qOrd = parseFloat(it.quantity)||1;
     const qPrev = parseFloat(it.quantity_delivered||0);
