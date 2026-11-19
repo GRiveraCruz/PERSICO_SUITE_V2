@@ -7740,7 +7740,10 @@ def _build_report_data(job_number, rate_year, wh_year, po_year, *,
     # GM = Revenue - Costo;  Costo = Manpower + POs + Reassignments + Services - Recoveries
     # rev55: las recuperaciones restan al costo (antes el costo no las descontaba y el
     # margen las sumaba aparte).
-    cost = round(amount_wh + purch_tot + reassign_total + svc_total - recovery_total, 2)
+    # rev152: las REASIGNACIONES son ahorro: forman parte del costo total del proyecto pero no del
+    # presupuesto ejercido, así que no restan al Gross Margin (ni a los resultados operativos).
+    cost = round(amount_wh + purch_tot + svc_total - recovery_total, 2)          # presupuesto ejercido
+    costo_total = round(cost + reassign_total, 2)                                # costo total del proyecto
     gm   = round(revenue - cost, 2)
     gm_pct    = round((gm / revenue * 100), 1) if revenue else 0.0
 
@@ -7760,6 +7763,8 @@ def _build_report_data(job_number, rate_year, wh_year, po_year, *,
         "purchasing_total": purch_tot,
         "po_items":         po_items,
         "reassign_total":   reassign_total,
+        "ahorro_reasignaciones": reassign_total,                                  # rev152
+        "costo_total":      costo_total,
         "reassign_items":   reassign_items,
         "recovery_total":   recovery_total,
         "recovery_items":   recovery_items,
@@ -7857,8 +7862,9 @@ def _build_report_data_vida(job_number, anio_inicio=None, pools=None):
     revenue = round(cpo, 2) if cpo > 0 else meta_rev
     amount_wh = round(sum(w["amount"] for w in workers), 2)
     purch = round(sum(p["subtotal_usd"] for p in po_items), 2)
-    cost = round(amount_wh + purch + base.get("reassign_total", 0) + base.get("svc_total", 0) - base.get("recovery_total", 0), 2)
+    cost = round(amount_wh + purch + base.get("svc_total", 0) - base.get("recovery_total", 0), 2)       # rev152: sin reasignaciones (ahorro)
     gm = round(revenue - cost, 2)
+    base["costo_total"] = round(cost + base.get("reassign_total", 0), 2); base["ahorro_reasignaciones"] = base.get("reassign_total", 0)
     base.update(
         workers=workers, accum_hours=round(sum(w["hours"] for w in workers), 2), amount_wh=amount_wh,
         po_items=po_items, purchasing_total=purch, revenue=revenue,
@@ -8918,7 +8924,7 @@ def _ro_job(jn, y, pres, pools, detalle=None):
     if detalle is not None: detalle["d"] = d
     base = float(pres) if pres not in (None, "") else float(d.get("revenue") or 0)
     ro = (base - d["amount_wh"] - d["purchasing_total"] - (d.get("svc_total") or 0)
-          - (d.get("reassign_total") or 0) + (d.get("recovery_total") or 0))
+          + (d.get("recovery_total") or 0))                                     # rev152: las reasignaciones son ahorro
     return dict(base=round(base, 2), revenue=round(float(d.get("revenue") or 0), 2),
                 amount_wh=d["amount_wh"], purchasing_total=d["purchasing_total"],
                 svc_total=d.get("svc_total") or 0,
@@ -10053,7 +10059,7 @@ def api_kpis_resultados(_asign=None, _anio=None):
                     r = info_job(j)["ro"]
                     if r.get("error"):
                         excluidos.append({"job": j["job_number"], "motivo": f"no se pudo calcular: {r['error']}"}); continue
-                    costo = (r.get("amount_wh") or 0) + (r.get("purchasing_total") or 0) + (r.get("svc_total") or 0) + (r.get("reassign_total") or 0) - (r.get("recovery_total") or 0)
+                    costo = (r.get("amount_wh") or 0) + (r.get("purchasing_total") or 0) + (r.get("svc_total") or 0) - (r.get("recovery_total") or 0)   # rev152
                     if r.get("base"):        # margen operativo vs Internal Target
                         pct = r.get("resultado_pct"); ref = f"Internal Target ${r['base']:,.0f}"
                     elif r.get("revenue"):   # sin target: margen vs revenue
@@ -10907,7 +10913,7 @@ MODULES = [
     # Servicio
     "viaticos", "gastos-viaje", "envios",
     # Reportes y Configuración
-    "wh", "report", "multirpt", "fx", "projconfig", "proj-timeline", "centros-costo",
+    "wh", "report", "multirpt", "fx", "projconfig", "proj-timeline", "centros-costo", "piezas-cliente",
     # rev69: pestañas de Configurar Proyecto. Si un usuario no tiene la llave, la pestaña
     # hereda el nivel de "projconfig" (así los usuarios existentes no pierden nada).
     "projconfig-dashboard", "projconfig-presupuesto", "projconfig-timing",
@@ -11395,6 +11401,7 @@ MODULOS_HEREDAN = {"projconfig-dashboard": "projconfig", "projconfig-presupuesto
                    "ops-piso": "ops-capacidad",
                    "proj-timeline": "projconfig",          # rev144: Línea de tiempo WIP toma el nivel de Configurar Proyecto
                    "centros-costo": "report",              # rev147: Centros de costo toma el nivel de Reporte por Job
+                   "piezas-cliente": "salida",             # rev153: Piezas de cliente toma el nivel de Salida de Material
                    "fin-datos-fiscales": "fin-esquemas",
                    "fin-ordenes-cobro": "fin-cpc",
                    "mgmt-income-forecast": "fin-cpc",
@@ -14389,6 +14396,8 @@ def api_requisiciones_upload():
     try:
         job = (request.form.get("job") or "").strip()
         tipo = (request.form.get("tipo") or "").strip()
+        _eb = _req_bloqueo_error(job)                                   # rev151
+        if _eb: return jsonify({"error": _eb, "bloqueado": True}), 423
         f = request.files.get("file")
         if not job: return jsonify({"error": "Falta seleccionar el Job"}), 400
         if tipo not in REQ_TIPOS: return jsonify({"error": "Tipo de BOM inválido"}), 400
@@ -14742,6 +14751,8 @@ def api_requisiciones_update(item_id):
             row = s.query(_orm.RequisicionCompra).filter(_orm.RequisicionCompra.item_id == item_id).one_or_none()
             if not row:
                 return jsonify({"error": "Renglón no encontrado"}), 404
+            _eb = _req_bloqueo_cambio(row, data)                        # rev151
+            if _eb: return jsonify({"error": _eb, "bloqueado": True}), 423
             err = _req_actualizar_renglon(row, data)
             if err: return jsonify({"error": err}), 400
             row.data["updated_by"] = session.get("user", ""); row.data["updated_at"] = datetime.datetime.now().isoformat()
@@ -14776,6 +14787,8 @@ def api_requisiciones_lote():
             if not row:
                 errores.append({"id": iid, "error": "Renglón no encontrado"}); continue
             antes = json.loads(json.dumps(row.data, default=str))
+            _eb = _req_bloqueo_cambio(row, campos)                      # rev151
+            if _eb: errores.append({"id": iid, "part_number": antes.get("part_number"), "error": _eb}); continue
             err = _req_actualizar_renglon(row, dict(campos))
             if err:
                 row.data = antes; errores.append({"id": iid, "part_number": antes.get("part_number"), "error": err}); continue
@@ -15102,6 +15115,8 @@ def api_requisiciones_planos_upload():
     job = (request.form.get("job") or "").strip()
     files = request.files.getlist("files")
     if not job: return jsonify({"error": "Falta seleccionar el Job"}), 400
+    _eb = _req_bloqueo_error(job)                                       # rev151
+    if _eb: return jsonify({"error": _eb, "bloqueado": True}), 423
     if not files: return jsonify({"error": "No se recibieron archivos"}), 400
     user, ahora = session.get("user", ""), datetime.datetime.now().isoformat()
     res = []
@@ -15237,6 +15252,8 @@ def api_requisiciones_stp_upload():
     item_id = (request.form.get("item_id") or "").strip()
     files = request.files.getlist("files")
     if not job: return jsonify({"error": "Falta seleccionar el Job"}), 400
+    _eb = _req_bloqueo_error(job)                                       # rev151
+    if _eb: return jsonify({"error": _eb, "bloqueado": True}), 423
     if not files: return jsonify({"error": "No se recibieron archivos"}), 400
     user, ahora = session.get("user", ""), datetime.datetime.now().isoformat()
     res, sin_fila = [], []
@@ -22251,7 +22268,7 @@ def api_executive_pdf():
         gm        = d["gross_margin"]
         gm_pct    = d["gm_pct"]
         presDisp  = float(proj_cfg.get("presupuesto_disponible",0)) if proj_cfg else revenue
-        gm_op     = presDisp - wh_cost - pur_total - svc_total - reas_tot + recov_tot
+        gm_op     = presDisp - wh_cost - pur_total - svc_total + recov_tot          # rev152: reasignaciones = ahorro
         gm_op_pct = (gm_op/presDisp*100) if presDisp else 0
         pct       = lambda v: f"{(v/presDisp*100 if presDisp else 0):.1f}%"
 
@@ -22275,7 +22292,7 @@ def api_executive_pdf():
         if svc_via>0: svc_rows+=f"<tr><td>💵 Viáticos</td><td style='text-align:right'>{fmt(svc_via)}</td><td style='text-align:right'>{pct(svc_via)}</td></tr>"
         if svc_gas>0: svc_rows+=f"<tr><td>✈ Gastos de Viaje</td><td style='text-align:right'>{fmt(svc_gas)}</td><td style='text-align:right'>{pct(svc_gas)}</td></tr>"
         if svc_env>0: svc_rows+=f"<tr><td>📦 Envíos Mensajería</td><td style='text-align:right'>{fmt(svc_env)}</td><td style='text-align:right'>{pct(svc_env)}</td></tr>"
-        if reas_tot>0: svc_rows+=f"<tr><td>🔀 Reasignaciones</td><td style='text-align:right;color:#c8102e'>{fmt(reas_tot)}</td><td style='text-align:right'>{pct(reas_tot)}</td></tr>"
+        if reas_tot>0: svc_rows+=f"<tr><td>🔀 Reasignaciones de Stock <span style='font-size:9px;color:#1f7a45'>(ahorro: no resta al resultado)</span></td><td style='text-align:right;color:#1f7a45'>{fmt(reas_tot)}</td><td style='text-align:right'>{pct(reas_tot)}</td></tr>"
         if recov_tot>0: svc_rows+=f"<tr><td>♻ Recuperaciones</td><td style='text-align:right;color:green'>-{fmt(recov_tot)}</td><td style='text-align:right;color:green'>-{pct(recov_tot)}</td></tr>"
 
         html=f"""<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
@@ -24290,6 +24307,223 @@ def _ingreso_validar_excedente(tipo, po_num, items):
     msg = "No se puede ingresar más de lo comprado en la orden " + po_num + ": " + "; ".join(
         f"{d['part_number']} — {d['motivo']} (comprado {d['pedido']:g}, recibido {d['recibido']:g}, intenta {d['intenta']:g})" for d in det)
     return {"mensaje": msg, "detalle": det}
+
+# ══ rev151: BLOQUEO DE REQUISICIONES POR JOB (fecha límite para pedir materiales) ═══
+#  Solo el Administrador y el perfil PROJECT MANAGER pueden bloquear/desbloquear o fijar la
+#  fecha límite. Con el Job bloqueado (o pasada la fecha límite) no se pueden agregar
+#  materiales ni aumentar cantidades en sus requisiciones (carga de Excel, planos, STP o edición);
+#  Compras puede seguir comprando, reasignando y cambiando estatus. El Admin y el PM sí pueden.
+def _es_pm_o_admin():
+    if is_admin(): return True
+    u = session.get("user")
+    return bool(u) and get_user_perms(u).get("role") == "PROJECT MANAGER"
+
+def _req_bloqueo_info(job):
+    try: meta = read_meta(str(job).strip().upper()) or {}
+    except Exception: meta = {}
+    b = dict(meta.get("req_bloqueo") or {})
+    hoy = datetime.date.today().isoformat()
+    vencido = bool(b.get("fecha_limite")) and hoy > str(b["fecha_limite"])
+    b["activo"] = bool(b.get("bloqueado")) or vencido
+    b["por_fecha"] = vencido and not b.get("bloqueado")
+    return b
+
+def _req_bloqueo_error(job):
+    """Mensaje de error si el Job tiene las requisiciones bloqueadas (None si no aplica)."""
+    if not job or _es_pm_o_admin(): return None
+    b = _req_bloqueo_info(job)
+    if not b.get("activo"): return None
+    razon = f"la fecha límite para solicitar materiales fue el {b['fecha_limite']}" if b.get("por_fecha") else "el Project Manager las bloqueó"
+    return (f"Las requisiciones del Job {str(job).upper()} están bloqueadas: {razon}"
+            + (f" ({b['motivo']})" if b.get("motivo") else "") + ". Pide al Project Manager que las desbloquee si necesitas agregar material.")
+
+_REQ_CAMPOS_CANTIDAD = ("quantity", "qty_normal", "qty_mirror", "cantidad")
+def _req_bloqueo_cambio(row, campos):
+    """Con el Job bloqueado, no se permite subir la cantidad de un renglón."""
+    d = row.data or {}
+    if not any(k in campos for k in _REQ_CAMPOS_CANTIDAD): return None
+    err = _req_bloqueo_error(d.get("job"))
+    if not err: return None
+    try: actual = float(d.get("quantity") or 0)
+    except (TypeError, ValueError): actual = 0.0
+    nueva = None
+    if "quantity" in campos or "cantidad" in campos:
+        try: nueva = float(campos.get("quantity", campos.get("cantidad")) or 0)
+        except (TypeError, ValueError): nueva = None
+    elif "qty_normal" in campos or "qty_mirror" in campos:
+        try: nueva = float(campos.get("qty_normal", d.get("qty_normal") or 0) or 0) + float(campos.get("qty_mirror", d.get("qty_mirror") or 0) or 0)
+        except (TypeError, ValueError): nueva = None
+    return err if (nueva is None or nueva > actual + 1e-9) else None
+
+@app.route("/api/jobs/<job_number>/req-bloqueo", methods=["GET"])
+def api_req_bloqueo_get(job_number):
+    if not (can("view", "compras-requisicion") or can("view", "jobs") or is_admin()): return jsonify({"error": "Sin permiso"}), 403
+    b = _req_bloqueo_info(job_number); b["puede_editar"] = _es_pm_o_admin()
+    return jsonify(b)
+
+@app.route("/api/jobs/<job_number>/req-bloqueo", methods=["PUT"])
+def api_req_bloqueo_put(job_number):
+    if not _es_pm_o_admin(): return jsonify({"error": "Solo el Administrador o el Project Manager pueden bloquear las requisiciones"}), 403
+    jn = str(job_number).strip().upper()
+    if not job_exists(jn): return jsonify({"error": "Job no encontrado"}), 404
+    b = request.json or {}
+    fl = str(b.get("fecha_limite") or "").strip()
+    if fl:
+        try: datetime.date.fromisoformat(fl)
+        except ValueError: return jsonify({"error": "Fecha límite inválida (AAAA-MM-DD)"}), 400
+    with lock:
+        meta = read_meta(jn) or {}
+        prev = meta.get("req_bloqueo") or {}
+        nuevo = {"bloqueado": bool(b.get("bloqueado")), "fecha_limite": fl or None, "motivo": str(b.get("motivo") or "").strip()[:200],
+                 "por": session.get("user", ""), "fecha": datetime.datetime.now().isoformat(timespec="seconds"),
+                 "historial": (prev.get("historial") or [])[-30:] + [{"fecha": datetime.datetime.now().isoformat(timespec="seconds"), "por": session.get("user", ""),
+                                "bloqueado": bool(b.get("bloqueado")), "fecha_limite": fl or None, "motivo": str(b.get("motivo") or "").strip()[:200]}]}
+        meta["req_bloqueo"] = nuevo
+        write_meta(jn, meta)
+    print(f"[REQ] bloqueo de requisiciones {jn}: {nuevo['bloqueado']} · límite {nuevo['fecha_limite']} · {session.get('user')}")
+    r = _req_bloqueo_info(jn); r["puede_editar"] = True
+    return jsonify({"ok": True, "bloqueo": r})
+
+# ══════════════════════════════════════════════════════════════════
+#  rev153 — ALMACENES ▸ PIEZAS DE CLIENTE
+#  Piezas que el cliente entrega para un Job (no son nuestras). Libro de movimientos:
+#    entrada (+) · salida (−) · reingreso (+) · devolucion (−) · scrap (−)
+#  Disponible por Job + pieza = suma de movimientos. Devolución/Scrap deja la pieza en cero.
+# ══════════════════════════════════════════════════════════════════
+_PZC_FILE = _os.path.join(_DATA, "PIEZAS_CLIENTE.json")
+_PZC_SIGNO = {"entrada": 1, "reingreso": 1, "salida": -1, "devolucion": -1, "scrap": -1}
+
+def pzc_load():
+    if _orm and _orm.DB_ENABLED:
+        s = _orm.get_session()
+        try: return [dict(r.data, mid=r.mid) for r in s.query(_orm.PiezaClienteMov).order_by(_orm.PiezaClienteMov.id).all()]
+        finally: s.close()
+    try: return json.load(open(_PZC_FILE, encoding="utf-8"))
+    except Exception: return []
+
+def pzc_add(movs):
+    if _orm and _orm.DB_ENABLED:
+        s = _orm.get_session()
+        try:
+            for m in movs: s.add(_orm.PiezaClienteMov(mid=m["mid"], job=m["job"], data=m))
+            s.commit()
+        finally: s.close()
+        return
+    lst = pzc_load() + movs
+    with open(_PZC_FILE, "w", encoding="utf-8") as f: json.dump(lst, f, ensure_ascii=False, indent=2)
+
+def _pzc_key(pieza): return re.sub(r"\s+", " ", str(pieza or "").strip().upper())
+
+def _pzc_inventario(movs=None, job=None):
+    movs = pzc_load() if movs is None else movs
+    inv = {}
+    for m in movs:
+        if job and m.get("job") != job: continue
+        k = (m.get("job"), _pzc_key(m.get("pieza")))
+        r = inv.setdefault(k, {"job": m.get("job"), "pieza": m.get("pieza"), "descripcion": "", "unidad": "", "devolver": None,
+                              "entradas": 0.0, "salidas": 0.0, "reingresos": 0.0, "devueltas": 0.0, "scrap": 0.0, "disponible": 0.0,
+                              "primera_entrada": None, "ultimo_mov": None, "cerrada": None})
+        q = float(m.get("cantidad") or 0); t = m.get("tipo")
+        r["disponible"] = round(r["disponible"] + _PZC_SIGNO.get(t, 0) * q, 4)
+        r[{"entrada": "entradas", "salida": "salidas", "reingreso": "reingresos", "devolucion": "devueltas", "scrap": "scrap"}.get(t, "entradas")] += q
+        if t == "entrada":
+            if m.get("descripcion"): r["descripcion"] = m["descripcion"]
+            if m.get("unidad"): r["unidad"] = m["unidad"]
+            if m.get("devolver") is not None: r["devolver"] = m["devolver"]
+            r["primera_entrada"] = r["primera_entrada"] or m.get("fecha")
+        if t in ("devolucion", "scrap"): r["cerrada"] = {"tipo": t, "fecha": m.get("fecha")}
+        elif t == "entrada" and r["disponible"] > 0: r["cerrada"] = None
+        r["ultimo_mov"] = m.get("fecha")
+    return sorted(inv.values(), key=lambda r: (r["job"] or "", r["pieza"] or ""))
+
+def _pzc_mov(tipo, job, pieza, cantidad, **extra):
+    import uuid as _uuid
+    return {"mid": _uuid.uuid4().hex[:16], "tipo": tipo, "job": job, "pieza": str(pieza).strip(), "cantidad": round(float(cantidad), 4),
+            "fecha": datetime.datetime.now().isoformat(timespec="seconds"), "usuario": session.get("user", ""), **extra}
+
+@app.route("/api/piezas-cliente", methods=["GET"])
+def api_pzc_list():
+    if not (can("view", "piezas-cliente") or is_admin()): return jsonify({"error": "Sin permiso"}), 403
+    job = (request.args.get("job") or "").strip().upper() or None
+    movs = pzc_load()
+    return jsonify({"inventario": _pzc_inventario(movs, job)})
+
+@app.route("/api/piezas-cliente/historial", methods=["GET"])
+def api_pzc_hist():
+    if not (can("view", "piezas-cliente") or is_admin()): return jsonify({"error": "Sin permiso"}), 403
+    job = (request.args.get("job") or "").strip().upper(); pz = _pzc_key(request.args.get("pieza"))
+    L = [m for m in pzc_load() if (not job or m.get("job") == job) and (not pz or _pzc_key(m.get("pieza")) == pz)]
+    saldo = 0.0
+    for m in L:
+        saldo = round(saldo + _PZC_SIGNO.get(m.get("tipo"), 0) * float(m.get("cantidad") or 0), 4); m["saldo"] = saldo
+    return jsonify({"movimientos": L})
+
+@app.route("/api/piezas-cliente/entrada", methods=["POST"])
+def api_pzc_entrada():
+    if not (can("create", "piezas-cliente") or is_admin()): return jsonify({"error": "Sin permiso"}), 403
+    b = request.json or {}
+    job = str(b.get("job") or "").strip().upper(); pieza = str(b.get("pieza") or "").strip()
+    try: cant = float(b.get("cantidad") or 0)
+    except (TypeError, ValueError): cant = 0
+    if not job: return jsonify({"error": "El Job Number es obligatorio"}), 400
+    if not job_exists(job) and job not in cc_ids_activos(): return jsonify({"error": f"El Job {job} no existe"}), 400
+    if not pieza: return jsonify({"error": "El tipo de pieza / No. de parte / ID es obligatorio"}), 400
+    if cant <= 0: return jsonify({"error": "El número de piezas debe ser mayor a cero"}), 400
+    with lock:
+        m = _pzc_mov("entrada", job, pieza, cant, descripcion=str(b.get("descripcion") or "").strip(), unidad=str(b.get("unidad") or "Pieza").strip(),
+                     devolver=bool(b.get("devolver")), notas=str(b.get("notas") or "").strip())
+        pzc_add([m])
+    return jsonify({"ok": True, "movimiento": m})
+
+@app.route("/api/piezas-cliente/salida", methods=["POST"])
+def api_pzc_salida():
+    if not (can("create", "piezas-cliente") or is_admin()): return jsonify({"error": "Sin permiso"}), 403
+    b = request.json or {}
+    job = str(b.get("job") or "").strip().upper()
+    renglones = [r for r in (b.get("items") or []) if float(r.get("cantidad") or 0) > 0]
+    if not job: return jsonify({"error": "El Job Number es obligatorio"}), 400
+    if not renglones: return jsonify({"error": "Indica la cantidad de al menos una pieza"}), 400
+    with lock:
+        inv = {_pzc_key(r["pieza"]): r for r in _pzc_inventario(None, job)}
+        movs = []
+        for r in renglones:
+            k = _pzc_key(r.get("pieza")); disp = (inv.get(k) or {}).get("disponible", 0)
+            q = float(r["cantidad"])
+            if q > disp + 1e-9: return jsonify({"error": f"{r.get('pieza')}: solo hay {disp:g} disponible(s) para el Job {job}"}), 400
+            movs.append(_pzc_mov("salida", job, inv[k]["pieza"], q, destino=str(b.get("destino") or "").strip(), notas=str(b.get("notas") or "").strip()))
+        pzc_add(movs)
+    return jsonify({"ok": True, "movimientos": movs})
+
+@app.route("/api/piezas-cliente/devolucion", methods=["POST"])
+def api_pzc_devolucion():
+    """Devolución al cliente o baja (scrap): por cada pieza, primero se registran las piezas
+    reingresadas (+) y después sale TODO lo disponible como devolución o scrap → queda en cero."""
+    if not (can("create", "piezas-cliente") or is_admin()): return jsonify({"error": "Sin permiso"}), 403
+    b = request.json or {}
+    job = str(b.get("job") or "").strip().upper()
+    renglones = b.get("items") or []
+    if not job: return jsonify({"error": "El Job Number es obligatorio"}), 400
+    if not renglones: return jsonify({"error": "Selecciona al menos una pieza"}), 400
+    with lock:
+        inv = {_pzc_key(r["pieza"]): r for r in _pzc_inventario(None, job)}
+        movs, res = [], []
+        for r in renglones:
+            k = _pzc_key(r.get("pieza")); it = inv.get(k)
+            if not it: return jsonify({"error": f"{r.get('pieza')} no tiene movimientos en el Job {job}"}), 400
+            tipo = "scrap" if str(r.get("tipo")).lower() == "scrap" else "devolucion"
+            try: reing = float(r.get("reingresadas") or 0)
+            except (TypeError, ValueError): reing = 0
+            if reing < 0: return jsonify({"error": "Las piezas reingresadas no pueden ser negativas"}), 400
+            if reing > it["salidas"] - it["reingresos"] + 1e-9:
+                return jsonify({"error": f"{it['pieza']}: no puedes reingresar {reing:g}; solo han salido {it['salidas'] - it['reingresos']:g} pieza(s) sin reingresar"}), 400
+            total = round(it["disponible"] + reing, 4)
+            if total <= 0: return jsonify({"error": f"{it['pieza']}: no hay piezas para {'dar de baja' if tipo == 'scrap' else 'devolver'}"}), 400
+            notas = str(r.get("notas") or b.get("notas") or "").strip()
+            if reing > 0: movs.append(_pzc_mov("reingreso", job, it["pieza"], reing, notas=notas))
+            movs.append(_pzc_mov(tipo, job, it["pieza"], total, notas=notas, documento=str(b.get("documento") or "").strip()))
+            res.append({"pieza": it["pieza"], "tipo": tipo, "cantidad": total, "reingresadas": reing})
+        pzc_add(movs)
+    return jsonify({"ok": True, "procesadas": res})
 
 if __name__ == "__main__":
     print("=" * 60)

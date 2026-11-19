@@ -123,6 +123,7 @@ function switchMenu(mod, groupId) {
   if(mod==='ops-piso') { setTimeout(pisoCargar,100); }
   if(mod==='proj-timeline') { setTimeout(tlCargar,100); }
   if(mod==='centros-costo') { setTimeout(ccCargar,100); }
+  if(mod==='piezas-cliente') { setTimeout(pzcCargar,100); }
   if(mod==='fin-datos-fiscales') { setTimeout(dfCargar,100); }
   if(mod==='fin-ordenes-cobro') { setTimeout(ocCargar,100); }
   if(mod==='mgmt-income-forecast') { setTimeout(ifCargar,100); }
@@ -4809,7 +4810,8 @@ async function rptRenderOperativo(d) {
   const base        = presDisp !== null ? presDisp : d.revenue;
   // Mismo criterio que el Multi-Job Report, el PDF del Job Report y el Dashboard PM:
   // también se restan los servicios (viáticos + gastos de viaje + envíos).
-  const grossOp     = base - d.amount_wh - d.purchasing_total - (d.svc_total||0) - (d.reassign_total||0) + (d.recovery_total||0);
+  // rev152: las reasignaciones son ahorro (costo del proyecto, pero no presupuesto ejercido): no restan
+  const grossOp     = base - d.amount_wh - d.purchasing_total - (d.svc_total||0) + (d.recovery_total||0);
   const gmPctOp     = base > 0 ? (grossOp / base * 100) : 0;
 
   // First render full report (workers + PO tables + cost bar)
@@ -4956,7 +4958,7 @@ async function mrptRenderOperativo(reports) {
     const hasPresp = key in presMap;
     const base   = hasPresp ? presMap[key] : r.revenue;
     const svc    = r.svc_total||0;
-    const grossOp = base - r.amount_wh - r.purchasing_total - (r.reassign_total||0) + (r.recovery_total||0) - svc;
+    const grossOp = base - r.amount_wh - r.purchasing_total + (r.recovery_total||0) - svc;          // rev152: reasignaciones = ahorro
     const gmPct  = base > 0 ? (grossOp/base*100) : 0;
     totBase  += base; totWH += r.amount_wh; totPur += r.purchasing_total;
     totReas  += r.reassign_total||0; totRecov += r.recovery_total||0;
@@ -4972,7 +4974,7 @@ async function mrptRenderOperativo(reports) {
       <td style="padding:8px 10px;text-align:right;font-family:'DM Mono',monospace">${fmt(r.amount_wh)}</td>
       <td style="padding:8px 10px;text-align:right;font-family:'DM Mono',monospace">${fmt(r.purchasing_total)}</td>
       ${svc>0?`<td style="padding:8px 10px;text-align:right;font-family:'DM Mono',monospace;color:var(--amber)">${fmt(svc)}</td>`:'<td style="padding:8px 10px;text-align:right;color:var(--muted)">—</td>'}
-      <td style="padding:8px 10px;text-align:right;font-family:'DM Mono',monospace;color:var(--red)">${fmt(r.reassign_total||0)}</td>
+      <td style="padding:8px 10px;text-align:right;font-family:'DM Mono',monospace;color:var(--green)" title="Ahorro: costo del proyecto que no consume presupuesto">${fmt(r.reassign_total||0)}</td>
       <td style="padding:8px 10px;text-align:right;font-family:'DM Mono',monospace;color:var(--green)">${fmt(r.recovery_total||0)}</td>
       <td style="padding:8px 10px;text-align:right;font-weight:600;color:${grossOp>=0?'var(--green)':'var(--red)'}">${fmt(grossOp)}</td>
       <td style="padding:8px 10px;text-align:right;color:${gmPct>=0?'var(--green)':'var(--red)'}">${gmPct.toFixed(1)}%</td>
@@ -5152,7 +5154,7 @@ function rptRender(d){
       document.getElementById('rpt-reassign-foot').innerHTML=`
         <tr class="rpt-foot">
           <td colspan="6">TOTAL REASIGNACIONES</td>
-          <td class="rpt-td" style="text-align:right;color:var(--red)">${rptFmtMoney(d.reassign_total)}</td>
+          <td class="rpt-td" style="text-align:right;color:var(--green)">${rptFmtMoney(d.reassign_total)}</td>
         </tr>`;
     } else {
       raSection.style.display='';
@@ -5763,7 +5765,7 @@ function mrptRestoreLayout() {
     th('Revenue') + th('Hrs') + th('WH Cost') +
     th('Purchasings') +
     th('Servicios','var(--amber)') +
-    th('Reasign.','var(--red)') +
+    th('Reasign. (ahorro)','var(--green)') +
     th('Recuper.','var(--green)') +
     th('Gross Margin') + th('GM%');
 }
@@ -5787,7 +5789,7 @@ function mrptRender(d){
   document.getElementById('mrpt-card-gm').innerHTML =
     `<div class="rc-label">GROSS MARGIN</div><div class="rc-val" style="color:${gmColor}">${fmt(t.gross_margin)}</div>`+
     `<div class="rc-sub" style="color:${gmColor}">▲ ${gmPct}% · Cost: ${fmt(t.cost)}</div>`+
-    (raTotal?`<div class="rc-sub" style="color:var(--red)">Reasign.: ${fmt(raTotal)}</div>`:'')+
+    (raTotal?`<div class="rc-sub" style="color:var(--green)">Ahorro por reasignaciones: ${fmt(raTotal)} · Costo total: ${fmt((t.cost||0)+raTotal)}</div>`:'')+
     (rcTotal?`<div class="rc-sub" style="color:var(--green)">Recuper.: +${fmt(rcTotal)}</div>`:'');
   // Table rows
   document.getElementById('mrpt-tb').innerHTML = d.jobs.map((r,i)=>{
@@ -5802,7 +5804,7 @@ function mrptRender(d){
       <td style="padding:8px 10px;text-align:right">${fmt(r.amount_wh)}</td>
       <td style="padding:8px 10px;text-align:right">${fmt(r.purchasing_total)}</td>
       <td style="padding:8px 10px;text-align:right;color:var(--amber)">${svc>0?fmt(svc):'—'}</td>
-      <td style="padding:8px 10px;text-align:right;color:var(--red)">${r.reassign_total?fmt(r.reassign_total):'—'}</td>
+      <td style="padding:8px 10px;text-align:right;color:var(--green)" title="Ahorro: no resta al Gross Margin">${r.reassign_total?fmt(r.reassign_total):'—'}</td>
       <td style="padding:8px 10px;text-align:right;color:var(--green)">${r.recovery_total?'+'+fmt(Math.abs(r.recovery_total)):'—'}</td>
       <td style="padding:8px 10px;text-align:right;font-weight:600;color:${r.gross_margin>=0?'var(--green)':'var(--red)'}">${fmt(r.gross_margin)}</td>
       <td style="padding:8px 10px;text-align:right;color:${r.gm_pct>=0?'var(--green)':'var(--red)'}">${r.gm_pct}%</td>
@@ -5817,7 +5819,7 @@ function mrptRender(d){
       <td style="padding:10px;text-align:right">${fmt(t.amount_wh)}</td>
       <td style="padding:10px;text-align:right">${fmt(t.purchasing_total)}</td>
       <td style="padding:10px;text-align:right;color:var(--amber)">${t.svc_total>0?fmt(t.svc_total):'—'}</td>
-      <td style="padding:10px;text-align:right;color:var(--red)">${t.reassign_total?fmt(t.reassign_total):'—'}</td>
+      <td style="padding:10px;text-align:right;color:var(--green)">${t.reassign_total?fmt(t.reassign_total):'—'}</td>
       <td style="padding:10px;text-align:right;color:var(--green)">${t.recovery_total?'+'+fmt(Math.abs(t.recovery_total)):'—'}</td>
       <td style="padding:10px;text-align:right;color:${t.gross_margin>=0?'var(--green)':'var(--red)'}">${fmt(t.gross_margin)}</td>
       <td style="padding:10px;text-align:right;color:${t.gm_pct>=0?'var(--green)':'var(--red)'}">${t.gm_pct}%</td>
@@ -6033,7 +6035,7 @@ let USER_PERMS = null;
 
 // rev77: módulos que heredan el nivel de otro mientras el administrador no les fije uno
 const MODULOS_HEREDAN = {'projconfig-dashboard':'projconfig','projconfig-presupuesto':'projconfig','projconfig-timing':'projconfig',
-  'projconfig-abiertos':'projconfig','projconfig-cambios':'projconfig','projconfig-documentos':'projconfig','personal-tipos-puesto':'personal-perfiles','rrhh-kpis':'personal-listado','fin-cpc':'fin-cpp','ops-piso':'ops-capacidad','proj-timeline':'projconfig','centros-costo':'report','fin-datos-fiscales':'fin-esquemas','fin-ordenes-cobro':'fin-cpc','mgmt-income-forecast':'fin-cpc','fin-prog-pagos':'fin-cpp','mgmt-costo-mo':'rrhh-sueldos','fin-cashflow':'fin-cpp'};
+  'projconfig-abiertos':'projconfig','projconfig-cambios':'projconfig','projconfig-documentos':'projconfig','personal-tipos-puesto':'personal-perfiles','rrhh-kpis':'personal-listado','fin-cpc':'fin-cpp','ops-piso':'ops-capacidad','proj-timeline':'projconfig','centros-costo':'report','piezas-cliente':'salida','fin-datos-fiscales':'fin-esquemas','fin-ordenes-cobro':'fin-cpc','mgmt-income-forecast':'fin-cpc','fin-prog-pagos':'fin-cpp','mgmt-costo-mo':'rrhh-sueldos','fin-cashflow':'fin-cpp'};
 const MODULE_LABELS = {
   'compras-requisicion':'Requisición de Compra', 'fin-cpc':'Cuentas por Cobrar (CPC)', 'fin-datos-fiscales':'Datos fiscales', 'fin-ordenes-cobro':'Órdenes de cobro', 'mgmt-income-forecast':'Management — Income Forecast', 'fin-prog-pagos':'Programación de pagos', 'mgmt-costo-mo':'Management — Costo de mano de obra', 'fin-cashflow':'Cash Flow Forecast',
   // Proyectos
@@ -6056,7 +6058,7 @@ const MODULE_LABELS = {
   // Servicio
   'viaticos':'Viáticos', 'gastos-viaje':'Gastos de Viaje', 'envios':'Envíos de Mensajería',
   // Reportes y Config
-  'wh':'Work Hours', 'report':'Job Report', 'multirpt':'Multi-Job Report', 'fx':'Exchange Rate', 'centros-costo':'Centros de costo',
+  'wh':'Work Hours', 'report':'Job Report', 'multirpt':'Multi-Job Report', 'fx':'Exchange Rate', 'centros-costo':'Centros de costo', 'piezas-cliente':'Piezas de Cliente',
   'projconfig':'Configurar Proyecto', 'proj-timeline':'Línea de tiempo WIP',
   'projconfig-dashboard':'↳ Pestaña Dashboard', 'projconfig-presupuesto':'↳ Pestaña Presupuesto',
   'projconfig-timing':'↳ Pestaña Timing', 'projconfig-abiertos':'↳ Pestaña Puntos Abiertos',
@@ -6088,7 +6090,7 @@ const MODULE_GROUPS = [
   { label: '⚡ Catálogos',            mods: ['cat-electrico','cat-mecanico','cat-servicios'] },
   { label: '🏭 Proveedores',          mods: ['proveedores'] },
   { label: '📄 Documentos de Compra', mods: ['compras-requisicion','gpo','po','ivp','reassign','consig-reassign','recovery'] },
-  { label: '🏬 Almacenes',            mods: ['stock','consignacion','ingreso','apartados','manuf-stock','salida'] },
+  { label: '🏬 Almacenes',            mods: ['stock','consignacion','ingreso','apartados','manuf-stock','salida','piezas-cliente'] },
   { label: '✈ Servicio',             mods: ['viaticos','gastos-viaje','envios'] },
   { label: '⚙ Configurar Proyecto',   mods: ['projconfig','projconfig-dashboard','projconfig-presupuesto','projconfig-timing','projconfig-abiertos','projconfig-cambios','projconfig-documentos'] },
   { label: '📊 Control de Costo',     mods: ['centros-costo','wh','report','multirpt','fx'] },
@@ -6360,6 +6362,7 @@ function applyPermsToDom(d) {
     'fin-cashflow':       ["switchMenu('fin-cashflow'"],
     'proj-timeline':      ["switchMenu('proj-timeline'"],
     'centros-costo':      ["switchMenu('centros-costo'"],
+    'piezas-cliente':     ["switchMenu('piezas-cliente'"],
     'compras-requisicion':["switchMenu('requisicion'"],
     'fin-pagos':          ["switchMenu('fin-pagos'"],
     'fin-esquemas':       ["switchMenu('fin-esquemas'"],
@@ -8352,7 +8355,7 @@ function jobCardsBlockHTML(ctx, titulo='Jobs WIP'){
     </div>
     ${cards.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:16px;align-items:stretch">${cards.map(c=>ingCardHTML(c, d, fin[c.job_number]||{error:'Sin datos'})).join('')}</div>`
       : `<div style="background:#fff;border-radius:14px;padding:40px;text-align:center;color:var(--muted)">${d.cards.length?'Ningún Job coincide con el filtro.':'No hay Jobs.'}</div>`}
-    <div style="font-size:10.5px;color:var(--muted2);margin-top:10px">Resultado operativo = Internal Target (o revenue si el Job no está configurado) − costo actual.${ctx==='pm'?'':' Resultado financiero = revenue (Customer PO, o el del Job) − costo actual, igual que el Gross Margin del Job Report.'} Costo actual = mano de obra + compras + servicios + reasignaciones − recuperaciones, de toda la vida del Job.</div>`;
+    <div style="font-size:10.5px;color:var(--muted2);margin-top:10px">Resultado operativo = Internal Target (o revenue si el Job no está configurado) − costo actual.${ctx==='pm'?'':' Resultado financiero = revenue (Customer PO, o el del Job) − costo actual, igual que el Gross Margin del Job Report.'} Costo actual (presupuesto ejercido) = mano de obra + compras + servicios − recuperaciones, de toda la vida del Job. Las reasignaciones de Stock son ahorro: forman parte del costo total del proyecto pero no restan al resultado.</div>`;
 }
 function jobCardsRender(ctx){ const el = document.getElementById(ctx+'-cards'); if(el) el.innerHTML = jobCardsBlockHTML(ctx, ctx==='pm'?'Mis Jobs Open / WIP':'Jobs WIP'); }
 function omCardsHTML(){ return jobCardsBlockHTML('om', 'Jobs WIP'); }
@@ -8826,6 +8829,7 @@ async function reqLoadJob(){
   const content = document.getElementById('req-job-content');
   if(!job){ content.style.display='none'; return; }
   content.style.display='';
+  reqBloqueoCargar();                                                         // rev151
   await reqRenderTab();
 }
 
@@ -15272,7 +15276,7 @@ async function pcDashCargarServidor(local, tok){
     const linea = (l,v,neg,b) => `<div style="display:flex;justify-content:space-between;padding:5px 0;${b?'border-top:2px solid var(--border);margin-top:4px;font-weight:700;font-size:13px':'border-top:1px solid var(--border)'}"><span style="color:var(--text)">${l}</span><span style="font-family:'DM Mono',monospace;color:${b?(v<0?'var(--red)':'var(--green)'):'var(--text)'}">${neg&&v?'− ':''}${_pcM(Math.abs(v)*(b&&v<0?-1:1))}</span></div>`;
     const det = document.getElementById('pc-dash-ro-det');
     if(det) det.innerHTML = linea('Internal Target (base)', base) + linea('Mano de obra', mo, true) + linea('Compras', comp, true)
-      + linea('Servicios (viáticos, gastos de viaje, envíos)', svc, true) + (ra?linea('Reasignaciones', ra, true):'') + (rc?`<div style="display:flex;justify-content:space-between;padding:5px 0;border-top:1px solid var(--border)"><span style="color:var(--text)">Recuperaciones</span><span style="font-family:'DM Mono',monospace">+ ${_pcM(rc)}</span></div>`:'')
+      + linea('Servicios (viáticos, gastos de viaje, envíos)', svc, true) + (ra?`<div style="display:flex;justify-content:space-between;padding:5px 0;border-top:1px solid var(--border)"><span style="color:var(--text)">Reasignaciones de Stock <span style="font-size:10.5px;color:var(--green)">(ahorro: no resta)</span></span><span style="font-family:'DM Mono',monospace;color:var(--green)">${_pcM(ra)}</span></div>`:'') + (rc?`<div style="display:flex;justify-content:space-between;padding:5px 0;border-top:1px solid var(--border)"><span style="color:var(--text)">Recuperaciones</span><span style="font-family:'DM Mono',monospace">+ ${_pcM(rc)}</span></div>`:'')
       + linea('Resultado operativo', ro, false, true)
       + `<div style="font-size:10px;color:var(--muted);margin-top:8px">Misma fórmula que el Job Report.${conRev.length?` Sin Internal Target, se usa el revenue: ${conRev.map(esc).join(', ')}.`:''}</div>`;
     if(calc()) calc().textContent = `Calculado ${String(d.calculado||'').replace('T',' ')}`;
@@ -16576,7 +16580,7 @@ function mrptExportPDF() {
     const key    = (r.job_number||'').toUpperCase();
     const base   = isOp ? (presMap[key]||r.revenue||0) : r.revenue||0;
     const gm     = isOp
-      ? base - (r.amount_wh||0) - (r.purchasing_total||0) - svc - reas + recov
+      ? base - (r.amount_wh||0) - (r.purchasing_total||0) - svc + recov              // rev152: reasignaciones = ahorro
       : r.gross_margin||0;
     const gmPct  = base > 0 ? (gm/base*100).toFixed(1) : '0.0';
     return {
@@ -16591,7 +16595,7 @@ function mrptExportPDF() {
   });
 
   const totGM = isOp
-    ? (t.revenue||0) - (t.amount_wh||0) - (t.purchasing_total||0) - (t.svc_total||0) - (t.reassign_total||0) + (t.recovery_total||0)
+    ? (t.revenue||0) - (t.amount_wh||0) - (t.purchasing_total||0) - (t.svc_total||0) + (t.recovery_total||0)   // rev152
     : t.gross_margin||0;
   const totGMpct = (t.revenue||0) > 0 ? (totGM/(t.revenue||1)*100).toFixed(1) : '0.0';
   const hasSvc  = (t.svc_total||0) > 0;
@@ -20741,7 +20745,7 @@ async function rgGenerar(){
       const fin = Object.fromEntries(((om && om.jobs) || []).map(j=>[j.job_number, j]));
       const wip = ing.cards.filter(c=>String(c.status||'WIP').toUpperCase()==='WIP').sort((a,b)=>(a.tiempo?a.tiempo.restantes:1e9)-(b.tiempo?b.tiempo.restantes:1e9));
       const cards = wip.map(c=>ingCardHTML(c, ing, om && !om.error ? (fin[c.job_number]||{error:'Sin datos'}) : null)).join('').replace(/<button[\s\S]*?<\/button>/g,'');
-      const bloque = wip.length ? `<div class="rg-cards">${cards}</div><p class="muted">Resultado operativo = Internal Target (o revenue) − costo actual. Costo actual = mano de obra + compras + servicios + reasignaciones − recuperaciones, de toda la vida del Job.</p>`
+      const bloque = wip.length ? `<div class="rg-cards">${cards}</div><p class="muted">Resultado operativo = Internal Target (o revenue) − costo actual. Costo actual (presupuesto ejercido) = mano de obra + compras + servicios − recuperaciones, de toda la vida del Job. Las reasignaciones de Stock son ahorro: forman parte del costo total del proyecto pero no restan al resultado.</p>`
                                 : '<p class="muted">Sin proyectos en WIP.</p>';
       out = out.replace(/<div id="rg-wip-tabla">[\s\S]*?<\/div><!--\/rg-wip-tabla-->/, bloque);
     }
@@ -21059,4 +21063,122 @@ async function ccDetalle(cid){
 function ccOpcionesHTML(){
   const act = (_cc.records||[]).filter(c=>c.activo!==false);
   return act.length ? `<optgroup label="Centros de costo">${act.map(c=>`<option value="${esc(c.cid)}">${esc(c.cid)} — ${esc(c.nombre)}</option>`).join('')}</optgroup>` : '';
+}
+
+
+// ═══ rev151: bloqueo de requisiciones por Job ═══
+let _reqBloq = null;
+async function reqBloqueoCargar(){
+  const box = document.getElementById('req-bloqueo-box'); if(!box || !reqCurrentJob) return;
+  try{ _reqBloq = await fetch(`/api/jobs/${encodeURIComponent(reqCurrentJob)}/req-bloqueo`).then(r=>r.json()); }catch(e){ _reqBloq = null; }
+  const b = _reqBloq || {};
+  const btn = b.puede_editar ? `<button class="btn-reload" style="font-size:11px;padding:4px 10px;margin-left:auto" onclick="reqBloqueoAbrir()">🔒 Bloqueo / fecha límite</button>` : '';
+  let msg = '', col = '';
+  if(b.activo){ col='#c8102e'; msg = `🔒 <b>Requisiciones bloqueadas</b> — ${b.por_fecha ? `la fecha límite para solicitar materiales fue el <b>${esc(b.fecha_limite)}</b>` : `bloqueadas por ${esc(b.por||'el Project Manager')}`}${b.motivo?` · ${esc(b.motivo)}`:''}. No se pueden agregar materiales ni aumentar cantidades${b.puede_editar?' (tú sí puedes, como Admin/PM)':''}.`; }
+  else if(b.fecha_limite){ const dias = Math.round((new Date(b.fecha_limite+'T23:59:59') - new Date())/864e5); col = dias<=3?'#b45309':'#1d4ed8';
+    msg = `📅 Fecha límite para solicitar materiales: <b>${esc(b.fecha_limite)}</b> (${dias<=0?'hoy es el último día':`faltan ${dias} día(s)`})${b.motivo?` · ${esc(b.motivo)}`:''}`; }
+  box.innerHTML = (msg||btn) ? `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;border:1px solid ${col||'var(--border)'};background:${col?col+'12':'transparent'};font-size:12.5px;color:${col||'var(--muted2)'}">${msg||'Sin bloqueo ni fecha límite de requisiciones.'}${btn}</div>` : '';
+}
+function reqBloqueoAbrir(){
+  const b = _reqBloq || {};
+  document.getElementById('rb-job').textContent = reqCurrentJob;
+  document.getElementById('rb-bloq').checked = !!b.bloqueado; document.getElementById('rb-fecha').value = b.fecha_limite || ''; document.getElementById('rb-motivo').value = b.motivo || '';
+  document.getElementById('rb-hist').innerHTML = (b.historial||[]).slice(-5).reverse().map(h=>`${esc(String(h.fecha).replace('T',' '))} · ${esc(h.por)}: ${h.bloqueado?'bloqueado':'desbloqueado'}${h.fecha_limite?` · límite ${esc(h.fecha_limite)}`:''}`).join('<br>');
+  document.getElementById('mo-req-bloqueo').classList.add('on');
+}
+async function reqBloqueoGuardar(){
+  const d = await apiCall('PUT', `/jobs/${encodeURIComponent(reqCurrentJob)}/req-bloqueo`, {bloqueado: document.getElementById('rb-bloq').checked,
+             fecha_limite: document.getElementById('rb-fecha').value, motivo: document.getElementById('rb-motivo').value});
+  if(d.error){ toast(d.error,'er'); return; }
+  toast('Bloqueo de requisiciones actualizado','ok'); closeMo('mo-req-bloqueo'); reqBloqueoCargar();
+}
+
+
+// ════════════════════════════════════════════════════════
+//  rev153 — Almacenes ▸ Piezas de cliente
+// ════════════════════════════════════════════════════════
+let _pzc = [], _pzcModo = null, _pzcJobInv = [];
+async function pzcCargar(){
+  try{ const d = await fetch('/api/piezas-cliente').then(r=>r.json()); _pzc = d.inventario||[]; }catch(e){ _pzc = []; }
+  pzcRender();
+}
+function pzcRender(){
+  const q=(document.getElementById('pzc-q').value||'').toLowerCase(), cero=document.getElementById('pzc-cero').checked;
+  const L = _pzc.filter(r=>(cero || r.disponible>0) && (!q || (r.job+' '+r.pieza+' '+(r.descripcion||'')).toLowerCase().includes(q)));
+  const jobs = new Set(_pzc.filter(r=>r.disponible>0).map(r=>r.job));
+  document.getElementById('pzc-cards').innerHTML = [['Jobs con piezas', jobs.size], ['Tipos de pieza con existencia', _pzc.filter(r=>r.disponible>0).length], ['Piezas disponibles', _pzc.reduce((a,r)=>a+Math.max(0,r.disponible),0)], ['Por devolver al cliente', _pzc.filter(r=>r.disponible>0&&r.devolver).length]]
+    .map(([k,v])=>`<div style="padding:8px 14px;border:1px solid var(--border);border-radius:8px;font-size:12px"><b style="font-size:17px">${v}</b><div style="color:var(--muted2)">${k}</div></div>`).join('');
+  const fd = v => v ? String(v).slice(0,16).replace('T',' ') : '—';
+  document.getElementById('pzc-tb').innerHTML = L.map(r=>`<tr style="cursor:pointer;${r.disponible>0?'':'opacity:.6'}" onclick="pzcHistorial('${esc(r.job)}','${esc(r.pieza).replace(/'/g,'')}')">
+      <td style="font-family:'DM Mono',monospace;color:var(--gold);font-weight:700">${esc(r.job)}</td><td style="font-family:'DM Mono',monospace">${esc(r.pieza)}</td><td>${esc(r.descripcion||'')}</td><td>${esc(r.unidad||'')}</td>
+      <td style="text-align:right">${r.entradas}</td><td style="text-align:right">${r.salidas||'—'}</td><td style="text-align:right">${r.reingresos||'—'}</td><td style="text-align:right">${r.devueltas||'—'}</td><td style="text-align:right">${r.scrap||'—'}</td>
+      <td style="text-align:right;font-weight:700;color:${r.disponible>0?'var(--green)':'var(--muted)'}">${r.disponible}</td>
+      <td>${r.devolver?'<span style="color:#b45309;font-weight:600">Sí</span>':'No'}${r.cerrada?`<div style="font-size:10px;color:var(--muted2)">${r.cerrada.tipo==='scrap'?'Scrap':'Devuelta'} ${fd(r.cerrada.fecha)}</div>`:''}</td>
+      <td style="font-size:11px">${fd(r.ultimo_mov)}</td></tr>`).join('')
+    || '<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:20px">Sin piezas de cliente. Registra la primera con "＋ Entrada".</td></tr>';
+}
+async function pzcHistorial(job, pieza){
+  const d = await fetch(`/api/piezas-cliente/historial?job=${encodeURIComponent(job)}&pieza=${encodeURIComponent(pieza)}`).then(r=>r.json());
+  const nom = {entrada:'🟢 Entrada', salida:'🔴 Salida', reingreso:'↪ Reingreso', devolucion:'↩ Devolución al cliente', scrap:'🗑 Scrap'};
+  document.getElementById('pzc-hist').innerHTML = `<div style="border:1px solid var(--border);border-radius:10px;padding:12px"><div style="font-weight:700;margin-bottom:6px">Historial · <span style="font-family:'DM Mono',monospace;color:var(--gold)">${esc(job)}</span> · ${esc(pieza)}</div>
+    <div style="overflow-x:auto"><table class="tbl" style="width:100%;font-size:12px"><thead><tr><th>Fecha</th><th>Movimiento</th><th style="text-align:right">Cantidad</th><th style="text-align:right">Saldo</th><th>Usuario</th><th>Destino / notas</th></tr></thead><tbody>
+    ${(d.movimientos||[]).map(m=>`<tr><td>${esc(String(m.fecha).replace('T',' '))}</td><td>${nom[m.tipo]||m.tipo}</td><td style="text-align:right">${['salida','devolucion','scrap'].includes(m.tipo)?'−':'+'}${m.cantidad}</td><td style="text-align:right;font-weight:700">${m.saldo}</td><td>${esc(m.usuario||'')}</td><td>${esc([m.destino,m.documento,m.notas].filter(Boolean).join(' · '))}</td></tr>`).join('')}
+    </tbody></table></div></div>`;
+  document.getElementById('pzc-hist').scrollIntoView({behavior:'smooth', block:'start'});
+}
+async function pzcAbrir(modo){
+  _pzcModo = modo;
+  document.getElementById('pzc-mo-tit').textContent = {entrada:'＋ Entrada de piezas de cliente', salida:'➖ Salida de piezas de cliente', devolucion:'↩ Devolución al cliente / Scrap'}[modo];
+  document.getElementById('pzc-fecha').value = new Date().toLocaleString('es-MX');
+  ['pzc-job','pzc-pieza','pzc-cant','pzc-desc','pzc-notas','pzc-destino'].forEach(id=>{ const e=document.getElementById(id); if(e) e.value=''; });
+  document.getElementById('pzc-form-entrada').style.display = modo==='entrada' ? '' : 'none';
+  document.getElementById('pzc-form-lista').style.display = modo==='entrada' ? 'none' : '';
+  document.getElementById('pzc-destino-box').style.display = modo==='devolucion' ? '' : (modo==='salida' ? '' : 'none');
+  document.getElementById('pzc-destino-lbl').textContent = modo==='devolucion' ? 'Documento de devolución / guía (opcional)' : 'Destino / referencia (opcional)';
+  document.getElementById('pzc-lista').innerHTML = '<div style="font-size:12px;color:var(--muted)">Escribe el Job Number para ver sus piezas.</div>';
+  document.getElementById('pzc-btn').textContent = {entrada:'Registrar entrada', salida:'Procesar salida', devolucion:'Procesar devolución / scrap'}[modo];
+  // Jobs sugeridos
+  try{ const jobs = await fetch('/api/jobs').then(r=>r.json()); const L = (Array.isArray(jobs)?jobs:(jobs.records||jobs.jobs||[])).filter(j=>['WIP','OPEN'].includes(String(j.status||'').toUpperCase()));
+    const conPz = [...new Set(_pzc.filter(r=>r.disponible>0).map(r=>r.job))];
+    document.getElementById('pzc-jobs').innerHTML = [...new Set([...conPz, ...L.map(j=>j.job_number)])].map(j=>`<option value="${esc(j)}">`).join(''); }catch(e){}
+  document.getElementById('mo-pzc').classList.add('on');
+}
+async function pzcJobCambio(){
+  const job = (document.getElementById('pzc-job').value||'').trim().toUpperCase(); document.getElementById('pzc-job').value = job;
+  if(!job) return;
+  const d = await fetch('/api/piezas-cliente?job='+encodeURIComponent(job)).then(r=>r.json()); _pzcJobInv = d.inventario||[];
+  if(_pzcModo==='entrada'){ document.getElementById('pzc-piezas').innerHTML = _pzcJobInv.map(r=>`<option value="${esc(r.pieza)}">`).join(''); return; }
+  const L = _pzcJobInv.filter(r=> _pzcModo==='salida' ? r.disponible>0 : (r.disponible>0 || (r.salidas - r.reingresos)>0));
+  document.getElementById('pzc-lista').innerHTML = L.length ? `<table class="tbl" style="width:100%;font-size:12px"><thead><tr><th>Pieza</th><th>Descripción</th><th style="text-align:right">Disponible</th>${_pzcModo==='salida'?'<th style="text-align:right">Cantidad a sacar</th>':'<th style="text-align:right">Fuera de almacén</th><th style="text-align:right">Reingresadas</th><th>Acción</th>'}</tr></thead><tbody>
+    ${L.map((r,i)=>`<tr><td style="font-family:'DM Mono',monospace">${esc(r.pieza)}</td><td>${esc(r.descripcion||'')}</td><td style="text-align:right;font-weight:700">${r.disponible} ${esc(r.unidad||'')}</td>
+      ${_pzcModo==='salida' ? `<td style="text-align:right"><input type="number" min="0" max="${r.disponible}" step="1" data-i="${i}" class="pzc-q" style="width:80px;text-align:right" oninput="if(+this.value>${r.disponible}){this.value=${r.disponible};toast('Solo hay ${r.disponible} disponible(s)','er')}"></td>`
+        : `<td style="text-align:right">${Math.max(0, r.salidas - r.reingresos)}</td><td style="text-align:right"><input type="number" min="0" max="${Math.max(0, r.salidas - r.reingresos)}" step="1" value="0" data-i="${i}" class="pzc-r" style="width:70px;text-align:right"></td>
+           <td><select data-i="${i}" class="pzc-t"><option value="">— No procesar —</option><option value="devolucion" ${r.devolver?'selected':''}>Devolución al cliente</option><option value="scrap">Scrap</option></select></td>`}</tr>`).join('')}
+    </tbody></table>${_pzcModo==='devolucion'?'<div style="font-size:11px;color:var(--muted2);margin-top:6px">Se devuelve o da de baja <b>todo lo disponible + lo reingresado</b>: la pieza queda en cero.</div>':''}` : `<div style="font-size:12px;color:var(--muted)">El Job ${esc(job)} no tiene piezas de cliente ${_pzcModo==='salida'?'disponibles':'por devolver'}.</div>`;
+  window._pzcLista = L;
+}
+async function pzcProcesar(){
+  const job = (document.getElementById('pzc-job').value||'').trim().toUpperCase();
+  if(!job){ toast('Escribe el Job Number','er'); return; }
+  let url, body;
+  if(_pzcModo==='entrada'){
+    url = '/piezas-cliente/entrada';
+    body = {job, pieza: document.getElementById('pzc-pieza').value, cantidad: document.getElementById('pzc-cant').value, unidad: document.getElementById('pzc-unidad').value,
+            devolver: document.getElementById('pzc-devolver').value==='1', descripcion: document.getElementById('pzc-desc').value, notas: document.getElementById('pzc-notas').value};
+  } else if(_pzcModo==='salida'){
+    const items = [...document.querySelectorAll('.pzc-q')].map(i=>({pieza: window._pzcLista[+i.dataset.i].pieza, cantidad: parseFloat(i.value)||0})).filter(x=>x.cantidad>0);
+    if(!items.length){ toast('Indica la cantidad a sacar','er'); return; }
+    url = '/piezas-cliente/salida'; body = {job, items, destino: document.getElementById('pzc-destino').value, notas: document.getElementById('pzc-notas').value};
+  } else {
+    const items = [...document.querySelectorAll('.pzc-t')].map(s=>({pieza: window._pzcLista[+s.dataset.i].pieza, tipo: s.value,
+                    reingresadas: parseFloat(document.querySelector(`.pzc-r[data-i="${s.dataset.i}"]`).value)||0})).filter(x=>x.tipo);
+    if(!items.length){ toast('Elige Devolución o Scrap en al menos una pieza','er'); return; }
+    const res = items.map(x=>{ const r = window._pzcLista.find(y=>y.pieza===x.pieza); return `• ${x.pieza}: ${x.tipo==='scrap'?'SCRAP':'DEVOLUCIÓN'} de ${r.disponible + x.reingresadas}`; }).join('\n');
+    if(!confirm(`Se procesará y la pieza quedará en cero:\n${res}\n\n¿Continuar?`)) return;
+    url = '/piezas-cliente/devolucion'; body = {job, items, documento: document.getElementById('pzc-destino').value, notas: document.getElementById('pzc-notas').value};
+  }
+  const d = await apiCall('POST', url, body);
+  if(d.error){ toast(d.error,'er',7000); return; }
+  toast({entrada:'Entrada registrada', salida:'Salida procesada', devolucion:'Devolución / scrap procesado'}[_pzcModo],'ok');
+  closeMo('mo-pzc'); pzcCargar();
 }

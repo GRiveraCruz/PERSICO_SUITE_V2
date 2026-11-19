@@ -512,6 +512,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
         <button onclick="switchMenu('apartados','ng-almacenes')">Apartados</button>
         <button onclick="switchMenu('manuf-stock','ng-almacenes')">Piezas de Manufactura</button>
         <button onclick="switchMenu('salida','ng-almacenes')">Salida de Material</button>
+        <button onclick="switchMenu('piezas-cliente','ng-almacenes')">Piezas de Cliente</button>
       </div>
     </div>
     <!-- SERVICIO -->
@@ -4334,7 +4335,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
             <th style="padding:6px 8px;text-align:right;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:2px solid var(--red);white-space:nowrap">WH Cost</th>
             <th style="padding:6px 8px;text-align:right;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:2px solid var(--red);white-space:nowrap">Purchasings</th>
             <th style="padding:6px 8px;text-align:right;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--amber);border-bottom:2px solid var(--red);white-space:nowrap">Servicios</th>
-            <th style="padding:6px 8px;text-align:right;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--red);border-bottom:2px solid var(--red);white-space:nowrap">Reasign.</th>
+            <th style="padding:6px 8px;text-align:right;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--green);border-bottom:2px solid var(--green);white-space:nowrap" title="Ahorro: costo del proyecto que no consume presupuesto">Reasign. (ahorro)</th>
             <th style="padding:6px 8px;text-align:right;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--green);border-bottom:2px solid var(--red);white-space:nowrap">Recuper.</th>
             <th style="padding:6px 8px;text-align:right;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:2px solid var(--red);white-space:nowrap">Gross Margin</th>
             <th style="padding:6px 8px;text-align:right;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:2px solid var(--red);white-space:nowrap">GM%</th>
@@ -4615,6 +4616,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
       </div>
 
       <div id="req-job-content" style="display:none">
+        <div id="req-bloqueo-box" style="margin-bottom:12px"></div>
         <div class="cl-toggle" style="max-width:640px;margin-bottom:16px">
           <button class="on" onclick="reqSetTipo('electrico')">Eléctrico</button>
           <button onclick="reqSetTipo('mecanico')">Mecánico</button>
@@ -6091,6 +6093,62 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
       <div class="fi"><label>Descripción</label><textarea id="ccf-desc" rows="2"></textarea></div>
       <label style="font-size:12px;display:flex;gap:6px;align-items:center;text-transform:none;letter-spacing:0;font-weight:400" id="ccf-activo-box"><input type="checkbox" id="ccf-activo" checked> Activo (aparece en órdenes de compra, reasignaciones y en el kiosco)</label>
       <div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-p" onclick="ccGuardar()">Guardar</button><button class="btn btn-s" id="ccf-borrar" onclick="ccBorrar()" style="margin-left:auto;color:var(--red)">Eliminar</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- rev151: bloqueo de requisiciones por Job -->
+<div class="mo" id="mo-req-bloqueo" style="z-index:160">
+  <div class="md" style="max-width:480px;width:calc(100% - 32px)">
+    <div class="mh"><h2>🔒 Requisiciones de <span id="rb-job"></span></h2><button class="px" onclick="closeMo('mo-req-bloqueo')">Cerrar</button></div>
+    <div class="mb2">
+      <div style="font-size:12px;color:var(--muted2);margin-bottom:10px">Con el Job bloqueado (o pasada la fecha límite) nadie puede agregar materiales ni aumentar cantidades en sus requisiciones. Compras puede seguir comprando y reasignando. Solo el Administrador y el Project Manager pueden cambiar esto.</div>
+      <label style="font-size:13px;display:flex;gap:8px;align-items:center;text-transform:none;letter-spacing:0;font-weight:600;margin-bottom:10px"><input type="checkbox" id="rb-bloq"> Bloquear ahora las requisiciones de este Job</label>
+      <div class="fi"><label>Fecha límite para solicitar materiales (opcional)</label><input type="date" id="rb-fecha"><div style="font-size:11px;color:var(--muted)">A partir del día siguiente a esta fecha, las requisiciones se bloquean solas.</div></div>
+      <div class="fi"><label>Motivo / nota</label><input id="rb-motivo" placeholder="ej. Cierre de diseño; congelamiento de BOM"></div>
+      <div id="rb-hist" style="font-size:11px;color:var(--muted2);margin:6px 0"></div>
+      <div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-p" onclick="reqBloqueoGuardar()">Guardar</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODULE: Piezas de cliente (rev153) ══ -->
+<div class="module" id="mod-piezas-cliente">
+  <div class="main-content" style="overflow-y:auto">
+    <div class="bar-top"><h1>📦 Piezas de cliente</h1>
+      <input id="pzc-q" placeholder="Buscar Job o pieza…" oninput="pzcRender()" style="font-size:12px;padding:6px 10px;min-width:200px;margin-left:12px">
+      <label style="font-size:11px;display:flex;gap:4px;align-items:center"><input type="checkbox" id="pzc-cero" onchange="pzcRender()"> ver en cero</label>
+      <div style="margin-left:auto;display:flex;gap:6px">
+        <button class="btn btn-p" onclick="pzcAbrir('entrada')">＋ Entrada</button>
+        <button class="btn btn-s" onclick="pzcAbrir('salida')">➖ Salida</button>
+        <button class="btn btn-s" onclick="pzcAbrir('devolucion')">↩ Devolución / Scrap</button></div></div>
+    <div style="padding:14px 18px">
+      <div style="font-size:12px;color:var(--muted2);margin-bottom:10px">Piezas que entrega el cliente para un Job. Disponible = entradas − salidas + reingresos − devoluciones − scrap. Clic en un renglón para ver su historial.</div>
+      <div id="pzc-cards" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px"></div>
+      <div style="overflow-x:auto"><table class="tbl" style="width:100%"><thead><tr><th>Job</th><th>Pieza / No. parte / ID</th><th>Descripción</th><th>Unidad</th><th style="text-align:right">Entradas</th><th style="text-align:right">Salidas</th><th style="text-align:right">Reingresos</th><th style="text-align:right">Devueltas</th><th style="text-align:right">Scrap</th><th style="text-align:right">Disponible</th><th>¿Devolver al cliente?</th><th>Último movimiento</th></tr></thead><tbody id="pzc-tb"></tbody></table></div>
+      <div id="pzc-hist" style="margin-top:14px"></div>
+    </div>
+  </div>
+</div>
+<div class="mo" id="mo-pzc" style="z-index:160">
+  <div class="md" style="max-width:720px;width:calc(100% - 32px)">
+    <div class="mh"><h2 id="pzc-mo-tit"></h2><button class="px" onclick="closeMo('mo-pzc')">Cerrar</button></div>
+    <div class="mb2">
+      <div class="fr"><div class="fi"><label>Fecha</label><input id="pzc-fecha" disabled></div>
+        <div class="fi"><label>Job Number *</label><input id="pzc-job" list="pzc-jobs" placeholder="ej. 691-01" style="font-family:'DM Mono',monospace;text-transform:uppercase" onchange="pzcJobCambio()"><datalist id="pzc-jobs"></datalist></div></div>
+      <div id="pzc-form-entrada">
+        <div class="fr"><div class="fi"><label>Tipo de pieza / No. de parte / ID *</label><input id="pzc-pieza" list="pzc-piezas"><datalist id="pzc-piezas"></datalist></div>
+          <div class="fi"><label>Número de piezas ingresadas *</label><input id="pzc-cant" type="number" min="1" step="1"></div></div>
+        <div class="fr"><div class="fi"><label>Unidad de medida</label><select id="pzc-unidad"><option>Pieza</option><option>Juego</option><option>Kit</option><option>Caja</option><option>Tarima</option><option>Kg</option><option>Metro</option><option>Lote</option></select></div>
+          <div class="fi"><label>¿Se deben devolver al cliente?</label><select id="pzc-devolver"><option value="1">Sí</option><option value="0">No</option></select></div></div>
+        <div class="fi"><label>Descripción</label><input id="pzc-desc" placeholder="opcional"></div>
+      </div>
+      <div id="pzc-form-lista" style="display:none">
+        <div id="pzc-lista" style="margin:6px 0"></div>
+        <div class="fi" id="pzc-destino-box"><label id="pzc-destino-lbl">Destino / referencia</label><input id="pzc-destino" placeholder="opcional"></div>
+      </div>
+      <div class="fi"><label>Notas</label><input id="pzc-notas" placeholder="opcional"></div>
+      <div style="display:flex;gap:8px;margin-top:10px"><button class="btn btn-p" id="pzc-btn" onclick="pzcProcesar()">Procesar</button></div>
     </div>
   </div>
 </div>

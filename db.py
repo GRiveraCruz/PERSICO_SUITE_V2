@@ -220,6 +220,13 @@ class KpiSnapshot(Base, JSONBMixin):
     clave = Column(String, unique=True, index=True)
 
 
+class PiezaClienteMov(Base, JSONBMixin):
+    """rev153: movimientos de piezas de cliente (entrada, salida, reingreso, devolución, scrap)."""
+    __tablename__ = "piezas_cliente_mov"
+    mid  = Column(String, unique=True, index=True)
+    job  = Column(String, index=True)
+
+
 class CentroCosto(Base, JSONBMixin):
     """rev147: centros de costo (horas, compras y activos que no son de un proyecto).
     El kiosco de asistencia también lee esta tabla para ofrecerlos al repartir horas."""
