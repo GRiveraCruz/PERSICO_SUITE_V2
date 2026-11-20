@@ -11872,26 +11872,26 @@ function pcRenderJobs(jobDetails, savedRows) {
         </div>
         <table style="width:100%;border-collapse:collapse;font-size:12px">
           <thead><tr style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">
-            <th style="text-align:left;padding:4px 6px">Mano de obra</th><th style="text-align:right;padding:4px 6px;width:110px;${pcOcultarInsumos()?'display:none':''}">Horas</th>
+            <th style="text-align:left;padding:4px 6px">Mano de obra</th><th style="text-align:right;padding:4px 6px;width:110px">Horas</th>
             <th style="text-align:right;padding:4px 6px;width:130px;${pcOcultarInsumos()?'display:none':''}">Costo promedio USD/h</th><th style="text-align:right;padding:4px 6px;width:130px">Importe</th>
             <th style="text-align:right;padding:4px 8px;width:150px;background:#dcfce7;color:#15803d" title="Horas registradas en Work Hours para este Job hasta ${esc(String(pcHorasFecha).replace('T',' '))}">Horas consumidas</th>
             <th style="text-align:right;padding:4px 8px;width:130px;background:#dcfce7;color:#15803d" title="Horas consumidas × tarifa de cada trabajador (Hourly Rate), igual que el Job Report">Costo real</th></tr></thead>
           <tbody>${PC_MO.map(([k,n,perfil])=>{ const c = saved['mo_costo_'+k] ?? pcCostosPerfil[perfil] ?? ''; return `<tr style="border-top:1px solid var(--border)">
             <td style="padding:4px 6px">${n} <span style="font-size:10px;color:var(--muted)">· ${perfil}</span></td>
-            <td style="padding:3px 6px;${pcOcultarInsumos()?'display:none':''}"><input class="pc-blue-field" data-field="mo_horas_${k}" type="number" min="0" step="0.5" value="${saved['mo_horas_'+k] ?? ''}" placeholder="0" oninput="pcCalc(${idx})" style="${estInp}"></td>
+            <td style="padding:3px 6px"><input class="pc-blue-field" ${pcOcultarInsumos()?'readonly tabindex="-1" title="Solo lectura (permiso Ver)"':''} data-field="mo_horas_${k}" type="number" min="0" step="0.5" value="${saved['mo_horas_'+k] ?? ''}" placeholder="0" oninput="pcCalc(${idx})" style="${estInp}${pcOcultarInsumos()?';background:transparent;border-color:transparent;cursor:default;font-weight:600':''}"></td>
             <td style="padding:3px 6px;${pcOcultarInsumos()?'display:none':''}"><input class="pc-blue-field" data-field="mo_costo_${k}" type="number" min="0" step="0.01" value="${c}" placeholder="${pcCostosPerfil[perfil]==null?'sin dato':'0.00'}" oninput="pcCalc(${idx})" style="${estInp}" title="Promedio vigente: ${pcCostosPerfil[perfil]!=null?'$'+pcCostosPerfil[perfil]:'sin dato'}"></td>
             <td id="pc-mo-${k}-${idx}" style="text-align:right;padding:4px 6px;font-family:'DM Mono',monospace">—</td>
             <td id="pc-hc-${k}-${idx}" data-hc="${(pcHorasCons[j.job_number]?.lineas||{})[k]||0}" style="text-align:right;padding:4px 8px;background:rgba(220,252,231,.55);font-family:'DM Mono',monospace;font-weight:700">—</td>
             <td id="pc-cr-${k}-${idx}" data-cr="${(pcHorasCons[j.job_number]?.costo||{})[k]||0}" style="text-align:right;padding:4px 8px;background:rgba(220,252,231,.55);font-family:'DM Mono',monospace;font-weight:700">—</td></tr>`;}).join('')}
           ${(()=>{ const ant = saved.est_mo_anterior ?? ((saved.mo_horas_diseno_mecanico==null) ? ((+saved.est_ing_mecanica||0)+(+saved.est_ing_electrica||0)+(+saved.est_ensamble||0)) : 0);
-            return ant ? `<tr style="border-top:1px solid var(--border);background:rgba(245,158,11,.10)"><td style="padding:6px;color:#b45309;font-weight:700" title="Montos de mano de obra capturados antes de este formato (sin horas). Cuando captures las horas, ponlo en 0.">Mano de obra registrada antes (monto sin desglose por horas)</td>${pcOcultarInsumos()?'':'<td></td><td></td>'}
+            return ant ? `<tr style="border-top:1px solid var(--border);background:rgba(245,158,11,.10)"><td style="padding:6px;color:#b45309;font-weight:700" title="Montos de mano de obra capturados antes de este formato (sin horas). Cuando captures las horas, ponlo en 0.">Mano de obra registrada antes (monto sin desglose por horas)</td>${pcOcultarInsumos()?'<td></td>':'<td></td><td></td>'}
               <td style="padding:3px 6px"><input class="pc-blue-field" data-field="est_mo_anterior" type="number" min="0" step="0.01" value="${ant}" oninput="pcCalc(${idx})" style="${estInp}"></td><td></td><td></td></tr>` : ''; })()}
           ${(()=>{ const o=pcHorasCons[j.job_number]?.otras||{}; const t=Object.values(o).reduce((a,b)=>a+b,0);
             const hc=pcHorasCons[j.job_number]||{}, sinT=hc.horas_sin_tarifa||0;
-            return t ? `<tr style="border-top:1px solid var(--border)"><td style="padding:4px 6px;color:var(--muted)" title="${esc(Object.entries(o).map(([d,h])=>d+': '+h+' h').join(' · '))}">Otras horas (trabajador sin tarifa o sin perfil)</td>${pcOcultarInsumos()?'':'<td></td><td></td>'}<td></td>
+            return t ? `<tr style="border-top:1px solid var(--border)"><td style="padding:4px 6px;color:var(--muted)" title="${esc(Object.entries(o).map(([d,h])=>d+': '+h+' h').join(' · '))}">Otras horas (trabajador sin tarifa o sin perfil)</td>${pcOcultarInsumos()?'<td></td>':'<td></td><td></td>'}<td></td>
               <td style="text-align:right;padding:4px 8px;background:rgba(220,252,231,.55);font-family:'DM Mono',monospace;color:var(--muted)">${t.toLocaleString('en-US',{maximumFractionDigits:2})}</td>
               <td style="text-align:right;padding:4px 8px;background:rgba(220,252,231,.55);font-family:'DM Mono',monospace;color:var(--muted)" title="${sinT?sinT+' h de trabajadores sin tarifa: su costo no se puede calcular':''}">$${(hc.otras_costo||0).toLocaleString('en-US',{minimumFractionDigits:2})}${sinT?' <span style="color:var(--amber)">⚠</span>':''}</td></tr>` : ''; })()}
-          ${(()=>{ const hc=pcHorasCons[j.job_number]; return hc ? `<tr style="border-top:2px solid var(--border);font-weight:700"><td style="padding:5px 6px" colspan="${pcOcultarInsumos()?2:4}">Total consumido</td>
+          ${(()=>{ const hc=pcHorasCons[j.job_number]; return hc ? `<tr style="border-top:2px solid var(--border);font-weight:700"><td style="padding:5px 6px" colspan="${pcOcultarInsumos()?3:4}">Total consumido</td>
               <td style="text-align:right;padding:5px 8px;background:#dcfce7;font-family:'DM Mono',monospace">${(hc.total||0).toLocaleString('en-US',{maximumFractionDigits:2})} h</td>
               <td id="pc-crtot-${idx}" data-cr="${hc.costo_total||0}" style="text-align:right;padding:5px 8px;background:#dcfce7;font-family:'DM Mono',monospace;color:#15803d">$${(hc.costo_total||0).toLocaleString('en-US',{minimumFractionDigits:2})}</td></tr>` : ''; })()}
           </tbody>
@@ -20812,7 +20812,7 @@ function pcPresupuestoDatos(){
     const presOp = revenue / (1 + mk/100), it = Math.round((presOp - presOp*ah/100)*100)/100;
     const E = pcEstimados(row);
     const oc = pcOcultarInsumos();                                   // rev154: con permiso "Ver", sin horas ni costo por hora
-    const mo = PC_MO.map(([k,n,perfil])=>({linea:n, perfil, horas: oc ? null : f('mo_horas_'+k), costo_hora: oc ? null : f('mo_costo_'+k), importe:Math.round(f('mo_horas_'+k)*f('mo_costo_'+k)*100)/100}));
+    const mo = PC_MO.map(([k,n,perfil])=>({linea:n, perfil, horas: f('mo_horas_'+k), costo_hora: oc ? null : f('mo_costo_'+k), importe:Math.round(f('mo_horas_'+k)*f('mo_costo_'+k)*100)/100}));
     return { job_number:j.job_number, customer:j.customer||'', internal_target:it,
       fecha_inicio:fs('fecha_inicio'), runoff_interno:fs('runoff_interno'), runoff_cliente:fs('runoff_cliente'), fecha_envio:fs('fecha_envio'),
       materiales: PC_MAT.map(([k,n])=>({rubro:n, disponible:f(k)})), total_materiales:Math.round(E.mat*100)/100,
