@@ -11632,7 +11632,7 @@ function pcAplicarSoloLectura(tab){
     if(/Export|PDF|Excel|pcToggleGroup|pcSetGanttZoom|pcPrintGantt/i.test(oc) && !/Abrir|Import/i.test(oc)) return;
     b.style.display='none';
   });
-  cont.querySelectorAll('.pc-mov,.pc-grp-toggle').forEach(el=>{ if(el.classList.contains('pc-mov')) el.style.display='none'; });
+  cont.querySelectorAll('.pc-mov,.pc-grp-toggle,.pc-drag').forEach(el=>{ if(el.classList.contains('pc-mov') || el.classList.contains('pc-drag')) el.style.display='none'; });
   if(!cont.querySelector('.pc-solo-lectura')){
     const av = document.createElement('div'); av.className='pc-solo-lectura';
     av.style.cssText='margin:0 0 10px;padding:7px 12px;border-radius:8px;background:rgba(0,0,0,.04);font-size:11px;color:var(--muted2)';
@@ -13383,7 +13383,7 @@ function pcAddTimingRow(data={}) {
   const tr = document.createElement('tr');
   const inpS = 'background:var(--inp);border:1px solid rgba(255,193,7,.3);border-radius:4px;color:var(--amber);padding:5px 7px;font-size:11px';
   tr.innerHTML = `
-    <td class="pc-stk pc-stk1" style="padding-left:${data.grupo?'18px':'6px'};white-space:nowrap"><span class="pc-mov" style="display:inline-flex;flex-direction:column;vertical-align:middle;margin-right:3px"><button type="button" class="pc-mov-btn" onclick="pcMoverTiming(this,-1)" title="Subir" aria-label="Subir">▲</button><button type="button" class="pc-mov-btn" onclick="pcMoverTiming(this,1)" title="Bajar" aria-label="Bajar">▼</button></span><input data-field="actividad" list="pc-act-list" value="${esc(data.actividad||data.name||'')}"
+    <td class="pc-stk pc-stk1" style="padding-left:${data.grupo?'18px':'6px'};white-space:nowrap"><span class="pc-drag" draggable="true" title="Arrastrar para mover (también entre grupos)">⠿</span><span class="pc-mov" style="display:inline-flex;flex-direction:column;vertical-align:middle;margin-right:3px"><button type="button" class="pc-mov-btn" onclick="pcMoverTiming(this,-1)" title="Subir" aria-label="Subir">▲</button><button type="button" class="pc-mov-btn" onclick="pcMoverTiming(this,1)" title="Bajar" aria-label="Bajar">▼</button></span><input data-field="actividad" list="pc-act-list" value="${esc(data.actividad||data.name||'')}"
       oninput="pcUpdateTimingCalcs();this.title=this.value" title="${esc(data.actividad||data.name||'')}" style="${inpS};width:calc(100% - 20px);vertical-align:middle"></td>
     <td class="pc-stk pc-stk2"><input data-field="grupo" list="pc-timing-groups-list" value="${esc(data.grupo||'')}" placeholder="— sin grupo —"
       oninput="pcOnGroupFieldChange(this);pcUpdateTimingCalcs()" style="${inpS};width:100%;color:var(--muted2)"></td>
@@ -13433,10 +13433,10 @@ function pcAddGroupRow(data={}) {
   tr.style.background = 'rgba(0,0,0,.045)';
   tr.innerHTML = `
     <td colspan="2" class="pc-stk pc-stk-grp" style="font-weight:800;letter-spacing:.3px">
-      <span class="pc-mov" style="display:inline-flex;flex-direction:column;vertical-align:middle;margin-right:3px"><button type="button" class="pc-mov-btn" onclick="pcMoverTiming(this,-1)" title="Subir" aria-label="Subir">▲</button><button type="button" class="pc-mov-btn" onclick="pcMoverTiming(this,1)" title="Bajar" aria-label="Bajar">▼</button></span><span class="pc-grp-toggle" onclick="pcToggleGroup(this)" style="cursor:pointer;display:inline-block;width:14px;user-select:none">▾</span>
+      <span class="pc-drag" draggable="true" title="Arrastrar para mover (también entre grupos)">⠿</span><span class="pc-mov" style="display:inline-flex;flex-direction:column;vertical-align:middle;margin-right:3px"><button type="button" class="pc-mov-btn" onclick="pcMoverTiming(this,-1)" title="Subir" aria-label="Subir">▲</button><button type="button" class="pc-mov-btn" onclick="pcMoverTiming(this,1)" title="Bajar" aria-label="Bajar">▼</button></span><span class="pc-grp-toggle" onclick="pcToggleGroup(this)" style="cursor:pointer;display:inline-block;width:14px;user-select:none">▾</span>
       <input data-field="actividad" value="${esc(data.actividad||'')}" placeholder="Nombre del grupo"
         oninput="pcUpdateGroupsList();pcUpdateTimingCalcs()"
-        style="background:transparent;border:none;border-bottom:1px dashed var(--border2);color:var(--text);font-weight:800;font-size:11.5px;padding:3px 4px;width:calc(100% - 42px)">
+        style="background:transparent;border:none;border-bottom:1px dashed var(--border2);color:var(--text);font-weight:800;font-size:11.5px;padding:3px 4px;width:calc(100% - 56px)">
     </td>
     <td></td>
     <td></td>
@@ -21188,3 +21188,71 @@ async function pzcProcesar(){
   toast({entrada:'Entrada registrada', salida:'Salida procesada', devolucion:'Devolución / scrap procesado'}[_pzcModo],'ok');
   closeMo('mo-pzc'); pzcCargar();
 }
+
+
+// ════════════════════════════════════════════════════════
+//  rev156 — Timing: arrastrar y soltar (además de ▲ ▼)
+//  · Grupo: se mueve completo (encabezado + sus actividades) antes/después del bloque destino.
+//  · Actividad: se coloca antes/después de la fila destino y toma el grupo de esa fila;
+//    soltarla sobre el encabezado de un grupo la mete como primera actividad de ese grupo;
+//    soltarla junto a una actividad sin grupo la deja sin grupo.
+// ════════════════════════════════════════════════════════
+let _pcDnd = null;
+function _pcDndLimpiar(){ document.querySelectorAll('#pc-timing-body tr').forEach(r=>r.classList.remove('pc-dnd-antes','pc-dnd-despues','pc-dnd-dentro','pc-dnd-src')); }
+function _pcDndPos(tr, ev){
+  const rc = tr.getBoundingClientRect(), y = ev.clientY - rc.top;
+  if(_pcDnd && _pcDnd.tipo!=='grupo' && tr.dataset.tipo==='grupo' && y > rc.height*0.3 && y < rc.height*0.8) return 'dentro';
+  return y < rc.height/2 ? 'antes' : 'despues';
+}
+document.addEventListener('dragstart', ev=>{
+  const h = ev.target.closest && ev.target.closest('#pc-timing-body .pc-drag'); if(!h) return;
+  const tr = h.closest('tr'), tb = document.getElementById('pc-timing-body');
+  const bloque = tr.dataset.tipo==='grupo' ? (_pcUnidadesTiming([...tb.rows]).find(u=>u[0]===tr) || [tr]) : [tr];
+  _pcDnd = { tr, tipo: tr.dataset.tipo==='grupo' ? 'grupo' : 'act', bloque };
+  bloque.forEach(r=>r.classList.add('pc-dnd-src'));
+  ev.dataTransfer.effectAllowed = 'move';
+  try{ ev.dataTransfer.setData('text/plain', 'timing'); ev.dataTransfer.setDragImage(tr, 20, 15); }catch(e){}
+});
+document.addEventListener('dragover', ev=>{
+  if(!_pcDnd) return;
+  const tr = ev.target.closest && ev.target.closest('#pc-timing-body tr'); if(!tr) return;
+  if(_pcDnd.bloque.includes(tr)) { _pcDndLimpiar(); _pcDnd.bloque.forEach(r=>r.classList.add('pc-dnd-src')); return; }
+  ev.preventDefault(); ev.dataTransfer.dropEffect = 'move';
+  document.querySelectorAll('#pc-timing-body tr').forEach(r=>r.classList.remove('pc-dnd-antes','pc-dnd-despues','pc-dnd-dentro'));
+  tr.classList.add('pc-dnd-' + _pcDndPos(tr, ev));
+});
+document.addEventListener('drop', ev=>{
+  if(!_pcDnd) return;
+  const tr = ev.target.closest && ev.target.closest('#pc-timing-body tr'), tb = document.getElementById('pc-timing-body');
+  if(!tr || !tb || _pcDnd.bloque.includes(tr)) return;
+  ev.preventDefault();
+  const pos = _pcDndPos(tr, ev);
+  const unidades = _pcUnidadesTiming([...tb.rows]);
+  if(_pcDnd.tipo==='grupo'){
+    // se coloca antes/después del BLOQUE (unidad de primer nivel) donde cayó
+    const u = unidades.find(x=>x.includes(tr)); if(!u) return;
+    const ref = pos==='antes' ? u[0] : (u[u.length-1].nextSibling);
+    _pcDnd.bloque.forEach(r=>tb.insertBefore(r, ref));
+  } else {
+    const act = _pcDnd.tr, gInp = act.querySelector('[data-field="grupo"]');
+    let grupo = '';
+    if(tr.dataset.tipo==='grupo'){
+      grupo = (tr.querySelector('[data-field="actividad"]').value||'').trim();
+      if(pos==='antes'){                    // encima de un grupo: queda suelta, antes del bloque
+        grupo = ''; tb.insertBefore(act, tr);
+      } else {                              // dentro / debajo del encabezado: primera actividad del grupo
+        tb.insertBefore(act, tr.nextSibling);
+      }
+    } else {
+      grupo = (tr.querySelector('[data-field="grupo"]')?.value||'').trim();
+      if(!grupo && pos==='despues'){        // debajo de una actividad suelta que cierra… se queda suelta
+        tb.insertBefore(act, tr.nextSibling);
+      } else tb.insertBefore(act, pos==='antes' ? tr : tr.nextSibling);
+    }
+    if(gInp && gInp.value.trim() !== grupo){ gInp.value = grupo; try{ pcOnGroupFieldChange(gInp); }catch(e){} }
+  }
+  const movidos = _pcDnd.bloque; _pcDnd = null; _pcDndLimpiar();
+  pcUpdateGroupsList(); pcUpdateTimingCalcs();
+  movidos.forEach(r=>{ r.style.transition='box-shadow .6s'; r.style.boxShadow='inset 4px 0 0 var(--red)'; setTimeout(()=>{ r.style.boxShadow=''; }, 900); });
+});
+document.addEventListener('dragend', ()=>{ if(_pcDnd){ _pcDnd = null; } _pcDndLimpiar(); });
