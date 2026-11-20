@@ -23742,6 +23742,12 @@ def api_pc_presupuesto_export():
     for j in jobs:
         for l in j.get("mo") or []:
             if l.get("linea") not in lineas_mo: lineas_mo.append(l.get("linea"))
+    # rev154: con permiso "Ver" en Presupuesto no se exportan horas ni costo por hora de la mano de obra
+    sin_insumos = not (is_admin() or can("create", "projconfig-presupuesto"))
+    if sin_insumos:
+        for _j in jobs:
+            _j["total_horas"] = None
+            for _l in _j.get("mo") or []: _l["horas"] = None; _l["costo_hora"] = None
     tot = {"internal_target": 0.0, "materiales": 0.0, "mo": 0.0, "horas": 0.0, "estimados": 0.0}
     tot_mat = {}; tot_mo = {}
     for j in jobs:
@@ -23795,7 +23801,8 @@ def api_pc_presupuesto_export():
             encabezado(r, ["Mano de obra", "Perfil", "Horas estimadas", "Costo promedio USD/h", "Importe"], rojo); r += 1
             i0 = r
             for l in j.get("mo") or []:
-                vals = [l.get("linea"), l.get("perfil"), num(l.get("horas")), num(l.get("costo_hora")), f"=C{r}*D{r}"]
+                vals = ([l.get("linea"), l.get("perfil"), "—", "—", num(l.get("importe"))] if sin_insumos else
+                        [l.get("linea"), l.get("perfil"), num(l.get("horas")), num(l.get("costo_hora")), f"=C{r}*D{r}"])
                 for i, v in enumerate(vals, start=1):
                     c = ws.cell(row=r, column=i, value=v)
                     if i == 3: c.number_format = '#,##0.0'
@@ -23840,7 +23847,7 @@ def api_pc_presupuesto_export():
     bloques = []
     for j in jobs:
         mats = "".join(f'<tr><td>{e(mm.get("rubro") or "")}</td><td class="r">{m(num(mm.get("disponible")))}</td></tr>' for mm in j.get("materiales") or [])
-        mos = "".join(f'<tr><td>{e(l.get("linea") or "")}</td><td class="muted">{e(l.get("perfil") or "")}</td><td class="r">{h(num(l.get("horas")))}</td><td class="r">{m(num(l.get("costo_hora")))}</td><td class="r">{m(num(l.get("importe")))}</td></tr>' for l in j.get("mo") or [])
+        mos = "".join(f'<tr><td>{e(l.get("linea") or "")}</td><td class="muted">{e(l.get("perfil") or "")}</td><td class="r">{"—" if sin_insumos else h(num(l.get("horas")))}</td><td class="r">{"—" if sin_insumos else m(num(l.get("costo_hora")))}</td><td class="r">{m(num(l.get("importe")))}</td></tr>' for l in j.get("mo") or [])
         if num(j.get("mo_anterior")): mos += f'<tr><td colspan="4">M.O. de proyectos anteriores (sin horas)</td><td class="r">{m(num(j.get("mo_anterior")))}</td></tr>'
         fechas = " · ".join(f"{k}: {e(str(v))}" for k, v in (("Inicio", j.get("fecha_inicio")), ("Run Off interno", j.get("runoff_interno")), ("Run Off cliente", j.get("runoff_cliente")), ("Envío", j.get("fecha_envio"))) if v)
         dl = num(j.get("delta"))
@@ -23848,12 +23855,12 @@ def api_pc_presupuesto_export():
           {f'<p class="muted">{fechas}</p>' if fechas else ''}
           <div class="kpis"><div><small>Internal Target (presupuesto disponible)</small><b class="ok">{m(num(j.get("internal_target")))}</b></div>
             <div><small>Materiales y servicios</small><b>{m(num(j.get("total_materiales")))}</b></div><div><small>Mano de obra</small><b>{m(num(j.get("total_mo")))}</b></div>
-            <div><small>Horas estimadas</small><b>{h(num(j.get("total_horas")))} h</b></div><div><small>Delta vs Internal Target</small><b class="{"bad" if dl < 0 else "ok"}">{m(dl)}</b></div></div>
+            <div><small>Horas estimadas</small><b>{"—" if sin_insumos else h(num(j.get("total_horas")))} h</b></div><div><small>Delta vs Internal Target</small><b class="{"bad" if dl < 0 else "ok"}">{m(dl)}</b></div></div>
           <div class="dos"><table><tr><th>Materiales y servicios</th><th class="r">Disponible</th></tr>{mats}<tr class="tot"><td>Subtotal</td><td class="r">{m(num(j.get("total_materiales")))}</td></tr></table>
           <table><tr><th>Mano de obra</th><th>Perfil</th><th class="r">Horas</th><th class="r">USD/h</th><th class="r">Importe</th></tr>{mos}
-            <tr class="tot"><td colspan="2">Subtotal</td><td class="r">{h(num(j.get("total_horas")))}</td><td></td><td class="r">{m(num(j.get("total_mo")))}</td></tr></table></div></section>""")
-    resumen = "".join(f'<tr><td class="mono">{e(str(j.get("job_number")))}</td><td>{e(j.get("customer") or "")}</td><td class="r">{m(num(j.get("internal_target")))}</td><td class="r">{m(num(j.get("total_materiales")))}</td><td class="r">{m(num(j.get("total_mo")))}</td><td class="r">{h(num(j.get("total_horas")))}</td><td class="r {"bad" if num(j.get("delta")) < 0 else ""}">{m(num(j.get("delta")))}</td></tr>' for j in jobs)
-    horas_lin = "".join(f'<tr><td>{e(ln)}</td><td class="r">{h(v["horas"])}</td><td class="r">{m(v["importe"])}</td></tr>' for ln, v in tot_mo.items() if v["horas"] or v["importe"])
+            <tr class="tot"><td colspan="2">Subtotal</td><td class="r">{"—" if sin_insumos else h(num(j.get("total_horas")))}</td><td></td><td class="r">{m(num(j.get("total_mo")))}</td></tr></table></div></section>""")
+    resumen = "".join(f'<tr><td class="mono">{e(str(j.get("job_number")))}</td><td>{e(j.get("customer") or "")}</td><td class="r">{m(num(j.get("internal_target")))}</td><td class="r">{m(num(j.get("total_materiales")))}</td><td class="r">{m(num(j.get("total_mo")))}</td><td class="r">{"—" if sin_insumos else h(num(j.get("total_horas")))}</td><td class="r {"bad" if num(j.get("delta")) < 0 else ""}">{m(num(j.get("delta")))}</td></tr>' for j in jobs)
+    horas_lin = "".join(f'<tr><td>{e(ln)}</td><td class="r">{"—" if sin_insumos else h(v["horas"])}</td><td class="r">{m(v["importe"])}</td></tr>' for ln, v in tot_mo.items() if v["horas"] or v["importe"])
     html = f"""<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>{e(nombre)}</title><style>
     body{{font-family:Arial,Helvetica,sans-serif;color:#1a1a2e;margin:0;padding:22px 30px;font-size:11.5px}}
     header{{display:flex;align-items:center;gap:16px;border-bottom:3px solid #c8102e;padding-bottom:10px;margin-bottom:14px}} header img{{height:30px}} h1{{margin:0;font-size:20px}}
@@ -23867,7 +23874,7 @@ def api_pc_presupuesto_export():
     <header><img src="/static/persico_logo.webp" onerror="this.style.display='none'"><div><h1>Presupuesto disponible · {e(ptsv)}</h1>
     <div class="sub">{e(_datos_fiscales().get("razon_social") or "")} · generado el {hoy:%d/%m/%Y} por {e(session.get("user", ""))} · montos en USD</div></div></header>
     <div class="kpis"><div><small>Internal Target total</small><b class="ok">{m(tot["internal_target"])}</b></div><div><small>Materiales y servicios</small><b>{m(tot["materiales"])}</b></div>
-      <div><small>Mano de obra estimada</small><b>{m(tot["mo"])}</b></div><div><small>Horas estimadas</small><b>{h(tot["horas"])} h</b></div>
+      <div><small>Mano de obra estimada</small><b>{m(tot["mo"])}</b></div><div><small>Horas estimadas</small><b>{"—" if sin_insumos else h(tot["horas"])} h</b></div>
       <div><small>Delta vs Internal Target</small><b class="{"bad" if tot["internal_target"] - tot["estimados"] < 0 else "ok"}">{m(tot["internal_target"] - tot["estimados"])}</b></div></div>
     <table><tr><th>Job</th><th>Cliente</th><th class="r">Internal Target</th><th class="r">Materiales y servicios</th><th class="r">Mano de obra</th><th class="r">Horas</th><th class="r">Delta</th></tr>{resumen}</table>
     <div class="dos" style="margin-top:12px"><table><tr><th>Materiales y servicios (proyecto)</th><th class="r">Disponible</th></tr>{"".join(f'<tr><td>{e(k)}</td><td class="r">{m(v)}</td></tr>' for k, v in tot_mat.items())}</table>
