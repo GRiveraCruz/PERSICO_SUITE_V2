@@ -13866,7 +13866,13 @@ function pcRenderGantt(rows, endDateMap, groupRanges) {
   // SVG crece con el rango (el contenedor ya tiene scroll horizontal propio). En
   // "Semanas"/"Meses" se mantiene el ancho fijo de siempre, más compacto.
   const W = _pcGanttZoom === 'dias' ? Math.max(700, Math.min(3200, Math.round(totalDaysForW*20))) : 700;
-  const ROW = 22, PAD = 4, LABEL = 190, DATES = 78, HEAD = 26, INDENT = 14;
+  // rev157: la columna de nombres se ajusta al nombre más largo (antes era fija de 190 px y los
+  // nombres se cortaban o se salían por la izquierda). Mínimo 190 px, máximo 520 px.
+  const _pcLblW = drawEntries.reduce((mx, e) => {
+    const t = String(e.act||''), esG = e.isGroup || e.tipo === 'grupo' || e.count != null;
+    return Math.max(mx, esG ? t.length*7.0 + 46 : t.length*5.9 + 28);
+  }, 0);
+  const ROW = 22, PAD = 4, LABEL = Math.round(Math.min(520, Math.max(190, _pcLblW))), DATES = 78, HEAD = 26, INDENT = 14;
 
   const pct = d => ((d - minD) / totalMs * W).toFixed(1);
   const todayX = parseFloat(pct(today));
@@ -13923,19 +13929,19 @@ function pcRenderGantt(rows, endDateMap, groupRanges) {
       // referencia (no una caja con solo contorno): comunica "este es un
       // contenedor, no una tarea con trabajo propio" sin ocupar tanto espacio
       // visual como las barras de sus hijas.
-      const label = e.act.length > 26 ? e.act.slice(0,25)+'…' : e.act;
+      const label = e.act.length > 72 ? e.act.slice(0,71)+'…' : e.act;          // rev157
       const toggleIcon = e.collapsed ? '▸' : '▾';
       return `
       <rect x="${LABEL+x}" y="${y+ROW/2-2}" width="${w}" height="4" rx="2" fill="#2b2b2b"/>
       <rect x="${LABEL+x}" y="${y+4}" width="2" height="${ROW-8}" fill="#2b2b2b"/>
       <rect x="${LABEL+x+w-2}" y="${y+4}" width="2" height="${ROW-8}" fill="#2b2b2b"/>
-      <text x="${LABEL-4}" y="${y+ROW-8}" font-size="10.5" fill="#222" text-anchor="end" font-family="Arial" font-weight="800">${toggleIcon} ${esc(label)} (${e.count})</text>`;
+      <text x="${LABEL-4}" y="${y+ROW-8}" font-size="10.5" fill="#222" text-anchor="end" font-family="Arial" font-weight="800">${toggleIcon} ${esc(label)} (${e.count})<title>${esc(e.act)}</title></text>`;
     }
 
     const indentPx = e.indent ? INDENT : 0;
     const color = e.cumpl ? '#1f8a4c' : (e.fin < today ? '#c8102e' : '#a8650a');
     const mileIcon = e.mile ? ' ★' : '';
-    const maxLabelLen = e.indent ? 20 : 24;
+    const maxLabelLen = 80;                                                   // rev157: ya no se recorta a 20–24 caracteres
     const label = e.act.length > maxLabelLen ? e.act.slice(0,maxLabelLen-1)+'…' : e.act;
     const rangoTxt = e.hito ? `◆ ${_pcFmtD(e.start)}` : `${_pcFmtD(e.start)} → ${_pcFmtD(e.fin)}`;
     let extra = '';
@@ -13961,7 +13967,7 @@ function pcRenderGantt(rows, endDateMap, groupRanges) {
     <text x="${LABEL+indentPx+x+4}" y="${y+ROW-8}" font-size="9" fill="white" font-family="Arial">${e.dias>0?e.dias+'d':''}</text>`;
     return `
     ${barra}
-    <text x="${LABEL-4}" y="${y+ROW-8}" font-size="10" fill="#555" text-anchor="end" font-family="Arial">${esc(label)}${mileIcon}</text>
+    <text x="${LABEL-4}" y="${y+ROW-8}" font-size="10" fill="#555" text-anchor="end" font-family="Arial">${esc(label)}${mileIcon}<title>${esc(e.act)}</title></text>
     <text x="${LABEL+W+8}" y="${y+ROW-8}" font-size="8.5" fill="#444" font-family="'DM Mono',monospace">${rangoTxt}</text>
     ${extra}`;
   }).join('');
