@@ -1196,6 +1196,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
               <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted)">📊 Diagrama de Tiempos</div>
               <div style="display:flex;gap:8px;align-items:center">
+                <label style="display:flex;gap:5px;align-items:center;font-size:11px;color:var(--muted2);text-transform:none;letter-spacing:0;margin-right:8px" title="Líneas de dependencia (actividad previa → condicionada) y ruta crítica"><input type="checkbox" checked onchange="pcToggleRutaCritica(this.checked)"> Dependencias y ruta crítica</label>
                 <div id="pc-gantt-zoom" style="display:flex;border:1px solid var(--border2);border-radius:6px;overflow:hidden">
                   <button onclick="pcSetGanttZoom('dias')" data-zoom="dias" class="pc-zoom-btn" style="padding:5px 10px;font-size:10px;border:none;background:transparent;cursor:pointer">Días</button>
                   <button onclick="pcSetGanttZoom('semanas')" data-zoom="semanas" class="pc-zoom-btn" style="padding:5px 10px;font-size:10px;border:none;background:var(--red);color:#fff;font-weight:700;cursor:pointer;border-left:1px solid var(--border2);border-right:1px solid var(--border2)">Semanas</button>
@@ -1210,6 +1211,8 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
               <div><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#c8102e;margin-right:4px"></span>Retraso</div>
               <div><span style="display:inline-block;width:9px;height:9px;background:#1f3864;transform:rotate(45deg);margin-right:5px"></span>Fecha real de finalización</div>
               <div><span style="display:inline-block;width:11px;height:11px;background:#6d28d9;border:1.5px solid #fff;box-shadow:0 0 0 1px #6d28d9;transform:rotate(45deg);margin-right:5px"></span>Hito (0 días)</div>
+              <div><span style="display:inline-block;width:18px;border-top:1.5px dashed #7a7a7a;vertical-align:middle;margin-right:5px"></span>Dependencia</div>
+              <div><span style="display:inline-block;width:18px;border-top:2px solid #c8102e;vertical-align:middle;margin-right:5px"></span>Ruta crítica</div>
               <div style="color:var(--muted)">Duración en días hábiles (sin sáb., dom. ni festivos)</div>
             </div>
             <div id="pc-gantt" style="overflow-x:auto;border:1px solid var(--border);border-radius:8px;padding:8px"></div>

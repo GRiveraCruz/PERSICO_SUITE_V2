@@ -13824,7 +13824,7 @@ function pcRenderGantt(rows, endDateMap, groupRanges) {
     const start = new Date(rr.fCond), fin = new Date(rr.fObj), end = new Date(rr.fObj);
     end.setDate(end.getDate() + 1);
     const fReal = _pcFecha(fRealStr);
-    activityEntries.push({act, start, end, fin, hito: rr.hito, dias, cumpl, mile, fReal, grupo: grupo||null});
+    activityEntries.push({act, start, end, fin, hito: rr.hito, dias, cumpl, mile, fReal, grupo: grupo||null, prev: prev||'', fIni: fIni||''});
   });
 
   if(!activityEntries.length){ wrap.style.display='none'; pcLastGanttSVG=null; return; }
@@ -13972,6 +13972,42 @@ function pcRenderGantt(rows, endDateMap, groupRanges) {
     ${extra}`;
   }).join('');
 
+  // ── rev158: líneas de dependencia (actividad previa → actividad condicionada) y ruta crítica ──
+  //   Ruta crítica: desde la(s) actividad(es) que terminan al último, hacia atrás por su actividad
+  //   previa mientras su inicio dependa de ella (sin fecha inicial propia).
+  {
+    const nk = v => (v||'').trim().toUpperCase();
+    const vis = {}; drawEntries.forEach((e,i)=>{ if(e.kind==='activity') vis[nk(e.act)] = {e, i}; });
+    const todas = {}; activityEntries.forEach(e=>{ todas[nk(e.act)] = e; });
+    const finMax = Math.max(...activityEntries.map(e=>+e.end));
+    const critica = new Set();
+    activityEntries.filter(e=>+e.end===finMax).forEach(e=>{
+      let cur = e, guard = 0;
+      while(cur && guard++ < 500){ critica.add(nk(cur.act)); if(!cur.prev || cur.fIni) break; cur = todas[nk(cur.prev)]; }
+    });
+    let deps = '';
+    drawEntries.forEach((e,i)=>{
+      if(e.kind!=='activity' || !e.prev) return;
+      const p = vis[nk(e.prev)]; if(!p) return;
+      const yP = HEAD + PAD + p.i*(ROW+2) + ROW/2, yS = HEAD + PAD + i*(ROW+2) + ROW/2;
+      const xP = LABEL + parseFloat(pct(p.e.hito ? p.e.start : p.e.end)), xS = LABEL + parseFloat(pct(e.start)) + (e.indent?INDENT:0);
+      const crit = critica.has(nk(e.act)) && critica.has(nk(p.e.act)) && !e.fIni;
+      const xm = Math.max(xP + 6, Math.min(xS - 6, xP + 6));
+      const d = xS - 6 > xP + 4
+        ? `M${xP},${yP} H${xm} V${yS} H${xS-2}`
+        : `M${xP},${yP} h6 V${(yP+yS)/2} H${xS-10} V${yS} H${xS-2}`;
+      deps += `<path d="${d}" fill="none" stroke="${crit?'#c8102e':'#7a7a7a'}" stroke-width="${crit?2:1}" stroke-opacity="${crit?0.95:0.6}" ${crit?'':'stroke-dasharray="3,2"'} marker-end="url(#${crit?'pcArrC':'pcArr'})"><title>${esc(e.prev)} → ${esc(e.act)}${crit?' · ruta crítica':''}</title></path>`;
+    });
+    // contorno rojo en las barras de la ruta crítica
+    drawEntries.forEach((e,i)=>{
+      if(e.kind!=='activity' || !critica.has(nk(e.act)) || e.hito) return;
+      const x = parseFloat(pct(e.start)), w = Math.max(4, parseFloat(pct(e.end)) - x), y = HEAD + PAD + i*(ROW+2), ip = e.indent ? INDENT : 0;
+      deps += `<rect x="${LABEL+ip+x-1}" y="${y+2}" width="${Math.max(2,w-ip)+2}" height="${ROW-4}" rx="4" fill="none" stroke="#c8102e" stroke-width="1.6"><title>Ruta crítica: ${esc(e.act)}</title></rect>`;
+    });
+    if(_pcGanttRutaCritica !== false) svgRows += deps;
+    pcLastGanttMetaCritica = [...critica];
+  }
+
   if(todayX >= 0 && todayX <= W) {
     svgRows += `<line x1="${LABEL+todayX}" y1="${HEAD}" x2="${LABEL+todayX}" y2="${bodyBottom}" stroke="#c8102e" stroke-width="1.5" stroke-dasharray="4,2"/>
     <text x="${LABEL+todayX+3}" y="${HEAD+9}" font-size="8" fill="#c8102e" font-family="Arial">Hoy</text>`;
@@ -13979,18 +14015,30 @@ function pcRenderGantt(rows, endDateMap, groupRanges) {
 
   const svgW = LABEL + W + DATES + 10;
   const svgH = bodyBottom + 10;
+  const defs = `<defs><marker id="pcArr" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#7a7a7a"/></marker>
+    <marker id="pcArrC" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#c8102e"/></marker></defs>`;
   const svgMarkup = `<svg width="${svgW}" height="${svgH}" xmlns="http://www.w3.org/2000/svg" style="background:rgba(0,0,0,.03);border-radius:6px">
+    ${defs}
     ${weekendSvg}
     ${headerSvg}
     ${svgRows}
   </svg>`;
-  gantt.innerHTML = svgMarkup;
+  // rev158: la columna de nombres queda FIJA al desplazar la línea de tiempo (dos vistas del mismo
+  // dibujo: la de la izquierda muestra solo la columna de nombres y se queda pegada con sticky)
+  const inner = `${defs}${weekendSvg}${headerSvg}${svgRows}`;
+  gantt.innerHTML = `<div style="display:flex;width:max-content">
+      <div style="position:sticky;left:-8px;margin-left:-8px;padding-left:8px;z-index:2;flex:none;background:var(--card,#fff);box-shadow:4px 0 6px -4px rgba(0,0,0,.25)">
+        <svg width="${LABEL}" height="${svgH}" viewBox="0 0 ${LABEL} ${svgH}" xmlns="http://www.w3.org/2000/svg" style="background:rgba(0,0,0,.03);display:block">${inner}<rect x="${LABEL-30}" y="0" width="30" height="${HEAD}" fill="#f6f6f6"/></svg></div>
+      <svg width="${svgW-LABEL}" height="${svgH}" viewBox="${LABEL} 0 ${svgW-LABEL} ${svgH}" xmlns="http://www.w3.org/2000/svg" style="background:rgba(0,0,0,.03);display:block">${inner}</svg>
+    </div>`;
 
   // Se guarda para poder generar el PDF con el mismo diagrama, sin recalcular
   pcLastGanttSVG = svgMarkup.replace(/rgba\(0,0,0,\.03\)/,'#f7f7f7');
   pcLastGanttMeta = { minD:_pcFmtDLong(minD), maxD:_pcFmtDLong(maxD), total: drawEntries.filter(e=>e.kind==='activity').length };
 }
 
+var _pcGanttRutaCritica = true, pcLastGanttMetaCritica = [];
+function pcToggleRutaCritica(v){ _pcGanttRutaCritica = !!v; try{ pcRenderGantt([...document.getElementById('pc-timing-body').rows], _pcLastEndDateMap||{}, _pcLastGroupRanges||{}); }catch(e){} }
 function pcPrintGanttPDF(){
   if(!pcLastGanttSVG){ toast('Genera primero el diagrama de tiempos (captura al menos una actividad con fechas)','er'); return; }
   const job = (typeof jobCurrentJob!=='undefined' && jobCurrentJob) ? jobCurrentJob : {};
