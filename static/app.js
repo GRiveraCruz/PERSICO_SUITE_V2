@@ -124,6 +124,8 @@ function switchMenu(mod, groupId) {
   if(mod==='proj-timeline') { setTimeout(tlCargar,100); }
   if(mod==='centros-costo') { setTimeout(ccCargar,100); }
   if(mod==='piezas-cliente') { setTimeout(pzcCargar,100); }
+  if(mod==='log-impexp') { setTimeout(()=>logCargar('impexp'),100); }
+  if(mod==='log-paqueteria') { setTimeout(()=>logCargar('paqueteria'),100); }
   if(mod==='fin-datos-fiscales') { setTimeout(dfCargar,100); }
   if(mod==='fin-ordenes-cobro') { setTimeout(ocCargar,100); }
   if(mod==='mgmt-income-forecast') { setTimeout(ifCargar,100); }
@@ -6035,7 +6037,7 @@ let USER_PERMS = null;
 
 // rev77: módulos que heredan el nivel de otro mientras el administrador no les fije uno
 const MODULOS_HEREDAN = {'projconfig-dashboard':'projconfig','projconfig-presupuesto':'projconfig','projconfig-timing':'projconfig',
-  'projconfig-abiertos':'projconfig','projconfig-cambios':'projconfig','projconfig-documentos':'projconfig','personal-tipos-puesto':'personal-perfiles','rrhh-kpis':'personal-listado','fin-cpc':'fin-cpp','ops-piso':'ops-capacidad','proj-timeline':'projconfig','centros-costo':'report','piezas-cliente':'salida','fin-datos-fiscales':'fin-esquemas','fin-ordenes-cobro':'fin-cpc','mgmt-income-forecast':'fin-cpc','fin-prog-pagos':'fin-cpp','mgmt-costo-mo':'rrhh-sueldos','fin-cashflow':'fin-cpp'};
+  'projconfig-abiertos':'projconfig','projconfig-cambios':'projconfig','projconfig-documentos':'projconfig','personal-tipos-puesto':'personal-perfiles','rrhh-kpis':'personal-listado','fin-cpc':'fin-cpp','ops-piso':'ops-capacidad','proj-timeline':'projconfig','centros-costo':'report','piezas-cliente':'salida','log-impexp':'ingreso','log-paqueteria':'ingreso','fin-datos-fiscales':'fin-esquemas','fin-ordenes-cobro':'fin-cpc','mgmt-income-forecast':'fin-cpc','fin-prog-pagos':'fin-cpp','mgmt-costo-mo':'rrhh-sueldos','fin-cashflow':'fin-cpp'};
 const MODULE_LABELS = {
   'compras-requisicion':'Requisición de Compra', 'fin-cpc':'Cuentas por Cobrar (CPC)', 'fin-datos-fiscales':'Datos fiscales', 'fin-ordenes-cobro':'Órdenes de cobro', 'mgmt-income-forecast':'Management — Income Forecast', 'fin-prog-pagos':'Programación de pagos', 'mgmt-costo-mo':'Management — Costo de mano de obra', 'fin-cashflow':'Cash Flow Forecast',
   // Proyectos
@@ -6058,7 +6060,7 @@ const MODULE_LABELS = {
   // Servicio
   'viaticos':'Viáticos', 'gastos-viaje':'Gastos de Viaje', 'envios':'Envíos de Mensajería',
   // Reportes y Config
-  'wh':'Work Hours', 'report':'Job Report', 'multirpt':'Multi-Job Report', 'fx':'Exchange Rate', 'centros-costo':'Centros de costo', 'piezas-cliente':'Piezas de Cliente',
+  'wh':'Work Hours', 'report':'Job Report', 'multirpt':'Multi-Job Report', 'fx':'Exchange Rate', 'centros-costo':'Centros de costo', 'piezas-cliente':'Piezas de Cliente', 'log-impexp':'Importaciones / Exportaciones', 'log-paqueteria':'Paquetería',
   'projconfig':'Configurar Proyecto', 'proj-timeline':'Línea de tiempo WIP',
   'projconfig-dashboard':'↳ Pestaña Dashboard', 'projconfig-presupuesto':'↳ Pestaña Presupuesto',
   'projconfig-timing':'↳ Pestaña Timing', 'projconfig-abiertos':'↳ Pestaña Puntos Abiertos',
@@ -6091,6 +6093,7 @@ const MODULE_GROUPS = [
   { label: '🏭 Proveedores',          mods: ['proveedores'] },
   { label: '📄 Documentos de Compra', mods: ['compras-requisicion','gpo','po','ivp','reassign','consig-reassign','recovery'] },
   { label: '🏬 Almacenes',            mods: ['stock','consignacion','ingreso','apartados','manuf-stock','salida','piezas-cliente'] },
+  { label: '🚚 Logística',            mods: ['log-impexp','log-paqueteria'] },
   { label: '✈ Servicio',             mods: ['viaticos','gastos-viaje','envios'] },
   { label: '⚙ Configurar Proyecto',   mods: ['projconfig','projconfig-dashboard','projconfig-presupuesto','projconfig-timing','projconfig-abiertos','projconfig-cambios','projconfig-documentos'] },
   { label: '📊 Control de Costo',     mods: ['centros-costo','wh','report','multirpt','fx'] },
@@ -6363,6 +6366,8 @@ function applyPermsToDom(d) {
     'proj-timeline':      ["switchMenu('proj-timeline'"],
     'centros-costo':      ["switchMenu('centros-costo'"],
     'piezas-cliente':     ["switchMenu('piezas-cliente'"],
+    'log-impexp':         ["switchMenu('log-impexp'"],
+    'log-paqueteria':     ["switchMenu('log-paqueteria'"],
     'compras-requisicion':["switchMenu('requisicion'"],
     'fin-pagos':          ["switchMenu('fin-pagos'"],
     'fin-esquemas':       ["switchMenu('fin-esquemas'"],
@@ -21310,3 +21315,105 @@ document.addEventListener('drop', ev=>{
   movidos.forEach(r=>{ r.style.transition='box-shadow .6s'; r.style.boxShadow='inset 4px 0 0 var(--red)'; setTimeout(()=>{ r.style.boxShadow=''; }, 900); });
 });
 document.addEventListener('dragend', ()=>{ if(_pcDnd){ _pcDnd = null; } _pcDndLimpiar(); });
+
+
+// ════════════════════════════════════════════════════════
+//  rev159 — Logística: Importaciones / Exportaciones y Paquetería
+// ════════════════════════════════════════════════════════
+const LOG_UI = {
+  impexp: { titulo:'🌎 Importaciones / Exportaciones', mod:'log-impexp',
+    cols:[['po_number','Orden de compra'],['factura','Factura'],['fecha_embarque','Embarque'],['tracking','Tracking'],['proveedor','Proveedor']],
+    campos:[['po_number','Número de orden de compra','text'],['factura','Número de factura','text'],['fecha_embarque','Fecha de embarque','date'],['tracking','Tracking number','text'],['proveedor','Proveedor','text'],['transporte','Datos del transporte','textarea'],['notas','Notas','textarea']] },
+  paqueteria: { titulo:'📦 Paquetería', mod:'log-paqueteria',
+    cols:[['waybill','Waybill'],['fecha_recoleccion','Recolección'],['tracking','Tracking'],['proveedor','Paquetería / proveedor']],
+    campos:[['waybill','Waybill','text'],['fecha_recoleccion','Fecha de recolección','date'],['tracking','Tracking number','text'],['proveedor','Proveedor / paquetería','text'],['notas','Notas','textarea']] },
+};
+const LOG_COL = {'LISTO PARA RECOLECCIÓN':'#64748b','EN TRANSITO':'#1d4ed8','EN ADUANA':'#b45309','ENTREGADO':'#15803d'};
+let _log = {impexp:null, paqueteria:null}, _logEdit = null, _logJobs = null;
+async function logCargar(tipo){
+  const d = await fetch('/api/logistica/'+tipo).then(r=>r.json());
+  if(d.error){ document.getElementById(`log-${tipo}-tb`).innerHTML = `<tr><td colspan="14" style="color:var(--red);padding:14px">${esc(d.error)}</td></tr>`; return; }
+  _log[tipo] = d; logRender(tipo);
+}
+function logPuedeEditar(tipo){ return !!(USER_PERMS && (USER_PERMS.is_admin || ['create','full'].includes((USER_PERMS.permissions||{})[LOG_UI[tipo].mod] || ''))); }
+function logRender(tipo){
+  const d = _log[tipo]; if(!d) return; const cfg = LOG_UI[tipo];
+  const q=(document.getElementById(`log-${tipo}-q`).value||'').toLowerCase(), est=document.getElementById(`log-${tipo}-est`).value, tm=document.getElementById(`log-${tipo}-tipo`).value;
+  const sel = document.getElementById(`log-${tipo}-tipo`); if(sel.options.length<=1) sel.insertAdjacentHTML('beforeend', d.tipos.map(t=>`<option>${esc(t)}</option>`).join(''));
+  const hoy = new Date().toISOString().slice(0,10);
+  const L = d.records.filter(r=>(!est||r.estatus===est)&&(!tm||r.tipo_mov===tm)&&(!q||JSON.stringify([r.lid,r.job,r.pm,r.tracking,r.proveedor,r.po_number,r.factura,r.waybill,r.notas]).toLowerCase().includes(q)));
+  const cnt = {}; d.records.forEach(r=>cnt[r.estatus]=(cnt[r.estatus]||0)+1);
+  const atrasados = d.records.filter(r=>r.estatus!=='ENTREGADO' && r.fecha_estimada && r.fecha_estimada < hoy).length;
+  document.getElementById(`log-${tipo}-cards`).innerHTML = d.estatus.map(e=>`<div onclick="document.getElementById('log-${tipo}-est').value='${e}';logRender('${tipo}')" style="cursor:pointer;padding:8px 14px;border:1px solid var(--border);border-left:4px solid ${LOG_COL[e]};border-radius:8px;font-size:12px"><b style="font-size:17px;color:${LOG_COL[e]}">${cnt[e]||0}</b> ${e}</div>`).join('')
+    + (atrasados ? `<div style="padding:8px 14px;border:1px solid var(--red);border-radius:8px;font-size:12px;color:var(--red)"><b style="font-size:17px">${atrasados}</b> con fecha estimada vencida</div>` : '');
+  const fd = v => v ? String(v).slice(0,10) : '—';
+  document.getElementById(`log-${tipo}-tb`).innerHTML = L.map(r=>{ const venc = r.estatus!=='ENTREGADO' && r.fecha_estimada && r.fecha_estimada < hoy; const nCamb = Math.max(0,(r.historial_fechas||[]).length-1);
+    return `<tr style="cursor:pointer" onclick="logAbrir('${tipo}','${esc(r.lid)}')"><td style="font-family:'DM Mono',monospace;font-weight:700">${esc(r.lid)}</td><td style="font-family:'DM Mono',monospace;color:var(--gold);font-weight:700">${esc(r.job)}</td><td style="font-size:11px">${esc(r.pm||'')}</td><td style="font-size:11px">${esc(r.tipo_mov)}</td>
+      ${cfg.cols.map(([k])=>`<td style="font-size:12px">${k.startsWith('fecha')?fd(r[k]):esc(r[k]||'')}</td>`).join('')}
+      <td><span style="font-size:10.5px;font-weight:700;color:${LOG_COL[r.estatus]};border:1px solid ${LOG_COL[r.estatus]};border-radius:10px;padding:2px 8px;white-space:nowrap">${esc(r.estatus)}</span></td>
+      <td style="white-space:nowrap;color:${venc?'var(--red)':'inherit'};font-weight:${venc?700:400}">${fd(r.fecha_estimada)}${nCamb?` <span title="La fecha estimada se ha cambiado ${nCamb} vez(ces)" style="font-size:10px;color:var(--amber)">↻${nCamb}</span>`:''}${r.estatus==='ENTREGADO'&&r.fecha_entrega_real?`<div style="font-size:10px;color:var(--green)">entregado ${fd(r.fecha_entrega_real)}</div>`:''}</td>
+      <td style="text-align:center">${(r.evidencias||[]).length?`📎 ${(r.evidencias||[]).length}`:'—'}</td></tr>`; }).join('')
+    || `<tr><td colspan="14" style="text-align:center;color:var(--muted);padding:20px">Sin movimientos${logPuedeEditar(tipo)?'. Registra el primero con "＋ Nuevo movimiento".':''}</td></tr>`;
+  document.getElementById(`log-${tipo}-nuevo`).style.display = logPuedeEditar(tipo) ? '' : 'none';
+}
+async function logJobsWip(){
+  if(_logJobs) return _logJobs;
+  try{ const j = await fetch('/api/jobs').then(r=>r.json()); const L = Array.isArray(j)?j:(j.records||j.jobs||[]);
+       _logJobs = L.filter(x=>String(x.status||'').toUpperCase()==='WIP').map(x=>({job:x.job_number, pm:x.pm||'', customer:x.customer||'', desc:x.description||''})); }catch(e){ _logJobs = []; }
+  return _logJobs;
+}
+async function logAbrir(tipo, lid){
+  const cfg = LOG_UI[tipo], d = _log[tipo]; const rec = lid ? d.records.find(r=>r.lid===lid) : null; _logEdit = {tipo, lid: rec ? rec.lid : null};
+  const editable = logPuedeEditar(tipo), jobs = await logJobsWip();
+  const opJobs = jobs.slice(); if(rec && !opJobs.find(j=>j.job===rec.job)) opJobs.unshift({job:rec.job, pm:rec.pm, customer:'', desc:'(ya no está en WIP)'});
+  const v = k => rec ? (rec[k]||'') : '';
+  const dis = editable ? '' : 'disabled';
+  document.getElementById('log-mo-tit').textContent = `${cfg.titulo} · ${rec ? rec.lid : 'nuevo movimiento'}`;
+  document.getElementById('log-mo-body').innerHTML = `
+    <div class="fr"><div class="fi"><label>Job Number (en WIP) *</label><select id="logf-job" ${dis} onchange="logJobPM()"><option value="">— Selecciona —</option>${opJobs.map(j=>`<option value="${esc(j.job)}" data-pm="${esc(j.pm)}" ${rec&&rec.job===j.job?'selected':''}>${esc(j.job)} · ${esc(j.customer)} ${esc((j.desc||'').slice(0,40))}</option>`).join('')}</select></div>
+      <div class="fi"><label>Project Manager</label><input id="logf-pm" disabled value="${esc(v('pm'))}"></div></div>
+    <div class="fr"><div class="fi"><label>Tipo de movimiento *</label><select id="logf-tipo_mov" ${dis}>${d.tipos.map(t=>`<option ${v('tipo_mov')===t?'selected':''}>${esc(t)}</option>`).join('')}</select></div>
+      <div class="fi"><label>Estatus *</label><select id="logf-estatus" ${dis}>${d.estatus.map(t=>`<option ${v('estatus')===t?'selected':''}>${esc(t)}</option>`).join('')}</select></div></div>
+    <div class="fr"><div class="fi"><label>Fecha estimada de entrega</label><input type="date" id="logf-fecha_estimada" value="${esc(v('fecha_estimada'))}" ${dis} oninput="document.getElementById('logf-motivo-box').style.display = ${rec?'this.value!==\''+esc(v('fecha_estimada'))+'\'':'false'} ? \'\' : \'none\'"></div>
+      <div class="fi" id="logf-motivo-box" style="display:none"><label>Motivo del cambio de fecha</label><input id="logf-motivo" placeholder="ej. retraso en aduana"></div></div>
+    ${cfg.campos.map(([k,lab,t])=> t==='textarea' ? `<div class="fi"><label>${lab}</label><textarea id="logf-${k}" rows="2" ${dis}>${esc(v(k))}</textarea></div>`
+                                   : `<div class="fi"><label>${lab}</label><input type="${t}" id="logf-${k}" value="${esc(v(k))}" ${dis}></div>`).join('')}
+    ${rec ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+       <div style="font-weight:700;font-size:12px;margin-bottom:6px">📎 Prueba de entrega</div>
+       <div id="logf-evid">${(rec.evidencias||[]).map(e=>`<div style="display:flex;gap:8px;align-items:center;font-size:12px;margin-bottom:4px">${/\.(jpe?g|png|gif|webp|heic)$/i.test(e.archivo)?`<img src="/api/logistica/${tipo}/${rec.lid}/evidencia/${encodeURIComponent(e.archivo)}" style="width:48px;height:48px;object-fit:cover;border-radius:4px">`:'📄'}
+          <a href="/api/logistica/${tipo}/${rec.lid}/evidencia/${encodeURIComponent(e.archivo)}" target="_blank">${esc(e.archivo)}</a><span style="color:var(--muted)">${esc(String(e.subido||'').replace('T',' '))} · ${esc(e.por||'')}</span>
+          ${editable?`<button class="fi-del" style="margin-left:auto" onclick="logEvidBorrar('${tipo}','${rec.lid}','${esc(e.archivo).replace(/'/g,'')}')">Quitar</button>`:''}</div>`).join('') || '<div style="font-size:12px;color:var(--muted)">Sin archivos.</div>'}</div>
+       ${editable?`<label class="btn btn-s" style="margin-top:6px;display:inline-block;cursor:pointer">⬆ Subir archivo o fotografía<input type="file" multiple accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx" style="display:none" onchange="logEvidSubir('${tipo}','${rec.lid}',this.files)"></label>`:''}
+     </div>
+     <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:11.5px">
+       <div><div style="font-weight:700;margin-bottom:4px">📅 Historial de fechas estimadas</div>${(rec.historial_fechas||[]).slice().reverse().map(h=>`<div style="margin-bottom:3px">${esc(String(h.fecha).replace('T',' '))} · <b>${esc(h.por||'')}</b>: ${h.anterior?esc(h.anterior)+' → ':''}<b>${esc(h.nueva||'—')}</b>${h.motivo?` <span style="color:var(--muted2)">(${esc(h.motivo)})</span>`:''}</div>`).join('')||'<span style="color:var(--muted)">Sin fecha estimada</span>'}</div>
+       <div><div style="font-weight:700;margin-bottom:4px">🕑 Historial de cambios</div>${(rec.historial||[]).slice().reverse().slice(0,15).map(h=>`<div style="margin-bottom:3px">${esc(String(h.fecha).replace('T',' '))} · <b>${esc(h.por||'')}</b>: ${esc(h.accion)}${h.cambios?' — '+esc(h.cambios.join('; ')):''}</div>`).join('')}</div>
+     </div>` : '<div style="font-size:11.5px;color:var(--muted2);margin-top:8px">Después de guardar podrás subir la prueba de entrega.</div>'}`;
+  document.getElementById('log-mo-guardar').style.display = editable ? '' : 'none';
+  document.getElementById('mo-log').classList.add('on');
+}
+function logJobPM(){ const o = document.getElementById('logf-job').selectedOptions[0]; document.getElementById('logf-pm').value = o ? (o.dataset.pm||'') : ''; }
+async function logGuardar(){
+  const {tipo, lid} = _logEdit, cfg = LOG_UI[tipo];
+  const body = {job: document.getElementById('logf-job').value, tipo_mov: document.getElementById('logf-tipo_mov').value, estatus: document.getElementById('logf-estatus').value,
+                fecha_estimada: document.getElementById('logf-fecha_estimada').value, motivo_cambio_fecha: (document.getElementById('logf-motivo')||{}).value||''};
+  cfg.campos.forEach(([k])=>{ body[k] = document.getElementById('logf-'+k).value; });
+  const d = lid ? await apiCall('PUT', `/logistica/${tipo}/${lid}`, body) : await apiCall('POST', `/logistica/${tipo}`, body);
+  if(d.error){ toast(d.error,'er',6000); return; }
+  toast(lid ? (d.cambios && d.cambios.length ? 'Movimiento actualizado' : 'Sin cambios') : `Movimiento ${d.record.lid} creado`, 'ok');
+  await logCargar(tipo);
+  if(!lid) logAbrir(tipo, d.record.lid); else closeMo('mo-log');
+}
+async function logEvidSubir(tipo, lid, files){
+  if(!files || !files.length) return;
+  const fd = new FormData(); [...files].forEach(f=>fd.append('files', f));
+  const d = await fetch(`/api/logistica/${tipo}/${lid}/evidencia`, {method:'POST', body: fd}).then(r=>r.json());
+  if(d.error){ toast(d.error,'er'); return; }
+  toast('Prueba de entrega subida','ok'); await logCargar(tipo); logAbrir(tipo, lid);
+}
+async function logEvidBorrar(tipo, lid, archivo){
+  if(!confirm(`¿Quitar ${archivo}?`)) return;
+  const d = await fetch(`/api/logistica/${tipo}/${lid}/evidencia/${encodeURIComponent(archivo)}`, {method:'DELETE'}).then(r=>r.json());
+  if(d.error){ toast(d.error,'er'); return; }
+  await logCargar(tipo); logAbrir(tipo, lid);
+}

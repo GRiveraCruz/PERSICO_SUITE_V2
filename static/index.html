@@ -35,6 +35,8 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;dis
 .nav-group-btn{gap:5px}
 .nav-tabs>.nav-group{flex-shrink:0}
 @media (max-width:1600px){.nav-tab{padding:0 14px;letter-spacing:.6px}}   /* rev93: cabe el menú Management */
+@media (max-width:1500px){.nav-tab{padding:0 10px;letter-spacing:.3px;font-size:10.5px}}   /* rev159: cabe el menú Logística */
+@media (max-width:1300px){.nav-tab{padding:0 7px;letter-spacing:0;font-size:10px}}
 @media (max-width:1440px){.nav-tab{padding:0 9px;letter-spacing:.3px;font-size:10.5px}}   /* rev101: pantallas de 1366 px */
 @media (max-width:1440px){td{padding:7px 9px}thead th{padding:9px 9px}}   /* rev102: tablas más compactas en 1366 px */
 .nav-group-btn.on{color:var(--red);font-weight:700;border-bottom-color:var(--red)}
@@ -520,6 +522,14 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
         <button onclick="switchMenu('manuf-stock','ng-almacenes')">Piezas de Manufactura</button>
         <button onclick="switchMenu('salida','ng-almacenes')">Salida de Material</button>
         <button onclick="switchMenu('piezas-cliente','ng-almacenes')">Piezas de Cliente</button>
+      </div>
+    </div>
+    <!-- LOGÍSTICA (rev159) -->
+    <div class="nav-group" onmouseenter="showMenu(this)" onmouseleave="hideMenu(this)">
+      <button class="nav-tab nav-group-btn" id="ng-logistica">Logística ▾</button>
+      <div class="nav-dropdown">
+        <button onclick="switchMenu('log-impexp','ng-logistica')">Importaciones / Exportaciones</button>
+        <button onclick="switchMenu('log-paqueteria','ng-logistica')">Paquetería</button>
       </div>
     </div>
     <!-- SERVICIO -->
@@ -6160,6 +6170,42 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
       <div class="fi"><label>Notas</label><input id="pzc-notas" placeholder="opcional"></div>
       <div style="display:flex;gap:8px;margin-top:10px"><button class="btn btn-p" id="pzc-btn" onclick="pzcProcesar()">Procesar</button></div>
     </div>
+  </div>
+</div>
+
+<!-- ══ MODULE: Logística impexp (rev159) ══ -->
+<div class="module" id="mod-log-impexp">
+  <div class="main-content" style="overflow-y:auto">
+    <div class="bar-top"><h1>🌎 Importaciones / Exportaciones</h1>
+      <input id="log-impexp-q" placeholder="Buscar ID, Job, tracking, proveedor…" oninput="logRender('impexp')" style="font-size:12px;padding:6px 10px;min-width:220px;margin-left:12px">
+      <select id="log-impexp-tipo" onchange="logRender('impexp')" style="font-size:12px;padding:5px 8px"><option value="">Todos los tipos</option></select>
+      <select id="log-impexp-est" onchange="logRender('impexp')" style="font-size:12px;padding:5px 8px"><option value="">Todos los estatus</option><option>LISTO PARA RECOLECCIÓN</option><option>EN TRANSITO</option><option>EN ADUANA</option><option>ENTREGADO</option></select>
+      <button class="btn btn-p" id="log-impexp-nuevo" onclick="logAbrir('impexp',null)" style="margin-left:auto">＋ Nuevo movimiento</button></div>
+    <div style="padding:14px 18px">
+      <div id="log-impexp-cards" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px"></div>
+      <div style="overflow-x:auto"><table class="tbl" style="width:100%"><thead><tr><th>ID</th><th>Job</th><th>PM</th><th>Tipo</th><th>Orden de compra</th><th>Factura</th><th>Embarque</th><th>Tracking</th><th>Proveedor</th><th>Estatus</th><th>Fecha estimada</th><th style="text-align:center">Prueba</th></tr></thead><tbody id="log-impexp-tb"></tbody></table></div>
+    </div>
+  </div>
+</div>
+<!-- ══ MODULE: Logística paqueteria (rev159) ══ -->
+<div class="module" id="mod-log-paqueteria">
+  <div class="main-content" style="overflow-y:auto">
+    <div class="bar-top"><h1>📦 Paquetería</h1>
+      <input id="log-paqueteria-q" placeholder="Buscar ID, Job, tracking, proveedor…" oninput="logRender('paqueteria')" style="font-size:12px;padding:6px 10px;min-width:220px;margin-left:12px">
+      <select id="log-paqueteria-tipo" onchange="logRender('paqueteria')" style="font-size:12px;padding:5px 8px"><option value="">Todos los tipos</option></select>
+      <select id="log-paqueteria-est" onchange="logRender('paqueteria')" style="font-size:12px;padding:5px 8px"><option value="">Todos los estatus</option><option>LISTO PARA RECOLECCIÓN</option><option>EN TRANSITO</option><option>EN ADUANA</option><option>ENTREGADO</option></select>
+      <button class="btn btn-p" id="log-paqueteria-nuevo" onclick="logAbrir('paqueteria',null)" style="margin-left:auto">＋ Nuevo movimiento</button></div>
+    <div style="padding:14px 18px">
+      <div id="log-paqueteria-cards" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px"></div>
+      <div style="overflow-x:auto"><table class="tbl" style="width:100%"><thead><tr><th>ID</th><th>Job</th><th>PM</th><th>Tipo</th><th>Waybill</th><th>Recolección</th><th>Tracking</th><th>Paquetería / proveedor</th><th>Estatus</th><th>Fecha estimada</th><th style="text-align:center">Prueba</th></tr></thead><tbody id="log-paqueteria-tb"></tbody></table></div>
+    </div>
+  </div>
+</div>
+<div class="mo" id="mo-log" style="z-index:160">
+  <div class="md" style="max-width:760px;width:calc(100% - 32px)">
+    <div class="mh"><h2 id="log-mo-tit"></h2><button class="px" onclick="closeMo('mo-log')">Cerrar</button></div>
+    <div class="mb2"><div id="log-mo-body"></div>
+      <div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-p" id="log-mo-guardar" onclick="logGuardar()">Guardar</button></div></div>
   </div>
 </div>
 

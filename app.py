@@ -10913,7 +10913,7 @@ MODULES = [
     # Servicio
     "viaticos", "gastos-viaje", "envios",
     # Reportes y Configuración
-    "wh", "report", "multirpt", "fx", "projconfig", "proj-timeline", "centros-costo", "piezas-cliente",
+    "wh", "report", "multirpt", "fx", "projconfig", "proj-timeline", "centros-costo", "piezas-cliente", "log-impexp", "log-paqueteria",
     # rev69: pestañas de Configurar Proyecto. Si un usuario no tiene la llave, la pestaña
     # hereda el nivel de "projconfig" (así los usuarios existentes no pierden nada).
     "projconfig-dashboard", "projconfig-presupuesto", "projconfig-timing",
@@ -11402,6 +11402,8 @@ MODULOS_HEREDAN = {"projconfig-dashboard": "projconfig", "projconfig-presupuesto
                    "proj-timeline": "projconfig",          # rev144: Línea de tiempo WIP toma el nivel de Configurar Proyecto
                    "centros-costo": "report",              # rev147: Centros de costo toma el nivel de Reporte por Job
                    "piezas-cliente": "salida",             # rev153: Piezas de cliente toma el nivel de Salida de Material
+                   "log-impexp": "ingreso",                # rev159: Logística toma el nivel de Ingreso de Material
+                   "log-paqueteria": "ingreso",
                    "fin-datos-fiscales": "fin-esquemas",
                    "fin-ordenes-cobro": "fin-cpc",
                    "mgmt-income-forecast": "fin-cpc",
@@ -11780,6 +11782,7 @@ _RESPALDO_GRUPOS = [   # (carpeta relativa, descripción) — solo para el resum
     ("PROV_DOCS", "Documentos de proveedores"),
     ("PERSONAL", "Documentos de personal, perfiles y permisos"),
     ("FINANZAS/ordenes_cobro", "Evidencias de órdenes de cobro"),
+    ("LOGISTICA", "Pruebas de entrega de Logística"),
 ]
 
 def _respaldo_archivos():
@@ -24530,6 +24533,194 @@ def api_pzc_devolucion():
             res.append({"pieza": it["pieza"], "tipo": tipo, "cantidad": total, "reingresadas": reing})
         pzc_add(movs)
     return jsonify({"ok": True, "procesadas": res})
+
+# ══════════════════════════════════════════════════════════════════
+#  rev159 — LOGÍSTICA: Importaciones / Exportaciones y Paquetería
+#  Un registro por movimiento, con folio automático (IE-… / PQ-…), Job en WIP (hereda el PM),
+#  estatus, fecha estimada de entrega con HISTORIAL de cambios, prueba de entrega (archivos).
+# ══════════════════════════════════════════════════════════════════
+LOG_ESTATUS = ("LISTO PARA RECOLECCIÓN", "EN TRANSITO", "EN ADUANA", "ENTREGADO")
+LOG_CFG = {
+    "impexp": {"prefijo": "IE", "modulo": "log-impexp", "tipos": ("IMPORTACIÓN", "EXPORTACIÓN"),
+               "campos": ("po_number", "factura", "fecha_embarque", "tracking", "proveedor", "notas", "transporte")},
+    "paqueteria": {"prefijo": "PQ", "modulo": "log-paqueteria", "tipos": ("DESDE PERSICO", "HACIA PERSICO"),
+                   "campos": ("waybill", "fecha_recoleccion", "tracking", "proveedor", "notas")},
+}
+from werkzeug.utils import secure_filename
+LOG_DIR = Path(_DATA) / "LOGISTICA"
+_LOG_FILE = _os.path.join(_DATA, "LOGISTICA.json")
+
+def log_load(tipo=None):
+    if _orm and _orm.DB_ENABLED:
+        s = _orm.get_session()
+        try:
+            q = s.query(_orm.LogisticaMov)
+            if tipo: q = q.filter(_orm.LogisticaMov.tipo == tipo)
+            return [dict(r.data, lid=r.lid) for r in q.order_by(_orm.LogisticaMov.id.desc()).all()]
+        finally: s.close()
+    try: L = json.load(open(_LOG_FILE, encoding="utf-8"))
+    except Exception: L = []
+    return [x for x in reversed(L) if not tipo or x.get("tipo") == tipo]
+
+def log_save_one(rec):
+    if _orm and _orm.DB_ENABLED:
+        s = _orm.get_session()
+        try:
+            row = s.query(_orm.LogisticaMov).filter(_orm.LogisticaMov.lid == rec["lid"]).one_or_none()
+            if row: row.data = rec; _orm_flag_modified(row, "data")
+            else: s.add(_orm.LogisticaMov(lid=rec["lid"], tipo=rec["tipo"], data=rec))
+            s.commit()
+        finally: s.close()
+        return
+    try: L = json.load(open(_LOG_FILE, encoding="utf-8"))
+    except Exception: L = []
+    L = [x for x in L if x.get("lid") != rec["lid"]] + [rec]
+    with open(_LOG_FILE, "w", encoding="utf-8") as f: json.dump(L, f, ensure_ascii=False, indent=2)
+
+def _log_tipo_ok(tipo):
+    if tipo not in LOG_CFG: return None, (jsonify({"error": "Tipo de logística inválido"}), 400)
+    return LOG_CFG[tipo], None
+
+def _log_job_wip(job):
+    try: return job_exists(job) and str((read_meta(job) or {}).get("status") or "").strip().upper() == "WIP"
+    except Exception: return False
+
+def _log_pm_de_job(job):
+    try: return (read_meta(job) or {}).get("pm") or ""
+    except Exception: return ""
+
+def _log_fecha(v):
+    v = str(v or "").strip()
+    if not v: return ""
+    try: datetime.date.fromisoformat(v[:10]); return v[:10]
+    except ValueError: raise ValueError(f"Fecha inválida: {v}")
+
+@app.route("/api/logistica/<tipo>", methods=["GET"])
+def api_log_list(tipo):
+    cfg, err = _log_tipo_ok(tipo)
+    if err: return err
+    if not (can("view", cfg["modulo"]) or is_admin()): return jsonify({"error": "Sin permiso"}), 403
+    return jsonify({"records": log_load(tipo), "estatus": list(LOG_ESTATUS), "tipos": list(cfg["tipos"])})
+
+@app.route("/api/logistica/<tipo>", methods=["POST"])
+def api_log_crear(tipo):
+    cfg, err = _log_tipo_ok(tipo)
+    if err: return err
+    if not (can("create", cfg["modulo"]) or is_admin()): return jsonify({"error": "Sin permiso"}), 403
+    b = request.json or {}
+    job = str(b.get("job") or "").strip().upper()
+    if not job or not _log_job_wip(job): return jsonify({"error": "Elige un Job en WIP"}), 400
+    tmov = str(b.get("tipo_mov") or "").strip().upper()
+    if tmov not in cfg["tipos"]: return jsonify({"error": "Elige el tipo de movimiento: " + " / ".join(cfg["tipos"])}), 400
+    est = str(b.get("estatus") or LOG_ESTATUS[0]).strip().upper()
+    if est not in LOG_ESTATUS: return jsonify({"error": "Estatus inválido"}), 400
+    try:
+        fe = _log_fecha(b.get("fecha_estimada"))
+        extra = {k: (_log_fecha(b.get(k)) if k.startswith("fecha") else str(b.get(k) or "").strip()) for k in cfg["campos"]}
+    except ValueError as e: return jsonify({"error": str(e)}), 400
+    ahora = datetime.datetime.now().isoformat(timespec="seconds"); u = session.get("user", "")
+    with lock:
+        lid = _folio_libre(cfg["prefijo"], {x.get("lid") for x in log_load(tipo)}, width=6)
+        rec = {"lid": lid, "tipo": tipo, "job": job, "pm": _log_pm_de_job(job), "tipo_mov": tmov, "estatus": est, "fecha_estimada": fe, **extra,
+               "evidencias": [], "historial_fechas": ([{"fecha": ahora, "por": u, "anterior": None, "nueva": fe, "motivo": "alta"}] if fe else []),
+               "historial": [{"fecha": ahora, "por": u, "accion": "alta", "estatus": est}], "creado": ahora, "creado_por": u}
+        if est == "ENTREGADO": rec["fecha_entrega_real"] = ahora[:10]
+        log_save_one(rec)
+    return jsonify({"ok": True, "record": rec})
+
+@app.route("/api/logistica/<tipo>/<lid>", methods=["PUT"])
+def api_log_editar(tipo, lid):
+    cfg, err = _log_tipo_ok(tipo)
+    if err: return err
+    if not (can("create", cfg["modulo"]) or is_admin()): return jsonify({"error": "Sin permiso"}), 403
+    b = request.json or {}
+    ahora = datetime.datetime.now().isoformat(timespec="seconds"); u = session.get("user", "")
+    with lock:
+        rec = next((x for x in log_load(tipo) if x.get("lid") == lid.upper()), None)
+        if not rec: return jsonify({"error": "Movimiento no encontrado"}), 404
+        cambios = []
+        if "job" in b:
+            job = str(b.get("job") or "").strip().upper()
+            if not job or not _log_job_wip(job): return jsonify({"error": "Elige un Job en WIP"}), 400
+            if job != rec.get("job"): cambios.append(f"Job {rec.get('job')} → {job}"); rec["job"] = job; rec["pm"] = _log_pm_de_job(job)
+        if "tipo_mov" in b:
+            t = str(b["tipo_mov"] or "").strip().upper()
+            if t not in cfg["tipos"]: return jsonify({"error": "Tipo de movimiento inválido"}), 400
+            if t != rec.get("tipo_mov"): cambios.append(f"Tipo {rec.get('tipo_mov')} → {t}"); rec["tipo_mov"] = t
+        if "estatus" in b:
+            e = str(b["estatus"] or "").strip().upper()
+            if e not in LOG_ESTATUS: return jsonify({"error": "Estatus inválido"}), 400
+            if e != rec.get("estatus"):
+                cambios.append(f"Estatus {rec.get('estatus')} → {e}"); rec["estatus"] = e
+                if e == "ENTREGADO" and not rec.get("fecha_entrega_real"): rec["fecha_entrega_real"] = ahora[:10]
+        try:
+            if "fecha_estimada" in b:
+                fe = _log_fecha(b.get("fecha_estimada"))
+                if fe != (rec.get("fecha_estimada") or ""):
+                    rec.setdefault("historial_fechas", []).append({"fecha": ahora, "por": u, "anterior": rec.get("fecha_estimada") or None, "nueva": fe or None,
+                                                                   "motivo": str(b.get("motivo_cambio_fecha") or "").strip()[:200]})
+                    cambios.append(f"Fecha estimada {rec.get('fecha_estimada') or '—'} → {fe or '—'}"); rec["fecha_estimada"] = fe
+            for k in cfg["campos"]:
+                if k in b:
+                    v = _log_fecha(b.get(k)) if k.startswith("fecha") else str(b.get(k) or "").strip()
+                    if v != (rec.get(k) or ""): cambios.append(k); rec[k] = v
+        except ValueError as e: return jsonify({"error": str(e)}), 400
+        if cambios:
+            rec.setdefault("historial", []).append({"fecha": ahora, "por": u, "accion": "edición", "cambios": cambios})
+            rec["modificado"] = ahora; rec["modificado_por"] = u
+            log_save_one(rec)
+    return jsonify({"ok": True, "record": rec, "cambios": cambios})
+
+@app.route("/api/logistica/<tipo>/<lid>/evidencia", methods=["POST"])
+def api_log_evidencia(tipo, lid):
+    cfg, err = _log_tipo_ok(tipo)
+    if err: return err
+    if not (can("create", cfg["modulo"]) or is_admin()): return jsonify({"error": "Sin permiso"}), 403
+    files = request.files.getlist("files") or ([request.files["file"]] if "file" in request.files else [])
+    if not files: return jsonify({"error": "Selecciona un archivo o fotografía"}), 400
+    with lock:
+        rec = next((x for x in log_load(tipo) if x.get("lid") == lid.upper()), None)
+        if not rec: return jsonify({"error": "Movimiento no encontrado"}), 404
+        d = LOG_DIR / rec["lid"]; d.mkdir(parents=True, exist_ok=True)
+        nuevos = []
+        for f in files:
+            nombre = secure_filename(f.filename or "evidencia") or "evidencia"
+            base, ext = _os.path.splitext(nombre); k = 1
+            while (d / nombre).exists(): nombre = f"{base}_{k}{ext}"; k += 1
+            f.save(str(d / nombre))
+            nuevos.append({"archivo": nombre, "subido": datetime.datetime.now().isoformat(timespec="seconds"), "por": session.get("user", ""),
+                           "bytes": (d / nombre).stat().st_size})
+        rec.setdefault("evidencias", []).extend(nuevos)
+        rec.setdefault("historial", []).append({"fecha": datetime.datetime.now().isoformat(timespec="seconds"), "por": session.get("user", ""),
+                                                "accion": "prueba de entrega", "cambios": [x["archivo"] for x in nuevos]})
+        log_save_one(rec)
+    return jsonify({"ok": True, "evidencias": rec["evidencias"]})
+
+@app.route("/api/logistica/<tipo>/<lid>/evidencia/<path:archivo>", methods=["GET"])
+def api_log_evidencia_get(tipo, lid, archivo):
+    cfg, err = _log_tipo_ok(tipo)
+    if err: return err
+    if not (can("view", cfg["modulo"]) or is_admin()): return jsonify({"error": "Sin permiso"}), 403
+    p_ = (LOG_DIR / lid.upper() / secure_filename(archivo))
+    if not p_.exists(): return jsonify({"error": "Archivo no encontrado"}), 404
+    return send_file(str(p_), as_attachment=request.args.get("descargar") == "1", download_name=p_.name)
+
+@app.route("/api/logistica/<tipo>/<lid>/evidencia/<path:archivo>", methods=["DELETE"])
+def api_log_evidencia_del(tipo, lid, archivo):
+    cfg, err = _log_tipo_ok(tipo)
+    if err: return err
+    if not (can("delete", cfg["modulo"]) or is_admin()): return jsonify({"error": "Sin permiso"}), 403
+    with lock:
+        rec = next((x for x in log_load(tipo) if x.get("lid") == lid.upper()), None)
+        if not rec: return jsonify({"error": "Movimiento no encontrado"}), 404
+        nombre = secure_filename(archivo)
+        rec["evidencias"] = [x for x in rec.get("evidencias") or [] if x.get("archivo") != nombre]
+        try: (LOG_DIR / rec["lid"] / nombre).unlink()
+        except Exception: pass
+        rec.setdefault("historial", []).append({"fecha": datetime.datetime.now().isoformat(timespec="seconds"), "por": session.get("user", ""),
+                                                "accion": "evidencia eliminada", "cambios": [nombre]})
+        log_save_one(rec)
+    return jsonify({"ok": True})
 
 if __name__ == "__main__":
     print("=" * 60)

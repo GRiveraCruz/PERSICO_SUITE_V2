@@ -220,6 +220,13 @@ class KpiSnapshot(Base, JSONBMixin):
     clave = Column(String, unique=True, index=True)
 
 
+class LogisticaMov(Base, JSONBMixin):
+    """rev159: movimientos logísticos (Importaciones/Exportaciones y Paquetería)."""
+    __tablename__ = "logistica_mov"
+    lid  = Column(String, unique=True, index=True)
+    tipo = Column(String, index=True)      # impexp | paqueteria
+
+
 class PiezaClienteMov(Base, JSONBMixin):
     """rev153: movimientos de piezas de cliente (entrada, salida, reingreso, devolución, scrap)."""
     __tablename__ = "piezas_cliente_mov"
