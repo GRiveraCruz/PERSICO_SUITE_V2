@@ -4018,6 +4018,7 @@ function whEffectiveRate(r){
 }
 
 async function loadWH(){
+  try{ if(typeof isAdmin!=="undefined" ? isAdmin : (USER_PERMS&&USER_PERMS.is_admin)) whWcLista(); }catch(e){}   // rev173
   document.getElementById('wh-tb').innerHTML='<tr><td colspan="7"><div class="es"><div class="spinner"></div></div></td></tr>';
   try{
     const ping=await(await fetch('/api/ping')).json();
@@ -4143,7 +4144,12 @@ function whRender(){
       <td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)">${r.id||''}</td>
       <td style="font-weight:500;color:var(--text);max-width:190px;overflow:hidden;text-overflow:ellipsis">${esc(r.employee)}</td>
       <td style="color:var(--muted2);font-family:'DM Mono',monospace;font-size:11px">${r.date_worked||'—'}</td>
-      <td><span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--amber);font-weight:600">${esc(r.work_code||'—')}</span></td>
+      <td>${isAdmin
+        ? `<input class="wh-wc" list="wh-wc-list" value="${esc(r.work_code||'')}" data-orig="${esc(r.work_code||'')}" title="Editar Work Code (solo administrador)${(r.reasignaciones||[]).length?' · cambios: '+(r.reasignaciones||[]).map(x=>esc((x.de||'—')+'→'+x.a+' ('+(x.usuario||'')+')')).join(', '):''}"
+             onchange="whEditarWorkCode(${r.id}, this)" onkeydown="if(event.key==='Escape'){this.value=this.dataset.orig;this.blur()}"
+             style="width:120px;font-family:'DM Mono',monospace;font-size:11px;color:var(--amber);font-weight:600;background:transparent;border:1px solid transparent;border-radius:4px;padding:3px 5px;text-transform:uppercase"
+             onfocus="this.style.borderColor='var(--border)';this.style.background='var(--inp)'" onblur="this.style.borderColor='transparent';this.style.background='transparent'">`
+        : `<span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--amber);font-weight:600">${esc(r.work_code||'—')}</span>`}</td>
       <td style="text-align:right;font-family:'DM Mono',monospace;font-size:13px;font-weight:600;color:${whHrColor(r.hours||0)}">${(r.hours||0).toFixed(1)}</td>
       <td style="text-align:right;font-family:'DM Mono',monospace;font-size:12px;color:${isFixed?'var(--blue)':(hasRate?'var(--green)':'var(--muted)')}" title="${isFixed?'Costo fijo desde Sueldos y Salarios: $'+rate.toFixed(2)+'/hr USD'+(r.cost_per_hour_mxn?' ($'+r.cost_per_hour_mxn.toFixed(2)+'/hr MXN, TC $'+(r.tipo_cambio||0).toFixed(4)+')':''):(hasRate?'$'+rate.toFixed(2)+'/hr':'Sin tarifa en Hourly Rates')}">
         ${hasRate?(isFixed?'🔒 ':'')+'$'+cost.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):'<span style="font-size:10px;opacity:.5">N/T</span>'}
@@ -21786,4 +21792,27 @@ function cfdiCobroHTML(r){                                                      
   if(r.tipo!=='I' || !r.pago) return '';
   const p = r.pago, col = {'Saldada':'#15803d','Pagada (PUE)':'#15803d','Pago parcial':'#b45309','Pendiente de pago':'#1d4ed8','Cancelada':'#94a3b8'}[p.estado]||'inherit';
   return `<span style="font-weight:700;color:${col}">${p.estado==='Saldada'?'✓ ':''}${esc(p.estado)}</span>${p.estado!=='Cancelada'&&p.estado!=='Pagada (PUE)'?`<div style="font-size:10.5px;color:var(--muted2)">pagado ${ifFmt(p.pagado)} · saldo ${ifFmt(p.saldo)}</div>`:''}`;
+}
+
+// ── rev173: editar el Work Code de un registro (solo administrador) ──
+async function whWcLista(){
+  if(document.getElementById('wh-wc-list')) return;
+  const dl = document.createElement('datalist'); dl.id = 'wh-wc-list'; document.body.appendChild(dl);
+  try{
+    const jobs = await fetch('/api/jobs').then(r=>r.json()); const L = Array.isArray(jobs)?jobs:(jobs.records||jobs.jobs||[]);
+    let cc = []; try{ cc = ((await fetch('/api/centros-costo').then(r=>r.json())).records||[]).filter(c=>c.activo!==false); }catch(e){}
+    dl.innerHTML = ['<option value="ADMINISTRACION">'] .concat(L.filter(j=>['WIP','OPEN'].includes(String(j.status||'').toUpperCase())).map(j=>`<option value="${esc(j.job_number)}">${esc(j.customer||'')}</option>`))
+      .concat(cc.map(c=>`<option value="${esc(c.cid)}">${esc(c.nombre)}</option>`)).join('');
+  }catch(e){}
+}
+async function whEditarWorkCode(id, inp){
+  const nuevo = (inp.value||'').trim().toUpperCase(), antes = inp.dataset.orig||'';
+  if(!nuevo || nuevo===antes.toUpperCase()){ inp.value = antes; return; }
+  if(!confirm(`¿Cambiar el Work Code de ${antes||'—'} a ${nuevo}? El costo del registro pasará a ${nuevo}.`)){ inp.value = antes; return; }
+  let d = await apiCall('PUT', `/wh/${whActiveYear}/${id}/work-code`, {work_code: nuevo});
+  if(d.error && d.no_existe && confirm(d.error + '\n\n¿Guardarlo de todos modos?')) d = await apiCall('PUT', `/wh/${whActiveYear}/${id}/work-code`, {work_code: nuevo, forzar: true});
+  if(d.error){ toast(d.error,'er'); inp.value = antes; return; }
+  inp.value = d.work_code; inp.dataset.orig = d.work_code;
+  const rec = (whRecords||[]).find(x=>x.id===id); if(rec) rec.work_code = d.work_code;
+  toast(d.sin_cambios ? 'Sin cambios' : `Work Code actualizado: ${antes||'—'} → ${d.work_code}`,'ok');
 }

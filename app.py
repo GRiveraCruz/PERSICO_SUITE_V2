@@ -12618,6 +12618,50 @@ def api_clear_wh():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+_WH_CODIGOS_FIJOS = {"ADMINISTRACION", "ADMIN", "ADMINISTRATIVO"}
+@app.route("/api/wh/<int:year>/<int:record_id>/work-code", methods=["PUT"])
+def api_wh_editar_work_code(year, record_id):
+    """rev173: edita el Work Code de UN registro de Work Hours. Solo administradores.
+    Acepta Jobs existentes, ADMINISTRACION/ADMIN y centros de costo activos; deja bitácora en el registro."""
+    if not is_admin(): return jsonify({"error": "Sin permiso — solo administradores pueden editar el Work Code"}), 403
+    d = request.json or {}
+    nuevo = re.sub(r"\s+", "", str(d.get("work_code") or "")).upper()
+    if not nuevo: return jsonify({"error": "Escribe el Work Code"}), 400
+    jobs = {_wh_job_norm(j.get("job_number")): j.get("job_number") for j in scan_jobs()}
+    try: ccs = cc_ids_activos()
+    except Exception: ccs = set()
+    if nuevo in jobs: nuevo_txt = jobs[nuevo]
+    elif nuevo in _WH_CODIGOS_FIJOS or nuevo in ccs: nuevo_txt = nuevo
+    elif d.get("forzar"): nuevo_txt = nuevo
+    else: return jsonify({"error": f"«{nuevo}» no es un Job, ADMINISTRACION ni un centro de costo activo.", "no_existe": True}), 400
+    user, ahora = session.get("user", ""), datetime.datetime.now().isoformat(timespec="seconds")
+    def aplicar(data):
+        if _wh_job_norm(data.get("work_code")) == _wh_job_norm(nuevo_txt): return False
+        data.setdefault("reasignaciones", []).append({"de": data.get("work_code"), "a": nuevo_txt, "fecha": ahora, "usuario": user, "origen": "edición individual"})
+        data["work_code"] = nuevo_txt; return True
+    if _orm and _orm.DB_ENABLED:
+        s_ = _sesion_propia()
+        try:
+            _orm.acquire_year_lock(s_, "work_hours", year)
+            r = s_.query(_orm.WorkHour).filter(_orm.WorkHour.year == year, _orm.WorkHour.source_id == record_id).one_or_none()
+            if not r: return jsonify({"error": "Registro no encontrado"}), 404
+            data = dict(r.data or {}); antes = data.get("work_code")
+            if not aplicar(data): return jsonify({"ok": True, "sin_cambios": True, "work_code": nuevo_txt})
+            r.data = data; r.job = nuevo_txt; _orm_flag_modified(r, "data"); s_.commit()
+        except Exception as e:
+            s_.rollback(); return jsonify({"error": f"No se guardó: {e}"}), 500
+        finally: s_.close()
+    else:
+        with lock:
+            recs = wh_load(year)
+            r = next((x for x in recs if x.get("id") == record_id), None)
+            if not r: return jsonify({"error": "Registro no encontrado"}), 404
+            antes = r.get("work_code")
+            if not aplicar(r): return jsonify({"ok": True, "sin_cambios": True, "work_code": nuevo_txt})
+            wh_save(year, recs)
+    print(f"[wh] {year}/{record_id}: Work Code {antes} → {nuevo_txt} por {user}")
+    return jsonify({"ok": True, "work_code": nuevo_txt, "antes": antes})
+
 @app.route("/api/wh/<int:year>/<int:record_id>", methods=["DELETE"])
 def api_delete_wh_record(year, record_id):
     """Elimina un solo registro de Work Hours. Solo administradores."""
