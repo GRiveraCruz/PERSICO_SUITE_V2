@@ -1,0 +1,166 @@
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+from typing import Any, Optional, Type, TypeVar, get_args, get_origin
+from urllib.parse import urlencode
+import certifi
+from pydantic import BaseModel
+import requests
+from fiscalapi.models.common_models import ApiResponse, FiscalApiSettings, PagedListFilters, ValidationFailure
+
+T = TypeVar('T')
+
+# Header que el integrador usa para reintentar una petición sin duplicarla (crear factura, timbres y tickets).
+IDEMPOTENCY_KEY_HEADER = "Idempotency-Key"
+
+
+class BaseService:
+    def __init__(self, settings: FiscalApiSettings):
+        self.settings = settings
+        self.api_version = settings.api_version
+        self.base_url = settings.api_url
+        self.api_key = settings.api_key
+        self.debug = settings.debug
+
+    def _get_headers(self) -> dict[str, str]:
+        return {
+            "Content-Type": "application/json",
+            "X-TENANT-KEY": self.settings.tenant,
+            "X-API-KEY": self.settings.api_key,
+            "X-TIME-ZONE": self.settings.time_zone,
+        }
+
+    def _request(self, method: str, endpoint: str, **kwargs: Any) -> requests.Response:
+        url = f"{self.base_url}/api/{self.api_version}/{endpoint}"
+        headers = self._get_headers()
+
+        if "headers" in kwargs:
+            headers.update(kwargs.pop("headers"))
+
+        if self.settings.debug:
+            print("***Payload Request:", kwargs.get("json"))
+
+        # Disable SSL verification for localhost (development only)
+        if "localhost" in url or "127.0.0.1" in url:
+            kwargs["verify"] = False
+        else:
+            kwargs["verify"] = certifi.where()
+
+        # Send request
+        response = requests.request(method=method, url=url, headers=headers, **kwargs)
+        
+        # print payload response
+        if self.settings.debug:
+            print("***Payload Response:", response.text)
+
+        return response
+
+    def _process_response(self, response: requests.Response, response_model: Type[T]) -> ApiResponse[T]:
+        status_code = response.status_code
+        raw_content = response.text
+
+        try:
+            response_data = response.json()
+        except ValueError:
+            return ApiResponse[T](
+                succeeded=False,
+                http_status_code=status_code,
+                message="Error processing server response",
+                details=raw_content,
+                data=None
+            )
+
+        if 200 <= status_code < 300:
+            # Una respuesta 2xx sin "data" es válida (por ejemplo un 204): no debe romper el SDK.
+            data = response_data.get("data")
+            # -- Manejo de data con modelos pydantic o lista de modelos pydantic
+            origin = get_origin(response_model)
+            if origin is list:
+                # Significa que es algo como list[TaxFile]
+                (model_type,) = get_args(response_model)
+                # Validar cada elemento de la lista si data es una lista
+                if isinstance(model_type, type) and issubclass(model_type, BaseModel) and isinstance(data, list):
+                    response_data["data"] = [
+                        model_type.model_validate(item)
+                        for item in data
+                    ]
+            else:
+                # Manejo de caso donde response_model es un modelo Pydantic "simple"
+                if (
+                    isinstance(response_model, type)
+                    and issubclass(response_model, BaseModel)
+                    and isinstance(data, dict)
+                ):
+                    response_data["data"] = response_model.model_validate(data)
+
+            # Finalmente se parsea la respuesta como ApiResponse[T]
+            return ApiResponse[T].model_validate(response_data)
+
+        # -- Manejo de respuestas de error --
+        try:
+            generic_error = ApiResponse[object].model_validate(response_data)
+        except Exception:
+            return ApiResponse[T](
+                succeeded=False,
+                http_status_code=status_code,
+                message="Error processing server error response",
+                details=raw_content,
+                data=None
+            )
+
+        if status_code == 400 and isinstance(response_data.get("data"), list):
+            try:
+                failures = [ValidationFailure.model_validate(item) for item in response_data["data"]]
+                if failures:
+                    details_str = "; ".join(f"{f.property_name}: {f.error_message}" for f in failures)
+                    return ApiResponse[T](
+                        succeeded=False,
+                        http_status_code=status_code,
+                        message=generic_error.message,
+                        details=details_str,
+                        trace_identifier=generic_error.trace_identifier,
+                        error_data=response_data.get("data"),
+                        data=None
+                    )
+            except Exception:
+                pass
+
+        return ApiResponse[T](
+            succeeded=False,
+            http_status_code=status_code,
+            message=generic_error.message or f"HTTP Error {status_code}",
+            details=generic_error.details or raw_content,
+            trace_identifier=generic_error.trace_identifier,
+            error_data=response_data.get("data"),
+            data=None
+        )
+
+    @staticmethod
+    def _list_endpoint(
+        resource: str,
+        page_number: Optional[int],
+        page_size: Optional[int],
+        filters: Optional[PagedListFilters],
+    ) -> str:
+        """Endpoint de ``get_list``: la página o los filtros asignados en la query string; sin ninguno, solo el recurso.
+
+        Raises:
+            ValueError: Si se pasan ``filters`` junto con ``page_number`` o ``page_size``.
+        """
+        if filters is None:
+            filters = PagedListFilters(page_number=page_number, page_size=page_size)
+        elif page_number is not None or page_size is not None:
+            raise ValueError("Con filters, la página va en filters.page_number y filters.page_size.")
+
+        params = filters.to_query_params()
+        return f"{resource}?{urlencode(params)}" if params else resource
+
+    def send_request(self, method: str, endpoint: str, response_model: Type[T], details: bool = False, **kwargs: Any) -> ApiResponse[T]:
+        if details:
+            endpoint += "?details=true"
+
+        payload = kwargs.pop("payload", None)
+        if payload is not None and isinstance(payload, BaseModel):
+            kwargs["json"] = payload.model_dump(mode="json", by_alias=True, exclude_none=True)
+
+        response = self._request(method, endpoint, **kwargs)
+        return self._process_response(response, response_model)

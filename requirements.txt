@@ -9,3 +9,5 @@ sqlalchemy>=2.0,<2.1   # 2.1 cambió el conector predeterminado de PostgreSQL (p
 flask-migrate
 alembic
 # xlrd==1.2.0   # opcional — acelera lectura de archivos .xls del Banco de México
+pydantic>=2.5,<3
+tzdata

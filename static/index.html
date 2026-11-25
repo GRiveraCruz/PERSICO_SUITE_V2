@@ -566,6 +566,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
         <button onclick="switchMenu('fin-cashflow','ng-finanzas')">Cash Flow Forecast</button>
         <button onclick="switchMenu('fin-esquemas','ng-finanzas')">Esquemas Tributarios</button>
         <button onclick="switchMenu('fin-datos-fiscales','ng-finanzas')">Datos fiscales</button>
+        <button onclick="switchMenu('fin-cfdi','ng-finanzas')">Facturación electrónica</button>
       </div>
     </div>
     <!-- RECURSOS HUMANOS -->
@@ -6209,6 +6210,47 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
   </div>
 </div>
 
+<!-- ══ MODULE: Facturación electrónica (rev160) ══ -->
+<div class="module" id="mod-fin-cfdi">
+  <div class="main-content" style="overflow-y:auto">
+    <div class="bar-top"><h1>🧾 Facturación electrónica</h1>
+      <div style="display:flex;gap:4px;margin-left:14px">
+        <button class="btn-reload" id="cfdi-t-emitidos" onclick="cfdiTab('emitidos')">CFDI emitidos</button>
+        <button class="btn-reload" id="cfdi-t-clientes" onclick="cfdiTab('clientes')">Clientes fiscales</button>
+        <button class="btn-reload" id="cfdi-t-config" onclick="cfdiTab('config')">Configuración</button>
+        <button class="btn-reload" id="cfdi-t-diag" onclick="cfdiTab('diag')">Diagnóstico</button></div>
+      <span id="cfdi-env" style="margin-left:auto;font-size:11px"></span></div>
+    <div style="padding:14px 18px">
+      <div id="cfdi-pane-emitidos">
+        <div style="display:flex;gap:8px;margin-bottom:8px"><input id="cfdi-q" placeholder="Buscar UUID, folio, cliente, Job…" oninput="cfdiRenderEmitidos()" style="font-size:12px;padding:6px 10px;min-width:260px">
+          <select id="cfdi-ftipo" onchange="cfdiRenderEmitidos()" style="font-size:12px"><option value="">Todos</option><option value="I">Ingreso</option><option value="P">Complemento de pago</option><option value="E">Nota de crédito</option></select>
+          <select id="cfdi-fcobro" onchange="cfdiRenderEmitidos()" style="font-size:12px"><option value="">Cobro: todas</option><option value="pendiente">Por cobrar</option><option value="saldada">Saldadas</option></select>
+          <span style="font-size:11px;color:var(--muted2);align-self:center">Las facturas se timbran desde <b>Órdenes de cobro ▸ Facturar ▸ Timbrar CFDI</b>.</span></div>
+        <div style="overflow-x:auto"><table class="tbl" style="width:100%"><thead><tr><th>Tipo</th><th>Serie/Folio</th><th>UUID</th><th>Fecha</th><th>Cliente</th><th>Job</th><th style="text-align:right">Total</th><th>Método</th><th>Estatus</th><th>Cobro</th><th>Acciones</th></tr></thead><tbody id="cfdi-tb"></tbody></table></div>
+      </div>
+      <div id="cfdi-pane-clientes" style="display:none">
+        <div style="font-size:12px;color:var(--muted2);margin-bottom:8px">Datos fiscales de cada cliente <b>tal como aparece en las CPO</b>. Para extranjeros se usa el RFC genérico XEXX010101000, su país (c_Pais) y su Tax ID; el domicilio se usa en el Complemento de Comercio Exterior.</div>
+        <button class="btn btn-p" onclick="cfdiCliForm(null)" style="margin-bottom:8px">＋ Cliente fiscal</button>
+        <div style="overflow-x:auto"><table class="tbl" style="width:100%"><thead><tr><th>Cliente (ERP)</th><th>RFC</th><th>Razón social</th><th>Régimen</th><th>CP</th><th>Uso CFDI</th><th>País / Tax ID</th><th>Correo</th><th></th></tr></thead><tbody id="cfdi-cli-tb"></tbody></table></div>
+      </div>
+      <div id="cfdi-pane-config" style="display:none"><div id="cfdi-config-box"></div></div>
+      <div id="cfdi-pane-diag" style="display:none">
+        <div style="font-size:12px;color:var(--muted2);margin-bottom:8px">Últimas solicitudes a FiscalAPI: JSON enviado y respuesta recibida. Las llaves, certificados (CSD) y contraseñas <b>no se registran</b>. Útil para revisar un rechazo o enviarlo a soporte de FiscalAPI (incluye la referencia de la petición).</div>
+        <button class="btn-reload" onclick="cfdiDiagCargar()" style="margin-bottom:8px">Recargar</button>
+        <div id="cfdi-diag-box"></div></div>
+    </div>
+  </div>
+</div>
+<div class="mo" id="mo-cfdi-cli" style="z-index:160"><div class="md" style="max-width:720px;width:calc(100% - 32px)">
+  <div class="mh"><h2>Cliente fiscal</h2><button class="px" onclick="closeMo('mo-cfdi-cli')">Cerrar</button></div>
+  <div class="mb2" id="cfdi-cli-form"></div></div></div>
+<div class="mo" id="mo-cfdi-emitir" style="z-index:170"><div class="md" style="max-width:1100px;width:calc(100% - 24px)">
+  <div class="mh"><h2>🧾 Timbrar CFDI de ingreso · <span id="cfe-oid"></span></h2><button class="px" onclick="closeMo('mo-cfdi-emitir')">Cerrar</button></div>
+  <div class="mb2" id="cfe-body"></div></div></div>
+<div class="mo" id="mo-cfdi-accion" style="z-index:170"><div class="md" style="max-width:560px;width:calc(100% - 24px)">
+  <div class="mh"><h2 id="cfa-tit"></h2><button class="px" onclick="closeMo('mo-cfdi-accion')">Cerrar</button></div>
+  <div class="mb2" id="cfa-body"></div></div></div>
+
 <!-- ══ MODULE: Income Forecast (rev122) ══ -->
 <div class="module" id="mod-mgmt-income-forecast">
   <div class="main-content" style="overflow-y:auto">
@@ -6285,7 +6327,10 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
     <div class="mh"><h2>🧾 Facturar orden · <span id="ocf-oid"></span></h2><button class="px" onclick="closeMo('mo-oc-facturar')">Cerrar</button></div>
     <div class="mb2">
       <div id="ocf-resumen" style="font-size:12.5px;margin-bottom:14px;padding:10px 12px;background:rgba(0,0,0,.03);border-radius:8px"></div>
-      <div id="ocf-paso1" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div id="ocf-paso1" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+        <button type="button" onclick="cfdiEmitirDesdeOrden(_ocFac.oid)" style="text-align:left;border:1.5px solid var(--red);border-radius:10px;padding:16px;background:var(--card,#fff);cursor:pointer">
+          <div style="font-size:15px;font-weight:700">🧾 Timbrar CFDI</div>
+          <div style="font-size:12px;color:var(--muted2);margin-top:4px">Genera la factura electrónica con FiscalAPI (con Comercio Exterior si aplica) y la registra en CPC automáticamente.</div></button>
         <button type="button" onclick="ocFacNueva()" style="text-align:left;border:1.5px solid var(--border);border-radius:10px;padding:16px;background:var(--card,#fff);cursor:pointer">
           <div style="font-size:15px;font-weight:700">➕ Registrar factura nueva</div>
           <div style="font-size:12px;color:var(--muted2);margin-top:4px">Abre CPC ▸ Nueva factura con los datos de la orden (carga el XML o captura serie/folio).</div></button>
@@ -6317,6 +6362,9 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
         <div class="sl" style="margin-top:0">Empresa</div>
         <div class="fr"><div class="fi"><label>Razón social *</label><input id="df-razon_social" placeholder="PERSICO AUTOMOTIVE DE MEXICO, S.A. DE C.V." ></div><div class="fi"><label>Nombre comercial</label><input id="df-nombre_comercial" placeholder="" ></div></div>
         <div class="fr"><div class="fi"><label>RFC</label><input id="df-rfc" placeholder="12 caracteres (persona moral)" maxlength="13" style="text-transform:uppercase;font-family:DM Mono,monospace"></div><div class="fi"><label>Régimen fiscal</label><input id="df-regimen_fiscal" placeholder="ej. 601 - General de Ley Personas Morales" ></div></div>
+        <div class="fr"><div class="fi"><label>Razón social para el CFDI (exacta, como en la Constancia, sin régimen de capital)</label><input id="df-razon_social_sat" placeholder="ej. PERSICO AUTOMOTIVE DE MEXICO" style="text-transform:uppercase"></div><div class="fi"><label>Régimen de capital (Constancia)</label><input id="df-regimen_capital" placeholder="SOCIEDAD ANONIMA DE CAPITAL VARIABLE" style="text-transform:uppercase"></div></div>
+        <div style="margin:2px 0 10px"><label class="btn-reload" style="display:inline-flex;gap:6px;align-items:center;cursor:pointer;font-size:12px">📄 Leer Constancia de Situación Fiscal (PDF)<input type="file" accept=".pdf" style="display:none" onchange="dfLeerCsf(this)"></label>
+          <span style="font-size:11px;color:var(--muted2)">Llena RFC, razón social, régimen, código postal y domicilio con los datos del SAT. Revisa y presiona Guardar.</span></div>
         <div class="sl">Domicilio fiscal</div>
         <div class="fr"><div class="fi"><label>Calle</label><input id="df-calle" placeholder="" ></div><div class="fi"><label>No. exterior</label><input id="df-num_ext" placeholder="" ></div><div class="fi"><label>No. interior</label><input id="df-num_int" placeholder="" ></div></div>
         <div class="fr"><div class="fi"><label>Colonia / parque</label><input id="df-colonia" placeholder="" ></div><div class="fi"><label>Municipio / ciudad</label><input id="df-municipio" placeholder="" ></div></div>
