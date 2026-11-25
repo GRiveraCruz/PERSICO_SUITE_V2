@@ -496,6 +496,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
             <button onclick="switchMenu('cat-electrico','ng-compras')">Eléctrico</button>
             <button onclick="switchMenu('cat-mecanico','ng-compras')">Mecánico</button>
             <button onclick="switchMenu('cat-servicios','ng-compras')">Servicio</button>
+            <button onclick="switchMenu('cat-consumibles','ng-compras')">Consumibles</button>
           </div>
         </div>
         <button onclick="switchMenu('proveedores','ng-compras')">Proveedores</button>
@@ -4512,6 +4513,51 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
   </div>
 </div>
 
+<div class="module" id="mod-cat-consumibles">
+  <aside class="sidebar">
+    <div class="sb-head">
+      <div class="mod-title">Catálogo de Consumibles</div>
+      <div class="mod-sub">Materiales · Precios</div>
+      <div class="bar"></div>
+    </div>
+    <div class="sb-flt">
+      <div class="fg"><label>Buscar</label>
+        <div class="sw"><span class="si">⌕</span>
+          <input type="text" id="cat-consumibles-gs" placeholder="Marca, No. Parte, descripción…" oninput="catRender('consumibles')">
+        </div>
+      </div>
+    </div>
+    <div class="sb-btns">
+      <button class="btn-new" onclick="catOpenNew('consumibles')">+ Nuevo Item</button>
+      <button class="btn-sec" onclick="catOpenImport('consumibles')">Importar Excel</button>
+    </div>
+  </aside>
+  <div class="main-content">
+    <div class="bar-top">
+      <h1>🧴 Catálogo de Consumibles</h1>
+      <button class="btn-reload" onclick="loadCatalogo('consumibles')">Recargar</button>
+      <div style="display:flex;gap:4px">
+        <a class="btn-reload" style="text-decoration:none;font-size:10px" href="#" onclick="dlBackup('catalogo_consumibles','xlsx');return false">Excel</a>
+        <a class="btn-reload" style="text-decoration:none;font-size:10px" href="#" onclick="dlBackup('catalogo_consumibles','csv');return false">CSV</a>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted)">
+        <div class="conn-dot" id="cat-consumibles-dot"></div><span id="cat-consumibles-lbl">—</span>
+      </div>
+    </div>
+    <div style="overflow-x:auto;flex:1">
+      <table class="tbl tbl-cat">
+        <thead><tr>
+          <th>Código</th><th>Marca</th><th>No. Parte</th><th>Descripción</th>
+          <th>Etiqueta (QR/Cód. Barras)</th>
+          <th style="text-align:right">Último Precio</th>
+        </tr></thead>
+        <tbody id="cat-consumibles-tb"></tbody>
+      </table>
+    </div>
+    <div class="bar-bot"><span id="cat-consumibles-count" style="font-size:11px;color:var(--muted)">—</span></div>
+  </div>
+</div>
+
 <!-- ══════════════════════════════════════════════════
      MODULE: PROVEEDORES
 ══════════════════════════════════════════════════ -->
@@ -8051,6 +8097,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
             <option value="electrico">⚡ Eléctrico</option>
             <option value="mecanico">⚙ Mecánico</option>
             <option value="servicios">🔧 Servicio</option>
+            <option value="consumibles">🧴 Consumibles</option>
           </select>
         </div>
         <div id="gpo-item-results" style="display:none;max-height:140px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;margin-bottom:8px"></div>
@@ -8062,6 +8109,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
               <option value="electrico">⚡ Eléctrico</option>
               <option value="mecanico">⚙ Mecánico</option>
               <option value="servicios">🔧 Servicio</option>
+              <option value="consumibles">🧴 Consumibles</option>
               <option value="major">⭐ Major Item</option>
             </select>
           </div>

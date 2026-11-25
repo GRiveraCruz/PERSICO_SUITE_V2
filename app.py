@@ -10907,7 +10907,7 @@ MODULES = [
     # Ventas
     "cpo",
     # Compras — Catálogos
-    "cat-electrico", "cat-mecanico", "cat-servicios",
+    "cat-electrico", "cat-mecanico", "cat-servicios", "cat-consumibles",
     # Compras — Proveedores
     "proveedores",
     # Compras — Documentos
@@ -10960,6 +10960,7 @@ PROFILES = {
         "cat-electrico": LEVEL_FULL,
         "cat-mecanico": LEVEL_FULL,
         "cat-servicios": LEVEL_FULL,
+        "cat-consumibles": LEVEL_FULL,
         "proveedores": LEVEL_FULL,
         "gpo": LEVEL_FULL,
         "po": LEVEL_FULL,
@@ -11008,6 +11009,7 @@ PROFILES = {
         "cat-electrico": LEVEL_VIEW,
         "cat-mecanico": LEVEL_VIEW,
         "cat-servicios": LEVEL_VIEW,
+        "cat-consumibles": LEVEL_VIEW,
         "proveedores": LEVEL_VIEW,
         "gpo": LEVEL_VIEW,
         "po": LEVEL_VIEW,
@@ -11056,6 +11058,7 @@ PROFILES = {
         "cat-electrico": LEVEL_NONE,
         "cat-mecanico": LEVEL_NONE,
         "cat-servicios": LEVEL_NONE,
+        "cat-consumibles": LEVEL_NONE,
         "proveedores": LEVEL_FULL,
         "gpo": LEVEL_VIEW,
         "po": LEVEL_VIEW,
@@ -11104,6 +11107,7 @@ PROFILES = {
         "cat-electrico": LEVEL_NONE,
         "cat-mecanico": LEVEL_NONE,
         "cat-servicios": LEVEL_NONE,
+        "cat-consumibles": LEVEL_NONE,
         "proveedores": LEVEL_NONE,
         "gpo": LEVEL_NONE,
         "po": LEVEL_NONE,
@@ -11152,6 +11156,7 @@ PROFILES = {
         "cat-electrico": LEVEL_VIEW,
         "cat-mecanico": LEVEL_VIEW,
         "cat-servicios": LEVEL_VIEW,
+        "cat-consumibles": LEVEL_VIEW,
         "proveedores": LEVEL_VIEW,
         "gpo": LEVEL_VIEW,
         "po": LEVEL_VIEW,
@@ -11200,6 +11205,7 @@ PROFILES = {
         "cat-electrico": LEVEL_FULL,
         "cat-mecanico": LEVEL_FULL,
         "cat-servicios": LEVEL_FULL,
+        "cat-consumibles": LEVEL_FULL,
         "proveedores": LEVEL_FULL,
         "gpo": LEVEL_FULL,
         "po": LEVEL_FULL,
@@ -11248,6 +11254,7 @@ PROFILES = {
         "cat-electrico": LEVEL_FULL,
         "cat-mecanico": LEVEL_FULL,
         "cat-servicios": LEVEL_FULL,
+        "cat-consumibles": LEVEL_FULL,
         "proveedores": LEVEL_VIEW,
         "gpo": LEVEL_VIEW,
         "po": LEVEL_VIEW,
@@ -11296,6 +11303,7 @@ PROFILES = {
         "cat-electrico": LEVEL_VIEW,
         "cat-mecanico": LEVEL_VIEW,
         "cat-servicios": LEVEL_VIEW,
+        "cat-consumibles": LEVEL_VIEW,
         "proveedores": LEVEL_VIEW,
         "gpo": LEVEL_VIEW,
         "po": LEVEL_VIEW,
@@ -11344,6 +11352,7 @@ PROFILES = {
         "cat-electrico": LEVEL_FULL,
         "cat-mecanico": LEVEL_FULL,
         "cat-servicios": LEVEL_FULL,
+        "cat-consumibles": LEVEL_FULL,
         "proveedores": LEVEL_VIEW,
         "gpo": LEVEL_VIEW,
         "po": LEVEL_VIEW,
@@ -12919,8 +12928,8 @@ def _db_to_rows(name, year=None):
         if not data: return [], []
         headers = list(data[0].keys())
         return headers, [[str(r.get(h,"")) for h in headers] for r in data]
-    elif name in ("catalogo_electrico","catalogo_mecanico","catalogo_servicios"):
-        tipo_map = {"catalogo_electrico":"electrico","catalogo_mecanico":"mecanico","catalogo_servicios":"servicios"}
+    elif name in ("catalogo_electrico","catalogo_mecanico","catalogo_servicios","catalogo_consumibles"):
+        tipo_map = {"catalogo_electrico":"electrico","catalogo_mecanico":"mecanico","catalogo_servicios":"servicios","catalogo_consumibles":"consumibles"}
         data = cat_load(tipo_map[name])
         if not data: return [], []
         headers = list(data[0].keys())
@@ -12973,7 +12982,7 @@ def api_backup_all():
     except: year = CURRENT_YEAR
     import io as _io, zipfile as _zip
     buf = _io.BytesIO()
-    dbs = ["quotes","jobs","rates","wh","po","ivp","cpo","fx","pt","sv","stock","reassign","recovery","consignacion","consig-reassign","consig-recovery","proveedores","catalogo_electrico","catalogo_mecanico","catalogo_servicios"]
+    dbs = ["quotes","jobs","rates","wh","po","ivp","cpo","fx","pt","sv","stock","reassign","recovery","consignacion","consig-reassign","consig-recovery","proveedores","catalogo_electrico","catalogo_mecanico","catalogo_servicios","catalogo_consumibles"]
     with _zip.ZipFile(buf, "w", _zip.ZIP_DEFLATED) as zf:
         for name in dbs:
             try:
@@ -15961,6 +15970,7 @@ CAT_CONFIG = {
     "electrico":  {"file": "catalogo_electrico.json",  "prefix": "CE"},
     "mecanico":   {"file": "catalogo_mecanico.json",   "prefix": "CM"},
     "servicios":  {"file": "catalogo_servicios.json",  "prefix": "CS"},
+    "consumibles": {"file": "catalogo_consumibles.json", "prefix": "CN"},      # rev174
 }
 
 def cat_path(tipo):
@@ -16124,7 +16134,7 @@ def api_import_catalogo(tipo):
             for a in aliases:
                 if a.upper() in headers: return headers[a.upper()]
             return None
-        ci_code  = col("CE-CODE","CM-CODE","CS-CODE","CODE","CODIGO")
+        ci_code  = col("CE-CODE","CM-CODE","CS-CODE","CN-CODE","CODE","CODIGO")
         ci_brand = col("BRAND","MARCA","FABRICANTE")
         ci_pnum  = col("PART NUMBER","NUMERO DE PARTE","NO. PARTE")
         ci_desc  = col("DESCRIPTION","DESCRIPCION")
@@ -16141,10 +16151,11 @@ def api_import_catalogo(tipo):
                 if not pn or pn in ("NONE","","#N/A"): continue
                 code = str(row[ci_code]).strip().upper() if ci_code is not None and row[ci_code] else ""
                 if not code or code in existing_codes:
-                    code = cat_next_code(tipo)
-                    # update local counter manually for batch import
+                    # rev174: el consecutivo se calcula con los códigos ya asignados en ESTA importación
+                    # (antes se leía de lo guardado y varios renglones nuevos recibían el mismo código)
                     prefix = CAT_CONFIG[tipo]["prefix"]
-                    n = int(code.replace(prefix+"-","")) + 1
+                    nums = [int(c.split("-")[-1]) for c in existing_codes if str(c).startswith(prefix + "-") and str(c).split("-")[-1].isdigit()]
+                    code = f"{prefix}-{(max(nums) + 1) if nums else 1:05d}"
                 existing_codes.add(code)
                 try: price = float(row[ci_price]) if ci_price is not None and row[ci_price] else 0.0
                 except: price = 0.0
@@ -22602,6 +22613,7 @@ tbody tr:nth-child(even){{background:#f7f7f7}}td{{padding:6px 8px;border-bottom:
             "catalogo_electrico":   _os.path.join(_DATA, "catalogo_electrico.json"),
             "catalogo_mecanico":    _os.path.join(_DATA, "catalogo_mecanico.json"),
             "catalogo_servicios":   _os.path.join(_DATA, "catalogo_servicios.json"),
+            "catalogo_consumibles": _os.path.join(_DATA, "catalogo_consumibles.json"),
             "stock":            _os.path.join(_DATA, "stock.json"),
             "apartados":        _os.path.join(_DATA, "apartados.json"),
             "salidas":          _os.path.join(_DATA, "salidas.json"),

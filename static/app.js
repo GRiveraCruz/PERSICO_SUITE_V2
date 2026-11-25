@@ -6053,7 +6053,7 @@ const MODULE_LABELS = {
   // Ventas
   'cpo':'Customer POs',
   // Compras — Catálogos
-  'cat-electrico':'Catálogo Eléctrico', 'cat-mecanico':'Catálogo Mecánico', 'cat-servicios':'Catálogo Servicios',
+  'cat-electrico':'Catálogo Eléctrico', 'cat-mecanico':'Catálogo Mecánico', 'cat-servicios':'Catálogo Servicios', 'cat-consumibles':'Catálogo Consumibles',
   // Compras — Proveedores
   'proveedores':'Proveedores',
   // Compras — Documentos
@@ -6096,7 +6096,7 @@ const LEVEL_LABELS = {
 const MODULE_GROUPS = [
   { label: '📋 Proyectos',             mods: ['jobs','pt','sv','rates','quotes','costos-perfil'] },
   { label: '🤝 Ventas',               mods: ['cpo'] },
-  { label: '⚡ Catálogos',            mods: ['cat-electrico','cat-mecanico','cat-servicios'] },
+  { label: '⚡ Catálogos',            mods: ['cat-electrico','cat-mecanico','cat-servicios','cat-consumibles'] },
   { label: '🏭 Proveedores',          mods: ['proveedores'] },
   { label: '📄 Documentos de Compra', mods: ['compras-requisicion','gpo','po','ivp','reassign','consig-reassign','recovery'] },
   { label: '🏬 Almacenes',            mods: ['stock','consignacion','ingreso','apartados','manuf-stock','salida','piezas-cliente'] },
@@ -6339,6 +6339,7 @@ function applyPermsToDom(d) {
     'cat-electrico': ["switchMenu('cat-electrico'"],
     'cat-mecanico':  ["switchMenu('cat-mecanico'"],
     'cat-servicios': ["switchMenu('cat-servicios'"],
+    'cat-consumibles': ["switchMenu('cat-consumibles'"],
     'proveedores':   ["switchMenu('proveedores'"],
     'gpo':           ["switchMenu('po'"],
     'po':            ["switchMenu('po'"],
@@ -6453,6 +6454,8 @@ function applyPermsToDom(d) {
     { pat:"catOpenImport('mecanico'",mod:'cat-mecanico',  need:'full' },
     { pat:"catOpenNew('servicios'",  mod:'cat-servicios', need:'create' },
     { pat:"catOpenImport('servicios'",mod:'cat-servicios',need:'full' },
+    { pat:"catOpenNew('consumibles'",  mod:'cat-consumibles', need:'create' },
+    { pat:"catOpenImport('consumibles'",mod:'cat-consumibles',need:'full' },
     // Proveedores
     { pat:'provOpenNew(',      mod:'proveedores',  need:'create' },
     { pat:'provOpenImport(',   mod:'proveedores',  need:'full' },
@@ -6706,7 +6709,7 @@ function applyPermsToDom(d) {
     };
   }
 
-  if(viewOnlyMods.includes('cat-electrico') || viewOnlyMods.includes('cat-mecanico') || viewOnlyMods.includes('cat-servicios')) {
+  if(viewOnlyMods.includes('cat-electrico') || viewOnlyMods.includes('cat-mecanico') || viewOnlyMods.includes('cat-servicios') || viewOnlyMods.includes('cat-consumibles')) {
     const origCat = window._catOpenEdit_orig || catOpenEdit;
     window._catOpenEdit_orig = origCat;
     window.catOpenEdit = function(tipo, code) {
@@ -10848,7 +10851,7 @@ document.addEventListener('DOMContentLoaded',()=>{ loadProveedores(); });
 // ════════════════════════════════════════════════════════
 //  CATÁLOGOS (Eléctrico / Mecánico / Servicios)
 // ════════════════════════════════════════════════════════
-const catData = {electrico:[], mecanico:[], servicios:[]};
+const catData = {electrico:[], mecanico:[], servicios:[], consumibles:[]};
 let catImpFile = null, catEditCode = null;
 
 async function loadCatalogo(tipo) {
@@ -10985,6 +10988,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   loadCatalogo('electrico');
   loadCatalogo('mecanico');
   loadCatalogo('servicios');
+  loadCatalogo('consumibles');                                             // rev174
 });
 
 // ════════════════════════════════════════════════════════
@@ -11165,7 +11169,7 @@ async function gpoSearchItem(q) {
   const res = document.getElementById('gpo-item-results');
   const cat = document.getElementById('gpo-item-cat').value;
   if(!q||q.length<2){res.style.display='none';return;}
-  const tipos = cat ? [cat] : ['electrico','mecanico','servicios'];
+  const tipos = cat ? [cat] : ['electrico','mecanico','servicios','consumibles'];
   let all = [];
   for(const t of tipos){
     const data = catData[t]||[];
@@ -11325,7 +11329,7 @@ function gpoAddItem() {
 
 function gpoRenderItems() {
   const fmt = v=>'$'+Number(v||0).toLocaleString('en-US',{minimumFractionDigits:2});
-  const catBadge = {electrico:'⚡',mecanico:'⚙',servicios:'🔧',major:'⭐'};
+  const catBadge = {electrico:'⚡',mecanico:'⚙',servicios:'🔧',consumibles:'🧴',major:'⭐'};
   const D = gpoCalcDescuentos();                                          // rev135
   const total = D.subtotal;
   document.getElementById('gpo-items-tb').innerHTML = gpoItems.map((i,idx)=>`
@@ -11333,7 +11337,7 @@ function gpoRenderItems() {
       <td style="color:var(--muted)">${i.line}</td>
       <td>${catBadge[i.cat_type]||''}</td>
       <td style="font-family:'DM Mono',monospace;font-size:10px;color:var(--gold)">${i.cat_code ? esc(i.cat_code)
-        : (['electrico','mecanico','servicios'].includes(i.cat_type) && i.part_number
+        : (['electrico','mecanico','servicios','consumibles'].includes(i.cat_type) && i.part_number
             ? `<span style="color:${i.no_catalogo?'var(--muted)':'#15803d'};font-family:inherit" title="Al emitir la OC se da de alta en el catálogo (o se liga si ya existe)">${i.no_catalogo?'—':'＋ nuevo'}</span><br><label style="font-size:9px;color:var(--muted2);font-family:Arial;text-transform:none;letter-spacing:0;display:flex;gap:3px;align-items:center;white-space:nowrap"><input type="checkbox" ${i.no_catalogo?'checked':''} onchange="gpoItems[${idx}].no_catalogo=this.checked;gpoRenderItems()" style="width:11px;height:11px"> no agregar</label>`
             : '—')}</td>
       <td style="font-weight:600">${esc(i.brand)}</td>
