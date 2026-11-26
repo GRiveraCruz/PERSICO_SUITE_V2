@@ -15999,14 +15999,32 @@ def cat_load(tipo):
         except: return []
     return []
 
+def _cat_dedup(records):
+    """rev175: quita duplicados exactos de componente (mismo código y mismo No. de parte), conservando el más reciente."""
+    norm = lambda v: re.sub(r"[^A-Z0-9]", "", str(v or "").upper())
+    mejor, orden = {}, []
+    for r in records:
+        k = (str(r.get("code") or "").upper(), norm(r.get("part_number")))
+        if not k[0]: orden.append(("", id(r), r)); continue
+        if k not in mejor: mejor[k] = r; orden.append(("k", k, None))
+        elif str(r.get("updated_at") or r.get("created_at") or "") > str(mejor[k].get("updated_at") or mejor[k].get("created_at") or ""): mejor[k] = r
+    return [mejor[x[1]] if x[0] == "k" else x[2] for x in orden]
+
 def cat_save(tipo, records):
+    records = _cat_dedup(records)
     if _orm and _orm.DB_ENABLED:
         try:
             s = _orm.get_session()
             try:
                 s.query(_orm.CatalogoCompra).filter(_orm.CatalogoCompra.familia == tipo).delete()
+                vistos = {}
                 for r in records:
-                    s.add(_orm.CatalogoCompra(data=r, content_hash=_orm.canonical_hash(r), familia=tipo))
+                    # rev175: content_hash es ÚNICO en la tabla; dos registros idénticos (p. ej. de una importación
+                    # duplicada) hacían fallar TODO el guardado del catálogo → las altas "no se guardaban".
+                    h = _orm.canonical_hash(r); n = vistos.get(h, 0); vistos[h] = n + 1
+                    if n: h = _orm.canonical_hash({"_rep": n, "_familia": tipo, "_r": r})
+                    else: h = _orm.canonical_hash({"_familia": tipo, "_r": r}) if tipo else h
+                    s.add(_orm.CatalogoCompra(data=r, content_hash=h, familia=tipo))
                 s.commit()
             finally:
                 s.close()
@@ -16429,8 +16447,8 @@ def api_create_gpo():
                     "no_catalogo": bool(it.get("no_catalogo")),                     # rev148
                 })
             # rev148: alta automática en el catálogo de lo que no estaba dado de alta
-            try: cat_altas = _cat_alta_desde_oc(po_items, str(data.get("supplier", {}).get("nombre") if isinstance(data.get("supplier"), dict) else data.get("supplier_name") or ""), moneda)
-            except Exception as e: cat_altas = {"error": str(e)}; print(f"[CATÁLOGO] alta desde OC: {e}")
+            cat_altas = _cat_alta_desde_oc(po_items, str(data.get("supplier", {}).get("nombre") if isinstance(data.get("supplier"), dict) else data.get("supplier_name") or ""),
+                                           moneda, po_number)                                          # rev175
             _desc = _po_aplicar_descuentos({"items": po_items, "tipo_descuento": str(data.get("tipo_descuento") or ""),
                                             "descuento_global_pct": data.get("descuento_global_pct")})
             subtotal     = _desc["subtotal"]                     # rev135: base de impuestos = subtotal después de descuento
@@ -16486,19 +16504,7 @@ def api_create_gpo():
                 gpo_save(records)
                 print(f"[GPO] {po_number}: no se pudo registrar en Purchase Orders ({e_ipo}); la OC se deshizo")
                 return jsonify({"error": f"No se pudo emitir la orden: falló el registro en Purchase Orders ({e_ipo}). No se guardó nada; inténtalo de nuevo."}), 500
-            # Actualizar último precio en catálogo
-            for it in po_items:
-                ct = it.get("cat_type","")
-                cc = it.get("cat_code","")
-                up = it.get("unit_price",0)
-                if ct in CAT_CONFIG and cc and up > 0:
-                    cat_records = cat_load(ct)
-                    for cr in cat_records:
-                        if cr.get("code","").upper() == cc.upper():
-                            cr["last_price"] = up
-                            cr["updated_at"] = now
-                            break
-                    cat_save(ct, cat_records)
+            # (rev175: el precio de catálogo lo actualiza _cat_alta_desde_oc, también para renglones ya ligados)
         try:
             req_actualizados = _req_registrar_compra(po_number, po_items)
         except Exception as e:
@@ -16695,7 +16701,14 @@ def api_gpo_modificar(po_number):
                         "total":       tot,
                         "job":         it.get("job", rec.get("job","")),
                         "notes":       str(it.get("notes","")).strip(),
+                        "no_catalogo": bool(it.get("no_catalogo")),                      # rev175
                     })
+                # renglones nuevos de la versión sin categoría → la categoría más usada en la OC
+                from collections import Counter as _Ctr
+                _ct_def = (_Ctr(i.get("cat_type") for i in rec.get("items") or [] if i.get("cat_type") in CAT_CONFIG).most_common(1) or [(None, 0)])[0][0]
+                for _pi in parsed_items:
+                    if not _pi.get("cat_type") and _ct_def: _pi["cat_type"] = _ct_def
+                cat_altas_v = _cat_alta_desde_oc(parsed_items, rec.get("supplier_name") or "", rec.get("moneda") or "USD", po_number)   # rev175
                 _dv = _po_aplicar_descuentos({"items": parsed_items,
                                               "tipo_descuento": data.get("tipo_descuento", rec.get("tipo_descuento") or ""),
                                               "descuento_global_pct": data.get("descuento_global_pct", rec.get("descuento_global_pct"))})   # rev135
@@ -16787,7 +16800,7 @@ def api_gpo_modificar(po_number):
         if tipo == "cancelar":
             try: _req_revert_po(po_number)
             except Exception as e: print(f"[REQ] No se pudo revertir la requisición de {po_number}: {e}")
-        return jsonify({"ok": True, "record": rec})
+        return jsonify({"ok": True, "record": rec, "catalogo": locals().get("cat_altas_v")})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -24260,39 +24273,73 @@ def api_cc_resumen():
 #  servicios, se da de alta (código consecutivo CE/CM/CS) marcado "Nuevo — por revisar", o se
 #  liga al registro existente con el mismo No. de parte y marca (sin espacios ni guiones).
 #  El renglón queda con su cat_code. Se omite si el renglón trae "no_catalogo".
-def _cat_alta_desde_oc(po_items, proveedor, moneda):
+_CAT_MARCA_VACIA = {"", "NA", "N/A", "SM", "SINMARCA", "GENERICO", "GENERICA", "-", "NONE"}
+def _cat_alta_desde_oc(po_items, proveedor, moneda, po_number=None):
+    """rev148/rev175 — catálogo automático al emitir (o versionar) una OC:
+      · si el componente YA EXISTE (mismo No. de parte; la marca solo se usa para distinguir cuando ambas
+        están capturadas), el renglón se liga a su código; si el precio cambió, se guarda el nuevo precio de
+        compra y queda el historial;
+      · si NO EXISTE, se da de alta con su precio de compra (código consecutivo, «por revisar»);
+      · también aplica a renglones elegidos del catálogo (con cat_code): se actualiza su precio si cambió.
+    No aplica a renglones sin No. de parte, marcados «no agregar» o de categorías sin catálogo (major / manufactura)."""
     norm = lambda v: re.sub(r"[^A-Z0-9]", "", str(v or "").upper())
-    res = {"nuevos": [], "ligados": [], "omitidos": 0}
+    marca = lambda v: "" if norm(v) in _CAT_MARCA_VACIA else norm(v)
+    res = {"nuevos": [], "ligados": [], "precio_actualizado": [], "omitidos": [], "error": None}
     por_tipo = {}
     for it in po_items:
         ct = it.get("cat_type") or ""
-        if it.get("cat_code") or it.get("no_catalogo") or not it.get("part_number") or ct not in CAT_CONFIG:
-            if not it.get("cat_code"): res["omitidos"] += 1
-            continue
+        motivo = ("sin No. de parte" if not it.get("part_number") else "marcado «no agregar»" if it.get("no_catalogo")
+                  else (f"categoría «{ct or 'sin categoría'}» sin catálogo" if ct not in CAT_CONFIG else None))
+        if motivo:
+            res["omitidos"].append({"part_number": it.get("part_number"), "motivo": motivo}); continue
         por_tipo.setdefault(ct, []).append(it)
     if not por_tipo: return res
-    ahora = datetime.datetime.now().isoformat()
-    if True:                     # se llama desde la creación de la OC, que ya tiene el candado (lock)
+    ahora = datetime.datetime.now().isoformat(timespec="seconds")
+    try:
         for ct, its in por_tipo.items():
             records = cat_load(ct); cambio = False
             for it in its:
-                pn, br = norm(it["part_number"]), norm(it.get("brand"))
-                ex = next((r for r in records if norm(r.get("part_number")) == pn and (not br or not norm(r.get("brand")) or norm(r.get("brand")) == br)), None)
-                if ex:
+                pn, br = norm(it["part_number"]), marca(it.get("brand"))
+                ex = None
+                if it.get("cat_code"):
+                    ex = next((r for r in records if str(r.get("code") or "").upper() == str(it["cat_code"]).upper()), None)
+                    if ex is not None and norm(ex.get("part_number")) != pn: ex = None     # el renglón cambió de componente
+                if ex is None:
+                    cands = [r for r in records if norm(r.get("part_number")) == pn]
+                    ex = next((r for r in cands if br and marca(r.get("brand")) == br), None) or \
+                         next((r for r in cands if not br or not marca(r.get("brand"))), None)
+                    if ex is None and cands and not any(marca(r.get("brand")) == br for r in cands):
+                        ex = None                                # mismo No. de parte pero otra marca → alta nueva
+                precio = float(it.get("unit_price") or 0)
+                if ex is not None:
                     it["cat_code"] = ex.get("code")
-                    if it.get("unit_price"): ex["last_price"] = it["unit_price"]; ex["moneda"] = moneda; ex["updated_at"] = ahora
-                    res["ligados"].append({"code": ex.get("code"), "part_number": it["part_number"]}); cambio = True
+                    res["ligados"].append({"code": ex.get("code"), "part_number": it["part_number"], "catalogo": ct})
+                    anterior = float(ex.get("last_price") or 0)
+                    if precio > 0 and (abs(precio - anterior) > 0.0001 or (ex.get("moneda") or moneda) != moneda):
+                        ex["last_price"] = precio; ex["moneda"] = moneda; ex["updated_at"] = ahora
+                        ex["proveedor"] = proveedor or ex.get("proveedor")
+                        ex["historial_precios"] = (ex.get("historial_precios") or [])[-29:] + [
+                            {"fecha": ahora[:10], "anterior": anterior, "precio": precio, "moneda": moneda, "po": po_number, "proveedor": proveedor}]
+                        res["precio_actualizado"].append({"code": ex.get("code"), "part_number": it["part_number"], "de": anterior, "a": precio, "moneda": moneda})
+                        cambio = True
+                    ex["ultima_compra"] = {"fecha": ahora[:10], "po": po_number, "proveedor": proveedor, "precio": precio, "moneda": moneda}; cambio = True
                     continue
                 prefix = CAT_CONFIG[ct]["prefix"]
                 nums = [int(str(r.get("code", "")).split("-")[-1]) for r in records if str(r.get("code", "")).startswith(prefix + "-") and str(r.get("code", "")).split("-")[-1].isdigit()]
                 code = f"{prefix}-{(max(nums) + 1) if nums else 1:05d}"
-                rec = {"code": code, "brand": str(it.get("brand") or "").upper(), "part_number": it["part_number"].upper(), "description": it.get("description") or "",
-                       "label_code": str(it.get("label_code") or "").upper(), "last_price": it.get("unit_price") or 0, "moneda": moneda, "proveedor": proveedor,
-                       "por_revisar": True, "origen": "OC", "created_at": ahora, "updated_at": ahora, "creado_por": session.get("user", "")}
+                rec = {"code": code, "brand": str(it.get("brand") or "").upper(), "part_number": str(it["part_number"]).upper(), "description": it.get("description") or "",
+                       "label_code": str(it.get("label_code") or "").upper(), "last_price": precio, "moneda": moneda, "proveedor": proveedor,
+                       "por_revisar": True, "origen": "OC", "created_at": ahora, "updated_at": ahora, "creado_por": session.get("user", ""),
+                       "ultima_compra": {"fecha": ahora[:10], "po": po_number, "proveedor": proveedor, "precio": precio, "moneda": moneda},
+                       "historial_precios": [{"fecha": ahora[:10], "anterior": None, "precio": precio, "moneda": moneda, "po": po_number, "proveedor": proveedor}]}
                 records.append(rec); it["cat_code"] = code; cambio = True
                 res["nuevos"].append({"code": code, "part_number": rec["part_number"], "catalogo": ct})
             if cambio: cat_save(ct, records)
-    if res["nuevos"]: print(f"[CATÁLOGO] {len(res['nuevos'])} material(es) dados de alta desde una OC: {', '.join(x['code'] for x in res['nuevos'])}")
+    except Exception as e:
+        res["error"] = str(e)
+        print(f"[CATÁLOGO] ⚠ No se pudo actualizar el catálogo desde {po_number or 'la OC'}: {e}")
+    if res["nuevos"] or res["precio_actualizado"]:
+        print(f"[CATÁLOGO] {po_number or ''}: altas {[x['code'] for x in res['nuevos']]} · precios {[x['code'] for x in res['precio_actualizado']]}")
     return res
 
 # ══ rev150: CANDADO DE INGRESO — no más de lo comprado ═══════════════════════════

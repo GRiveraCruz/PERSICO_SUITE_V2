@@ -10879,7 +10879,7 @@ function catRender(tipo) {
       <td style="font-family:'DM Mono',monospace;color:var(--text)">${esc(r.part_number||'')}</td>
       <td style="color:var(--muted2)">${esc(r.description||'')}</td>
       ${hasLabel?`<td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted2)">${esc(r.label_code||'—')}</td>`:''}
-      <td style="text-align:right;font-weight:600;color:var(--green)">${fmt(r.last_price)}</td>
+      <td style="text-align:right;font-weight:600;color:var(--green)" title="${(r.historial_precios||[]).length?'Historial: '+(r.historial_precios||[]).map(h=>`${h.fecha} ${h.po||''} ${h.anterior!=null?'$'+h.anterior+' → ':''}$${h.precio} ${h.moneda||''}`).join(' | '):''}${r.ultima_compra?' · Última compra: '+r.ultima_compra.fecha+' '+(r.ultima_compra.po||'')+' '+(r.ultima_compra.proveedor||''):''}">${fmt(r.last_price)}${r.moneda&&r.moneda!=='USD'?` <span style="font-size:9px;color:var(--muted)">${esc(r.moneda)}</span>`:''}${(r.historial_precios||[]).length>1?' <span style="font-size:9px;color:var(--amber)">↻'+(r.historial_precios.length-1)+'</span>':''}</td>
     </tr>`).join('');
   const nRev = catData[tipo].filter(r=>r.por_revisar).length;
   document.getElementById(`cat-${tipo}-count`).innerHTML=`${rows.length} items` + (nRev ? ` · <label style="color:#b45309;cursor:pointer;text-transform:none;letter-spacing:0"><input type="checkbox" id="cat-${tipo}-rev" ${soloRev?'checked':''} onchange="catRender('${tipo}')" style="width:11px;height:11px"> ${nRev} por revisar</label>` : '');
@@ -11173,8 +11173,10 @@ async function gpoSearchItem(q) {
   let all = [];
   for(const t of tipos){
     const data = catData[t]||[];
+    const qn = _catNorm(q);
     const matches = data.filter(r=>
       [r.brand,r.part_number,r.description,r.code,r.label_code].join(' ').toLowerCase().includes(q.toLowerCase())
+      || (qn.length>=3 && _catNorm(r.part_number).includes(qn))                         // rev175: "6ES7214" encuentra "6ES7 214-1AG40"
     ).slice(0,6).map(r=>({...r,_tipo:t}));
     all = all.concat(matches);
   }
@@ -11536,7 +11538,8 @@ async function saveGPO() {
     if(d.advertencia) setTimeout(()=>alert('⚠ '+d.advertencia), 400);
     if(gpoItems.some(i=>i.req_item_id) && typeof reqRenderTab==='function' && reqCurrentJob) setTimeout(()=>reqRenderTab(),300);
     closeMo('mo-gpo');
-    toast(`PO emitida: ${d.po_number} · ${gpoItems.length} items ✓` + (d.catalogo && d.catalogo.nuevos && d.catalogo.nuevos.length ? ` · ${d.catalogo.nuevos.length} material(es) nuevo(s) en el catálogo: ${d.catalogo.nuevos.map(x=>x.code).join(', ')}` : ''),'ok',8000);
+    toast(`PO emitida: ${d.po_number} · ${gpoItems.length} items ✓` + catResumenOC(d.catalogo),'ok',9000);
+    catTrasOC(d.catalogo);
     // Abrir PDF en nueva pestaña
     setTimeout(()=>window.open(`/api/gpo/${d.po_number}/pdf`,'_blank'),500);
     await loadPO();
@@ -16406,7 +16409,8 @@ async function gpoModGuardar() {
 
     if(d.error){ toast(d.error,'er'); return; }
     closeMo('mo-gpo-mod');
-    toast(`✓ Orden ${gpoModRec.po_number} — ${gpoModTipo.replace('_',' ')} aplicado`, 'ok', 5000);
+    toast(`✓ Orden ${gpoModRec.po_number} — ${gpoModTipo.replace('_',' ')} aplicado` + catResumenOC(d.catalogo), 'ok', 7000);
+    catTrasOC(d.catalogo);                                                        // rev175
     // Reload the PO list to reflect changes
     await loadPO();
   } catch(e){ toast('Error: '+e.message,'er'); }
@@ -21820,3 +21824,19 @@ async function whEditarWorkCode(id, inp){
   const rec = (whRecords||[]).find(x=>x.id===id); if(rec) rec.work_code = d.work_code;
   toast(d.sin_cambios ? 'Sin cambios' : `Work Code actualizado: ${antes||'—'} → ${d.work_code}`,'ok');
 }
+
+// ── rev175: resumen del catálogo automático y recarga de catálogos tras emitir/versionar una OC ──
+function catResumenOC(c){
+  if(!c) return '';
+  const p = [];
+  if((c.nuevos||[]).length) p.push(`${c.nuevos.length} nuevo(s) en catálogo: ${c.nuevos.map(x=>x.code).join(', ')}`);
+  if((c.precio_actualizado||[]).length) p.push(`${c.precio_actualizado.length} precio(s) actualizado(s)`);
+  return p.length ? ' · ' + p.join(' · ') : '';
+}
+function catTrasOC(c){
+  if(!c) return;
+  if(c.error) toast('⚠ La OC se emitió, pero no se pudo actualizar el catálogo: ' + c.error, 'er', 12000);
+  const tipos = new Set([...(c.nuevos||[]), ...(c.ligados||[]), ...(c.precio_actualizado||[])].map(x=>x.catalogo).filter(Boolean));
+  (tipos.size ? [...tipos] : ['electrico','mecanico','servicios','consumibles']).forEach(t=>{ try{ loadCatalogo(t); }catch(e){} });
+}
+const _catNorm = v => String(v||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
