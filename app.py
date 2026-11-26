@@ -9198,6 +9198,10 @@ def _timing_fechas(timing):
         for t in filas:
             k = nk(t.get("actividad"))
             if k in res: continue
+            # rev176: si la pantalla ya resolvió las fechas (4 modos + desfase), se usan tal cual
+            ic, fc = fd(t.get("inicio_calc")), fd(t.get("fin_calc"))
+            if ic and fc:
+                res[k] = (ic, fc); hitos[k] = ic == fc and not int(float(t.get("dias_estimados") or 0)); cambio = True; continue
             ini = fd(t.get("fecha_inicial"))
             if not ini and t.get("actividad_previa") and nk(t["actividad_previa"]) in res:
                 pk = nk(t["actividad_previa"])
@@ -14239,7 +14243,7 @@ def api_upload_prov_file(clave):
 #  4 tipos: electrico | mecanico | componentes_mayores | manufactura
 #  Construido directo sobre PostgreSQL (módulo nuevo).
 # ══════════════════════════════════════════════════════════════════
-REQ_TIPOS = ("electrico", "mecanico", "componentes_mayores", "manufactura")
+REQ_TIPOS = ("electrico", "mecanico", "componentes_mayores", "manufactura", "servicios_especializados")   # rev176
 REQ_STATUS = ("Solicitado", "Comprado", "Cancelado", "Reasignado", "Homologado", "Reas. Parcial")
 
 def _req_gen_item_id():
@@ -14269,7 +14273,8 @@ def api_requisiciones_list(job):
 #  Las primeras 5 columnas (BRAND, PART NUMBER, DESCRIPTION, QUANTITY, STATUS) son las
 #  de la plantilla de carga, así que el archivo se puede volver a importar.
 # ══════════════════════════════════════════════════════════════════
-REQ_TIPO_NOMBRE = {"electrico": "Electric BOM", "mecanico": "Mechanic BOM", "componentes_mayores": "Major items", "manufactura": "Manufacturing BOM"}
+REQ_TIPO_NOMBRE = {"electrico": "Electric BOM", "mecanico": "Mechanic BOM", "componentes_mayores": "Major items", "manufactura": "Manufacturing BOM",
+                   "servicios_especializados": "Specialized services BOM"}
 
 @app.route("/api/requisiciones/<job>/excel", methods=["GET"])
 def api_requisiciones_excel(job):
@@ -22242,6 +22247,11 @@ def _build_gantt_svg(timing):
         mile = bool(t.get("milestone_facturacion",False))
         if not act: continue
         start = None
+        try:                                                                   # rev176: fechas resueltas en pantalla
+            _ic = _dt2.datetime.strptime(str(t.get("inicio_calc") or "")[:10], "%Y-%m-%d"); _fc = _dt2.datetime.strptime(str(t.get("fin_calc") or "")[:10], "%Y-%m-%d")
+            end_map[act] = (_fc.date(), _ic == _fc and dias == 0)
+            entries.append((act, _ic, _fc + _dt2.timedelta(days=1), dias, cumpl, mile)); continue
+        except (ValueError, TypeError): pass
         if fini:
             try: start = _dt2.datetime.strptime(fini[:10], "%Y-%m-%d")
             except: pass

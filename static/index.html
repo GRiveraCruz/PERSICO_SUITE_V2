@@ -1177,19 +1177,29 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
               <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--red)">📅 Configuración Operativa — Timing</div>
               <div style="font-size:10px;color:var(--muted);margin-top:2px">Columnas en <span style="color:var(--amber)">ámbar</span> = entrada · Columnas en gris = cálculo automático · Elige la actividad de la lista o escribe una nueva</div>
             </div>
-            <div style="display:flex;gap:8px">
+            <div style="display:flex;gap:8px;align-items:center">
+              <div style="display:flex;flex-shrink:0;border:1px solid var(--border2);border-radius:6px;overflow:hidden" title="Vista tipo Microsoft Project: oculta la tabla de configuración y deja el Gantt con columnas de duración, inicio y fin. Clic en una actividad del Gantt para editarla.">
+                <button id="pc-vista-tabla" onclick="pcVistaTiming('tabla')" class="pc-zoom-btn" style="white-space:nowrap;padding:5px 10px;font-size:10px;border:none;cursor:pointer">▦ Tabla + Gantt</button>
+                <button id="pc-vista-lado" onclick="pcVistaTiming('lado')" class="pc-zoom-btn" style="white-space:nowrap;padding:5px 10px;font-size:10px;border:none;cursor:pointer" title="Tabla de configuración a la izquierda y Gantt a la derecha, renglón por renglón">▥ Tabla | Gantt</button>
+                <button id="pc-vista-project" onclick="pcVistaTiming('project')" class="pc-zoom-btn" style="white-space:nowrap;padding:5px 10px;font-size:10px;border:none;cursor:pointer">▤ Vista Project</button></div>
               <button onclick="pcAddGroupRow()" class="btn-sec" style="font-size:11px;padding:5px 12px">+ Grupo</button>
-              <button onclick="pcAddTimingRow()" class="btn-sec" style="font-size:11px;padding:5px 12px">+ Actividad</button>
+              <button onclick="pcNuevaActividad()" class="btn-sec" style="font-size:11px;padding:5px 12px" title="Agrega una actividad y abre su configuración">+ Actividad</button>
             </div>
           </div>
+          <div id="pc-timing-cfg-bar" onclick="pcVistaTiming(document.getElementById('pc-timing-scroll').style.display==='none'?'tabla':'project')" style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;background:rgba(0,0,0,.025);font-size:11px;font-weight:700;color:var(--muted2);user-select:none">
+            <span id="pc-timing-cfg-ico">▾</span> ⚙ Configuración de actividades <span style="font-weight:400;color:var(--muted)">— condiciones, previas/posteriores, fechas, desfase, recursos y facturación</span></div>
           <div id="pc-timing-scroll" style="overflow-x:auto">
-            <table class="tbl pc-timing-tbl" style="font-size:11px;min-width:1240px">
+            <table class="tbl pc-timing-tbl" style="font-size:11px;min-width:1640px">
               <thead><tr>
                 <th class="pc-stk pc-stk1" style="color:var(--amber)">Actividad</th>
                 <th class="pc-stk pc-stk2" style="color:var(--amber)">Grupo</th>
+                <th style="background:rgba(255,193,7,.12);color:var(--amber);min-width:150px" title="Manual · Inicio ← fin de la previa · Fin → inicio de la posterior · Entre previa y posterior">Condición</th>
                 <th style="background:rgba(255,193,7,.12);color:var(--amber);min-width:150px">Actividad Previa</th>
+                <th style="background:rgba(255,193,7,.12);color:var(--amber);min-width:150px">Actividad Posterior</th>
                 <th style="background:rgba(255,193,7,.12);color:var(--amber);width:120px">Fecha Inicial</th>
-                <th style="background:rgba(255,193,7,.12);color:var(--amber);text-align:right;width:70px">Días Est.</th>
+                <th style="background:rgba(255,193,7,.12);color:var(--amber);width:120px">Fecha Fin</th>
+                <th style="background:rgba(255,193,7,.12);color:var(--amber);text-align:right;width:64px">Días Est.</th>
+                <th style="background:rgba(255,193,7,.12);color:var(--amber);text-align:center;width:90px" title="Días hábiles de adelanto (−) o atraso (+)">Desfase ±d</th>
                 <th style="background:rgba(255,193,7,.12);color:var(--amber);min-width:110px">Recursos</th>
                 <th style="color:var(--muted);width:120px">Fecha Condicionada</th>
                 <th style="color:var(--muted);width:120px">Fecha Objetivo</th>
@@ -4684,11 +4694,12 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
 
       <div id="req-job-content" style="display:none">
         <div id="req-bloqueo-box" style="margin-bottom:12px"></div>
-        <div class="cl-toggle" style="max-width:640px;margin-bottom:16px">
+        <div class="cl-toggle" style="max-width:820px;margin-bottom:16px">
           <button class="on" onclick="reqSetTipo('electrico')">Eléctrico</button>
           <button onclick="reqSetTipo('mecanico')">Mecánico</button>
           <button onclick="reqSetTipo('componentes_mayores')">Comp. Mayores</button>
           <button onclick="reqSetTipo('manufactura')">Manufactura</button>
+          <button onclick="reqSetTipo('servicios_especializados')">Serv. Especializados</button>
         </div>
 
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
@@ -4728,6 +4739,7 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
           <option value="mecanico">⚙ Mecánico</option>
           <option value="componentes_mayores">🧩 Componentes Mayores</option>
           <option value="manufactura">🏭 Manufactura</option>
+          <option value="servicios_especializados">🛠 Servicios Especializados</option>
         </select>
       </div>
       <div class="fi"><label>2. Job *</label>
@@ -6296,6 +6308,9 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
 <div class="mo" id="mo-cfdi-accion" style="z-index:170"><div class="md" style="max-width:560px;width:calc(100% - 24px)">
   <div class="mh"><h2 id="cfa-tit"></h2><button class="px" onclick="closeMo('mo-cfdi-accion')">Cerrar</button></div>
   <div class="mb2" id="cfa-body"></div></div></div>
+
+<!-- rev176: editor lateral de actividad (vista Project) -->
+<div id="pc-act-panel" style="display:none;position:fixed;top:70px;right:16px;width:360px;max-height:calc(100vh - 90px);overflow:auto;z-index:150;background:var(--card,#fff);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.18);padding:14px"></div>
 
 <!-- ══ MODULE: Income Forecast (rev122) ══ -->
 <div class="module" id="mod-mgmt-income-forecast">

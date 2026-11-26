@@ -7684,7 +7684,7 @@ const PURCH_DIAS_ALERTA = 14;          // sin movimiento por más de N días →
 // ('purch') y en el Dashboard del proyecto ('pc').
 const _pw = {};
 const _pwSt = ctx => (_pw[ctx] = _pw[ctx] || {d:null, q:'', filtro:'todos', orden:'avance'});
-const PURCH_TITULO = {electrico:'Electric BOM', mecanico:'Mechanic BOM', componentes_mayores:'Major items', manufactura:'Manufacturing BOM'};
+const PURCH_TITULO = {electrico:'Electric BOM', mecanico:'Mechanic BOM', componentes_mayores:'Major items', manufactura:'Manufacturing BOM', servicios_especializados:'Specialized services'};
 const _purchDias = iso => { if(!iso) return null; const d = new Date(iso.slice(0,10)+'T00:00:00'), h = new Date(); h.setHours(0,0,0,0); return Math.round((h-d)/864e5); };
 const _purchHace = n => n==null ? '' : n<=0 ? 'hoy' : n===1 ? 'ayer' : n<30 ? `hace ${n} d` : n<365 ? `hace ${Math.round(n/30)} mes${Math.round(n/30)===1?'':'es'}` : `hace ${Math.round(n/365)} año${Math.round(n/365)===1?'':'s'}`;
 function _purchJobInfo(f, tipos){
@@ -7708,7 +7708,7 @@ function purchWipRender(ctx='purch'){ const el = document.getElementById(ctx+'-w
 
 function purchWipInner(ctx='purch'){
   const st = _pwSt(ctx), opts = st.opts||{};
-  const d = st.d, tipos = d.tipos||['electrico','mecanico','componentes_mayores','manufactura'];
+  const d = st.d, tipos = d.tipos||['electrico','mecanico','componentes_mayores','manufactura','servicios_especializados'];
   const _purchWipQ = st.q, _purchWipFiltro = st.filtro, _purchWipOrden = st.orden;
   const filas = d.wip.map(f=>({f, i:_purchJobInfo(f, tipos)}));
   // resumen (sobre todos los Jobs WIP, sin filtros)
@@ -7791,7 +7791,7 @@ function purchWipInner(ctx='purch'){
 function purchIrReq(job, tipo){
   if(!reqManufConfirmarSalida()) return;      // rev78: cambios sin guardar en Manufactura
   reqCurrentJob = job; reqCurrentTipo = tipo;
-  const idx = ['electrico','mecanico','componentes_mayores','manufactura'].indexOf(tipo);
+  const idx = ['electrico','mecanico','componentes_mayores','manufactura','servicios_especializados'].indexOf(tipo);
   document.querySelectorAll('#req-job-content .cl-toggle button').forEach((b,i)=>b.classList.toggle('on', i===idx));
   const m = tipo==='manufactura';
   const bc = document.getElementById('req-btns-compra'), bm = document.getElementById('req-btns-manuf');
@@ -8230,7 +8230,7 @@ function ingTiempoHTML(c){
   return tiempo;
 }
 
-const PURCH_N = {electrico:'Eléctrico', mecanico:'Mecánico', componentes_mayores:'Comp. mayores', manufactura:'Manufactura'};
+const PURCH_N = {electrico:'Eléctrico', mecanico:'Mecánico', componentes_mayores:'Comp. mayores', manufactura:'Manufactura', servicios_especializados:'Serv. especializados'};
 function ingComprasHTML(c, d){
   return !d.requisiciones_disponibles ? '<div style="font-size:11px;color:var(--muted)">Requiere la base de datos.</div>' : d.req_tipos.map(t=>{
     const b = c.compras[t];
@@ -8762,7 +8762,7 @@ async function loadStock() {
 let reqCurrentJob = null;
 let reqCurrentTipo = 'electrico';
 let reqItems = [];
-const REQ_TIPO_LABELS = {electrico:'⚡ Eléctrico', mecanico:'⚙ Mecánico', componentes_mayores:'🧩 Componentes Mayores', manufactura:'🏭 Manufactura'};
+const REQ_TIPO_LABELS = {electrico:'⚡ Eléctrico', mecanico:'⚙ Mecánico', componentes_mayores:'🧩 Componentes Mayores', manufactura:'🏭 Manufactura', servicios_especializados:'🛠 Servicios Especializados'};
 const REQ_STATUS_OPCIONES = ['Solicitado','Reas. Parcial','Comprado','Cancelado','Reasignado','Homologado'];
 // Color por estatus: [texto, fondo]
 const REQ_STATUS_COLOR = {
@@ -9472,7 +9472,7 @@ async function reqUpdateStatus(itemId, status){
 
 // ── Orden de Compra desde la requisición (usa el formulario GPO existente)
 let reqOCValidado = false;
-const REQ_OC_CAT = {electrico:'electrico', mecanico:'mecanico', componentes_mayores:'major', manufactura:''};
+const REQ_OC_CAT = {electrico:'electrico', mecanico:'mecanico', componentes_mayores:'major', manufactura:'', servicios_especializados:'servicios'};   // rev176: los servicios van al catálogo de Servicio
 function reqOpenOC(){
   if(!reqCurrentJob){ toast('Selecciona un Job','er'); return; }
   if(reqCurrentTipo==='manufactura') return reqOpenOCManuf();
@@ -11673,7 +11673,7 @@ function pcSwitchTab(tab, opts={}) {
   ['presupuesto','dashboard','timing','abiertos','cambios','documentos'].forEach(k=>{
     const el = document.getElementById(`pc-content-${k}`); if(el) el.style.display = (k===tab)?'':'none';
   });
-  if(tab==='timing') pcUpdateTimingCalcs();
+  if(tab==='timing'){ pcVistaTiming(_pcVistaTiming); }                              // rev176: aplica la vista guardada (tabla / Project)
   if(tab==='documentos') pcDocsCargar();
   if(tab==='dashboard' && !opts.sinRender) pcRenderDashboard();
   setTimeout(()=>pcAplicarSoloLectura(tab), 120);
@@ -13404,15 +13404,23 @@ function pcAddTimingRow(data={}) {
   const inpS = 'background:var(--inp);border:1px solid rgba(255,193,7,.3);border-radius:4px;color:var(--amber);padding:5px 7px;font-size:11px';
   tr.innerHTML = `
     <td class="pc-stk pc-stk1" style="padding-left:${data.grupo?'18px':'6px'};white-space:nowrap"><span class="pc-drag" draggable="true" title="Arrastrar para mover (también entre grupos)">⠿</span><span class="pc-mov" style="display:inline-flex;flex-direction:column;vertical-align:middle;margin-right:3px"><button type="button" class="pc-mov-btn" onclick="pcMoverTiming(this,-1)" title="Subir" aria-label="Subir">▲</button><button type="button" class="pc-mov-btn" onclick="pcMoverTiming(this,1)" title="Bajar" aria-label="Bajar">▼</button></span><input data-field="actividad" list="pc-act-list" value="${esc(data.actividad||data.name||'')}"
-      oninput="pcUpdateTimingCalcs();this.title=this.value" title="${esc(data.actividad||data.name||'')}" style="${inpS};width:calc(100% - 20px);vertical-align:middle"></td>
+      oninput="pcUpdateTimingCalcs();this.title=this.value" title="${esc(data.actividad||data.name||'')}" style="${inpS};width:calc(100% - 38px);vertical-align:middle"><button type="button" onclick="pcAbrirPanelAct(this.closest('tr'))" title="Configurar actividad" style="border:none;background:none;cursor:pointer;font-size:12px;padding:0 0 0 3px;vertical-align:middle">✏</button></td>
     <td class="pc-stk pc-stk2"><input data-field="grupo" list="pc-timing-groups-list" value="${esc(data.grupo||'')}" placeholder="— sin grupo —"
       oninput="pcOnGroupFieldChange(this);pcUpdateTimingCalcs()" style="${inpS};width:100%;color:var(--muted2)"></td>
+    <td><select data-field="modo" onchange="pcTimingModoUI(this.closest('tr'));pcUpdateTimingCalcs()" style="${inpS};width:100%;color:var(--text)" title="Cómo se calculan las fechas de la actividad">
+      ${PC_T_MODOS.map(([v,t])=>`<option value="${v}" ${pcModoDe(data)===v?'selected':''}>${t}</option>`).join('')}</select></td>
     <td><input data-field="actividad_previa" list="pc-timing-activities-list" value="${esc(data.actividad_previa||data.prev||'')}"
-      oninput="pcUpdateTimingCalcs()" style="${inpS};width:100%;color:var(--muted2)"></td>
+      oninput="pcUpdateTimingCalcs()" style="${inpS};width:100%;color:var(--muted2)" title="Actividad previa: esta actividad inicia al terminar aquella"></td>
+    <td><input data-field="actividad_posterior" list="pc-timing-activities-list" value="${esc(data.actividad_posterior||'')}"
+      oninput="pcUpdateTimingCalcs()" style="${inpS};width:100%;color:var(--muted2)" title="Actividad posterior: esta actividad debe terminar antes de que aquella inicie (se calcula en retrospectiva)"></td>
     <td><input data-field="fecha_inicial" type="date" value="${data.fecha_inicial||data.fecha_ini||''}"
       oninput="pcUpdateTimingCalcs()" style="${inpS};color:var(--text);width:100%"></td>
+    <td><input data-field="fecha_fin" type="date" value="${data.fecha_fin||''}" title="Fecha de fin manual (opcional en modo manual: si se captura, los días se calculan)"
+      oninput="pcUpdateTimingCalcs()" style="${inpS};color:var(--text);width:100%"></td>
     <td><input data-field="dias_estimados" type="number" min="0" value="${data.dias_estimados||data.dias||0}"
-      oninput="pcUpdateTimingCalcs()" style="${inpS};width:60px;text-align:right"></td>
+      oninput="pcUpdateTimingCalcs()" style="${inpS};width:56px;text-align:right"></td>
+    <td style="white-space:nowrap"><button type="button" class="pc-mov-btn" style="display:inline-block;width:16px;font-size:11px" onclick="pcDesfase(this,-1)" title="1 día de adelanto">−</button><input data-field="desfase" type="number" step="1" value="${parseInt(data.desfase)||0}" title="Desfase en días hábiles: + atraso (más tarde) · − adelanto (más temprano)"
+      oninput="pcUpdateTimingCalcs()" style="${inpS};width:44px;text-align:center"><button type="button" class="pc-mov-btn" style="display:inline-block;width:16px;font-size:11px" onclick="pcDesfase(this,1)" title="1 día de atraso">+</button></td>
     <td><input data-field="recurso" value="${esc(data.recurso||'')}" placeholder="—"
       oninput="pcUpdateTimingCalcs()" style="${inpS};width:100%;color:var(--muted2)"></td>
     <td class="pc-t-cond" style="font-family:'DM Mono',monospace;font-size:10px;color:var(--muted2);text-align:center">—</td>
@@ -13437,6 +13445,7 @@ function pcAddTimingRow(data={}) {
       style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px">Eliminar</button></td>`;
   tr.dataset.tipo = 'actividad';
   tb.appendChild(tr);
+  pcTimingModoUI(tr);
 }
 
 // ── Fila de GRUPO: encabezado colapsable que agrupa actividades — las fechas
@@ -13458,10 +13467,7 @@ function pcAddGroupRow(data={}) {
         oninput="pcUpdateGroupsList();pcUpdateTimingCalcs()"
         style="background:transparent;border:none;border-bottom:1px dashed var(--border2);color:var(--text);font-weight:800;font-size:11.5px;padding:3px 4px;width:calc(100% - 56px)">
     </td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
+    <td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
     <td class="pc-t-cond" style="font-family:'DM Mono',monospace;font-size:10px;color:var(--muted2);text-align:center">—</td>
     <td class="pc-t-obj"  style="font-family:'DM Mono',monospace;font-size:10px;color:var(--gold);text-align:center;font-weight:700">—</td>
     <td colspan="5"></td>
@@ -13616,26 +13622,76 @@ function pcInicioSucesora(fin, hito){
   if(hito) return new Date(fin);
   const x = new Date(fin); x.setDate(x.getDate()+1); return pcSigHabil(x);
 }
+// ── rev176: 4 modos de fechas + desfase (adelanto/atraso) ──
+//   manual        · inicio (y fin opcional) capturados
+//   inicio_previa · inicia al terminar la actividad previa
+//   fin_posterior · termina el día hábil anterior al inicio de la actividad posterior (en retrospectiva)
+//   entre         · inicia al terminar la previa y termina antes de que inicie la posterior (los días se calculan)
+//   Desfase (días hábiles): + atraso / − adelanto. Se aplica al inicio (manual, inicio_previa, entre) o al fin (fin_posterior).
+const PC_T_MODOS = [['manual','Manual (inicio / fin)'], ['inicio_previa','Inicio ← fin de la previa'], ['fin_posterior','Fin → inicio de la posterior'], ['entre','Entre previa y posterior']];
+function pcModoDe(d){ return d.modo || ((d.actividad_previa||d.prev) && !(d.fecha_inicial||d.fecha_ini) ? 'inicio_previa' : 'manual'); }
+function pcAntHabil(d){ const x = new Date(d); x.setHours(0,0,0,0); x.setDate(x.getDate()-1); let g = 0; while(!pcEsHabil(x) && g++ < 30) x.setDate(x.getDate()-1); return x; }
+function pcRestarHabiles(d, n){ const x = new Date(d); let k = n, g = 0; while(k > 0 && g++ < 5000){ x.setDate(x.getDate()-1); if(pcEsHabil(x)) k--; } return x; }
+function pcDesplazar(d, n){ n = parseInt(n)||0; if(!n) return new Date(d); return n > 0 ? pcSumarHabiles(d, n) : pcRestarHabiles(d, -n); }
+function pcContarHabiles(a, b){ if(b < a) return 0; let n = 0; const x = new Date(a); let g = 0; while(x <= b && g++ < 5000){ if(pcEsHabil(x)) n++; x.setDate(x.getDate()+1); } return n; }
+function pcDesfase(btn, d){ const i = btn.parentElement.querySelector('[data-field="desfase"]'); i.value = (parseInt(i.value)||0) + d; pcUpdateTimingCalcs(); }
+function pcTimingModoUI(tr){
+  if(!tr || tr.dataset.tipo==='grupo') return;
+  const m = _pcF(tr,'modo') || 'manual';
+  const on = {actividad_previa: m==='inicio_previa'||m==='entre', actividad_posterior: m==='fin_posterior'||m==='entre',
+              fecha_inicial: m==='manual', fecha_fin: m==='manual', dias_estimados: m!=='entre'};
+  Object.entries(on).forEach(([f,v])=>{ const el = tr.querySelector(`[data-field="${f}"]`); if(!el) return; el.disabled = !v; el.style.opacity = v ? '' : '.35'; });
+}
 function _pcResolverTiming(rows){
   const nk = s => (s||'').trim().toUpperCase();
-  const info = rows.filter(tr=>tr.dataset.tipo!=='grupo').map(tr=>({tr, act:nk(_pcF(tr,'actividad')), prev:nk(_pcF(tr,'actividad_previa')),
-      ini:_pcFecha(_pcF(tr,'fecha_inicial')), dias:parseInt(_pcF(tr,'dias_estimados'))||0, fCond:null, fObj:null, hito:false}));
-  const endDateMap = {}, hitoMap = {}, nombres = new Set(info.map(i=>i.act).filter(Boolean));
+  const info = rows.filter(tr=>tr.dataset.tipo!=='grupo').map(tr=>{
+    const modo = _pcF(tr,'modo') || (_pcF(tr,'actividad_previa') && !_pcFecha(_pcF(tr,'fecha_inicial')) ? 'inicio_previa' : 'manual');
+    return {tr, modo, act:nk(_pcF(tr,'actividad')), prev:nk(_pcF(tr,'actividad_previa')), next:nk(_pcF(tr,'actividad_posterior')),
+      ini:_pcFecha(_pcF(tr,'fecha_inicial')), finM:_pcFecha(_pcF(tr,'fecha_fin')), dias:parseInt(_pcF(tr,'dias_estimados'))||0,
+      desf:parseInt(_pcF(tr,'desfase'))||0, fCond:null, fObj:null, hito:false, diasCalc:null, conflicto:null, falta:null};
+  });
+  const endDateMap = {}, hitoMap = {}, startMap = {}, nombres = new Set(info.map(i=>i.act).filter(Boolean));
+  const fija = (i, ini, fin, hito, diasCalc) => { i.fCond = ini; i.fObj = fin; i.hito = hito; i.diasCalc = diasCalc;
+    if(i.act){ endDateMap[i.act] = fin; hitoMap[i.act] = hito; startMap[i.act] = ini; } };
   let cambio = true, vueltas = 0;
-  while(cambio && vueltas++ <= info.length){
+  while(cambio && vueltas++ <= info.length + 1){
     cambio = false;
     info.forEach(i=>{
       if(i.fCond) return;
-      let f = i.ini;
-      if(!f && i.prev && endDateMap[i.prev]) f = pcInicioSucesora(endDateMap[i.prev], hitoMap[i.prev]);
-      if(!f) return;
-      const r = pcFechasActividad(f, i.dias);
-      i.fCond = r.ini; i.fObj = r.fin; i.hito = r.hito;          // fObj = último día (incluido)
-      if(i.act){ endDateMap[i.act] = i.fObj; hitoMap[i.act] = i.hito; }
-      cambio = true;
+      if(i.modo === 'manual'){
+        if(!i.ini) return;
+        const s0 = pcDesplazar(pcSigHabil(i.ini), i.desf);
+        if(i.finM && i.finM >= i.ini){
+          let f = pcDesplazar(pcEsHabil(i.finM) ? new Date(i.finM) : pcAntHabil(i.finM), i.desf); if(f < s0) f = new Date(s0);
+          const n = pcContarHabiles(s0, f); fija(i, s0, f, n <= 0, n);
+        } else { const r = pcFechasActividad(s0, i.dias); fija(i, r.ini, r.fin, r.hito, null); }
+        cambio = true;
+      } else if(i.modo === 'inicio_previa'){
+        if(!i.prev || !endDateMap[i.prev]) return;
+        const r = pcFechasActividad(pcDesplazar(pcInicioSucesora(endDateMap[i.prev], hitoMap[i.prev]), i.desf), i.dias);
+        fija(i, r.ini, r.fin, r.hito, null); cambio = true;
+      } else if(i.modo === 'fin_posterior'){
+        if(!i.next || !startMap[i.next]) return;
+        let fin = i.dias <= 0 ? new Date(startMap[i.next]) : pcAntHabil(startMap[i.next]);
+        fin = pcDesplazar(fin, i.desf);
+        const ini = i.dias <= 0 ? new Date(fin) : pcRestarHabiles(fin, i.dias - 1);
+        fija(i, ini, fin, i.dias <= 0, null); cambio = true;
+      } else if(i.modo === 'entre'){
+        if(!i.prev || !i.next || !endDateMap[i.prev] || !startMap[i.next]) return;
+        const ini = pcDesplazar(pcInicioSucesora(endDateMap[i.prev], hitoMap[i.prev]), i.desf);
+        let fin = pcAntHabil(startMap[i.next]);
+        if(fin < ini){ i.conflicto = 'No cabe: la actividad posterior inicia antes de que termine la previa'; fin = new Date(ini); }
+        const n = pcContarHabiles(ini, fin); fija(i, ini, fin, false, n); cambio = true;
+      }
     });
   }
-  return {porFila: new Map(info.map(i=>[i.tr, i])), endDateMap, hitoMap, nombres};
+  info.forEach(i=>{ if(!i.fCond){
+    const f = [];
+    if((i.modo==='inicio_previa'||i.modo==='entre') && (!i.prev || !nombres.has(i.prev))) f.push(i.prev ? 'la previa no existe' : 'falta la previa');
+    if((i.modo==='fin_posterior'||i.modo==='entre') && (!i.next || !nombres.has(i.next))) f.push(i.next ? 'la posterior no existe' : 'falta la posterior');
+    if(i.modo==='manual' && !i.ini) f.push('falta la fecha inicial');
+    i.falta = f.join(' · ') || 'dependencia sin fecha o circular'; } });
+  return {porFila: new Map(info.map(i=>[i.tr, i])), endDateMap, hitoMap, startMap, nombres};
 }
 
 function pcUpdateTimingCalcs() {
@@ -13661,6 +13717,13 @@ function pcUpdateTimingCalcs() {
     const prevNotFound = !_pcFecha(fIni) && prev && !_res.nombres.has(prevKey);
     const prevSinFecha = !_pcFecha(fIni) && prev && !prevNotFound;
     let fCond = _res.porFila.get(tr)?.fCond || null;
+    { const rr = _res.porFila.get(tr) || {};                                      // rev176
+      const iso = d => d ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` : '';
+      tr.dataset.ini = iso(rr.fCond); tr.dataset.fin = iso(rr.fObj);
+      const dEl = tr.querySelector('[data-field="dias_estimados"]');
+      if(dEl && rr.diasCalc != null && (rr.modo==='entre' || (rr.modo==='manual' && rr.finM))){ dEl.value = rr.diasCalc; dEl.disabled = true; dEl.style.opacity = '.75'; dEl.title = 'Días hábiles calculados con las fechas'; }
+      else if(dEl && rr.modo==='manual' && !rr.finM){ dEl.disabled = false; dEl.style.opacity = ''; dEl.title = ''; }
+      tr.title = rr.conflicto || ''; tr.style.boxShadow = rr.conflicto ? 'inset 3px 0 0 var(--red)' : ''; }
     const condEl=tr.querySelector('.pc-t-cond'), objEl=tr.querySelector('.pc-t-obj'), statEl=tr.querySelector('.pc-t-status');
     if(fCond) {
       const fmt = d=>d.toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'});
@@ -13695,7 +13758,7 @@ function pcUpdateTimingCalcs() {
           ? '<span style="color:var(--red)" title="No se encontró una actividad con ese nombre exacto en esta tabla">⚠ no encontrada</span>'
           : prevSinFecha
           ? '<span style="color:var(--amber)" title="La actividad previa todavía no tiene fecha (o hay una referencia circular)">sin fecha previa</span>'
-          : '—';
+          : (_res.porFila.get(tr)?.falta ? `<span style="color:var(--amber)" title="${esc(_res.porFila.get(tr).falta)}">${esc(_res.porFila.get(tr).falta)}</span>` : '—');
       }
       if(objEl)  objEl.textContent='—';
       if(statEl) statEl.textContent='—';
@@ -13785,9 +13848,15 @@ function pcGetTimingData() {
       tipo: 'actividad',
       actividad:             _pcF(tr,'actividad'),
       grupo:                 _pcF(tr,'grupo'),
+      modo:                  _pcF(tr,'modo') || 'manual',                     // rev176
       actividad_previa:      _pcF(tr,'actividad_previa'),
+      actividad_posterior:   _pcF(tr,'actividad_posterior'),
       fecha_inicial:         _pcF(tr,'fecha_inicial'),
+      fecha_fin:             _pcF(tr,'fecha_fin'),
       dias_estimados:        parseInt(_pcF(tr,'dias_estimados'))||0,
+      desfase:               parseInt(_pcF(tr,'desfase'))||0,
+      inicio_calc:           tr.dataset.ini || '',                                 // rev176: fechas resueltas (ISO) para el servidor
+      fin_calc:              tr.dataset.fin || '',
       recurso:               _pcF(tr,'recurso'),
       fecha_condicionada:    tr.querySelector('.pc-t-cond')?.textContent||'',
       fecha_objetivo:        tr.querySelector('.pc-t-obj')?.textContent||'',
@@ -13844,7 +13913,9 @@ function pcRenderGantt(rows, endDateMap, groupRanges) {
     const start = new Date(rr.fCond), fin = new Date(rr.fObj), end = new Date(rr.fObj);
     end.setDate(end.getDate() + 1);
     const fReal = _pcFecha(fRealStr);
-    activityEntries.push({act, start, end, fin, hito: rr.hito, dias, cumpl, mile, fReal, grupo: grupo||null, prev: prev||'', fIni: fIni||''});
+    activityEntries.push({act, start, end, fin, hito: rr.hito, dias: rr.diasCalc!=null ? rr.diasCalc : dias, cumpl, mile, fReal, grupo: grupo||null,
+      prev: (rr.modo==='inicio_previa'||rr.modo==='entre') ? (prev||'') : '', next: (rr.modo==='fin_posterior'||rr.modo==='entre') ? (_pcF(tr,'actividad_posterior')||'') : '',
+      fIni: rr.modo==='manual' ? 'manual' : '', modo: rr.modo, desfase: rr.desf, conflicto: rr.conflicto, _tr: tr});
   });
 
   if(!activityEntries.length){ wrap.style.display='none'; pcLastGanttSVG=null; return; }
@@ -13873,10 +13944,33 @@ function pcRenderGantt(rows, endDateMap, groupRanges) {
   });
   activityEntries.filter(e=>!e.grupo).forEach(e => drawEntries.push(Object.assign({kind:'activity', indent:false}, e)));
 
-  if(!drawEntries.length){ wrap.style.display='none'; pcLastGanttSVG=null; return; }
+  // rev177: vista «Tabla | Gantt» — un renglón del Gantt por cada renglón visible de la tabla, a la misma altura
+  const _alineado = _pcVistaTiming === 'lado';
+  let _tops = [], _hs = [], _tbodyH = 0, _theadH = 26;
+  if(_alineado){
+    const tbx = document.getElementById('pc-timing-body'), thx = tbx && tbx.parentElement.querySelector('thead');
+    _theadH = thx ? thx.offsetHeight : 26;
+    const visibles = [...tbx.rows].filter(tr=>tr.offsetParent !== null);
+    const base = visibles.length ? visibles[0].offsetTop : 0;
+    const porTr = new Map(activityEntries.map(e=>[e._tr, e]));
+    drawEntries.length = 0;
+    visibles.forEach(tr=>{
+      _tops.push(tr.offsetTop - base); _hs.push(tr.offsetHeight);
+      if(tr.dataset.tipo==='grupo'){
+        const gname = _pcF(tr,'actividad'), range = groupRanges[normKey(gname)];
+        drawEntries.push(range ? {kind:'group', act:gname, count:(byGroup[normKey(gname)]||[]).length, collapsed:_pcCollapsedGroups.has(gname),
+          start: range.min, end: (()=>{ const x = new Date(range.max); x.setDate(x.getDate()+1); return x; })()} : {kind:'empty'});
+      } else {
+        const e = porTr.get(tr);
+        drawEntries.push(e ? Object.assign({kind:'activity', indent:false}, e) : {kind:'empty'});
+      }
+    });
+    _tbodyH = visibles.length ? (visibles[visibles.length-1].offsetTop - base + visibles[visibles.length-1].offsetHeight) : 0;
+  }
+  if(!drawEntries.filter(e=>e.kind!=='empty').length){ wrap.style.display='none'; pcLastGanttSVG=null; return; }
 
   const today   = new Date(); today.setHours(0,0,0,0);
-  const allDates = drawEntries.flatMap(e => e.fReal ? [e.start, e.end, e.fReal] : [e.start, e.end]);
+  const allDates = drawEntries.filter(e=>e.kind!=='empty').flatMap(e => e.fReal ? [e.start, e.end, e.fReal] : [e.start, e.end]);
   const minD    = new Date(Math.min(...allDates));
   const maxD    = new Date(Math.max(...allDates));
   const totalMs = Math.max(1, maxD - minD);
@@ -13892,7 +13986,11 @@ function pcRenderGantt(rows, endDateMap, groupRanges) {
     const t = String(e.act||''), esG = e.isGroup || e.tipo === 'grupo' || e.count != null;
     return Math.max(mx, esG ? t.length*7.0 + 46 : t.length*5.9 + 28);
   }, 0);
-  const ROW = 22, PAD = 4, LABEL = Math.round(Math.min(520, Math.max(190, _pcLblW))), DATES = 78, HEAD = 26, INDENT = 14;
+  const _vistaProject = _pcVistaTiming === 'project';                   // rev176: columnas Duración / Inicio / Fin a la izquierda
+  const GRID = _vistaProject ? 214 : 0;
+  const ROW = 22, PAD = 4, LABEL = _alineado ? 6 : Math.round(Math.min(520, Math.max(190, _pcLblW))) + GRID, DATES = (_vistaProject || _alineado) ? 0 : 78,
+        HEAD = _alineado ? Math.max(26, _theadH) : 26, INDENT = 14;
+  const YOF = i => _alineado ? HEAD + _tops[i] + Math.max(0, (_hs[i] - ROW) / 2) : HEAD + PAD + i*(ROW+2);
 
   const pct = d => ((d - minD) / totalMs * W).toFixed(1);
   const todayX = parseFloat(pct(today));
@@ -13913,7 +14011,7 @@ function pcRenderGantt(rows, endDateMap, groupRanges) {
   const labelEvery = _pcGanttZoom === 'dias' ? Math.max(1, Math.ceil(28/pxPerStepDay)) : 1;
 
   let headerSvg = '';
-  const bodyBottom = HEAD + PAD + drawEntries.length*(ROW+2);
+  const bodyBottom = _alineado ? HEAD + _tbodyH : HEAD + PAD + drawEntries.length*(ROW+2);
 
   // ── Sombreado de fines de semana (sáb/dom) — se pinta primero, debajo de todo. ──
   let weekendSvg = '';
@@ -13942,7 +14040,8 @@ function pcRenderGantt(rows, endDateMap, groupRanges) {
   let svgRows = drawEntries.map((e,i) => {
     const x = parseFloat(pct(e.start));
     const w = Math.max(4, parseFloat(pct(e.end)) - x);
-    const y = HEAD + PAD + i*(ROW+2);
+    if(e.kind === 'empty') return '';
+    const y = YOF(i);
 
     if(e.kind === 'group'){
       // Barra agregada como línea sólida delgada — misma convención que la
@@ -13955,7 +14054,7 @@ function pcRenderGantt(rows, endDateMap, groupRanges) {
       <rect x="${LABEL+x}" y="${y+ROW/2-2}" width="${w}" height="4" rx="2" fill="#2b2b2b"/>
       <rect x="${LABEL+x}" y="${y+4}" width="2" height="${ROW-8}" fill="#2b2b2b"/>
       <rect x="${LABEL+x+w-2}" y="${y+4}" width="2" height="${ROW-8}" fill="#2b2b2b"/>
-      <text x="${LABEL-4}" y="${y+ROW-8}" font-size="10.5" fill="#222" text-anchor="end" font-family="Arial" font-weight="800">${toggleIcon} ${esc(label)} (${e.count})<title>${esc(e.act)}</title></text>`;
+      <text x="${LABEL-GRID-8}" y="${y+ROW-8}" ${_alineado?'display="none"':''} font-size="10.5" fill="#222" text-anchor="end" font-family="Arial" font-weight="800">${toggleIcon} ${esc(label)} (${e.count})<title>${esc(e.act)}</title></text>`;
     }
 
     const indentPx = e.indent ? INDENT : 0;
@@ -13983,11 +14082,11 @@ function pcRenderGantt(rows, endDateMap, groupRanges) {
     // rev99: duración 0 = hito → rombo en su fecha
     const barra = e.hito
       ? `<rect x="${LABEL+x-6}" y="${y+ROW/2-6}" width="12" height="12" fill="${e.cumpl ? '#1f8a4c' : '#6d28d9'}" stroke="#fff" stroke-width="1.5" transform="rotate(45 ${LABEL+x} ${y+ROW/2})"><title>Hito: ${esc(e.act)} · ${_pcFmtD(e.start)}</title></rect>`
-      : `<rect x="${LABEL+indentPx+x}" y="${y+3}" width="${Math.max(2,w-indentPx)}" height="${ROW-6}" rx="3" fill="${color}" opacity=".85"/>
+      : `<rect x="${LABEL+indentPx+x}" y="${y+3}" width="${Math.max(2,w-indentPx)}" height="${ROW-6}" rx="3" fill="${color}" opacity=".85"><title>${esc(e.act)} · ${_pcFmtD(e.start)} → ${_pcFmtD(e.fin||e.end)}</title></rect>
     <text x="${LABEL+indentPx+x+4}" y="${y+ROW-8}" font-size="9" fill="white" font-family="Arial">${e.dias>0?e.dias+'d':''}</text>`;
     return `
     ${barra}
-    <text x="${LABEL-4}" y="${y+ROW-8}" font-size="10" fill="#555" text-anchor="end" font-family="Arial">${esc(label)}${mileIcon}<title>${esc(e.act)}</title></text>
+    <text x="${LABEL-GRID-8}" y="${y+ROW-8}" ${_alineado?'display="none"':''} font-size="10" fill="#555" text-anchor="end" font-family="Arial">${esc(label)}${mileIcon}<title>${esc(e.act)}</title></text>
     <text x="${LABEL+W+8}" y="${y+ROW-8}" font-size="8.5" fill="#444" font-family="'DM Mono',monospace">${rangoTxt}</text>
     ${extra}`;
   }).join('');
@@ -14004,12 +14103,15 @@ function pcRenderGantt(rows, endDateMap, groupRanges) {
     activityEntries.filter(e=>+e.end===finMax).forEach(e=>{
       let cur = e, guard = 0;
       while(cur && guard++ < 500){ critica.add(nk(cur.act)); if(!cur.prev || cur.fIni) break; cur = todas[nk(cur.prev)]; }
+      // rev176: las actividades "fin → posterior" de una actividad crítica también son críticas
+      let otra = true, g2 = 0;
+      while(otra && g2++ < 50){ otra = false; activityEntries.forEach(x=>{ if(x.next && critica.has(nk(x.next)) && !critica.has(nk(x.act))){ critica.add(nk(x.act)); otra = true; } }); }
     });
     let deps = '';
     drawEntries.forEach((e,i)=>{
       if(e.kind!=='activity' || !e.prev) return;
       const p = vis[nk(e.prev)]; if(!p) return;
-      const yP = HEAD + PAD + p.i*(ROW+2) + ROW/2, yS = HEAD + PAD + i*(ROW+2) + ROW/2;
+      const yP = YOF(p.i) + ROW/2, yS = YOF(i) + ROW/2;
       const xP = LABEL + parseFloat(pct(p.e.hito ? p.e.start : p.e.end)), xS = LABEL + parseFloat(pct(e.start)) + (e.indent?INDENT:0);
       const crit = critica.has(nk(e.act)) && critica.has(nk(p.e.act)) && !e.fIni;
       const xm = Math.max(xP + 6, Math.min(xS - 6, xP + 6));
@@ -14018,10 +14120,19 @@ function pcRenderGantt(rows, endDateMap, groupRanges) {
         : `M${xP},${yP} h6 V${(yP+yS)/2} H${xS-10} V${yS} H${xS-2}`;
       deps += `<path d="${d}" fill="none" stroke="${crit?'#c8102e':'#7a7a7a'}" stroke-width="${crit?2:1}" stroke-opacity="${crit?0.95:0.6}" ${crit?'':'stroke-dasharray="3,2"'} marker-end="url(#${crit?'pcArrC':'pcArr'})"><title>${esc(e.prev)} → ${esc(e.act)}${crit?' · ruta crítica':''}</title></path>`;
     });
+    // rev176: actividad que termina antes de su posterior (fin → inicio de la posterior)
+    drawEntries.forEach((e,i)=>{
+      if(e.kind!=='activity' || !e.next) return;
+      const q = vis[nk(e.next)]; if(!q) return;
+      const yA = YOF(i) + ROW/2, yB = YOF(q.i) + ROW/2;
+      const xA = LABEL + parseFloat(pct(e.hito ? e.start : e.end)), xB = LABEL + parseFloat(pct(q.e.start)) + (q.e.indent?INDENT:0);
+      const dd = xB - 6 > xA + 4 ? `M${xA},${yA} H${xA+6} V${yB} H${xB-2}` : `M${xA},${yA} h6 V${(yA+yB)/2} H${xB-10} V${yB} H${xB-2}`;
+      deps += `<path d="${dd}" fill="none" stroke="#2563eb" stroke-width="1.2" stroke-opacity=".7" stroke-dasharray="2,2" marker-end="url(#pcArr)"><title>${esc(e.act)} termina antes de ${esc(e.next)} (calculada en retrospectiva)</title></path>`;
+    });
     // contorno rojo en las barras de la ruta crítica
     drawEntries.forEach((e,i)=>{
       if(e.kind!=='activity' || !critica.has(nk(e.act)) || e.hito) return;
-      const x = parseFloat(pct(e.start)), w = Math.max(4, parseFloat(pct(e.end)) - x), y = HEAD + PAD + i*(ROW+2), ip = e.indent ? INDENT : 0;
+      const x = parseFloat(pct(e.start)), w = Math.max(4, parseFloat(pct(e.end)) - x), y = YOF(i), ip = e.indent ? INDENT : 0;
       deps += `<rect x="${LABEL+ip+x-1}" y="${y+2}" width="${Math.max(2,w-ip)+2}" height="${ROW-4}" rx="4" fill="none" stroke="#c8102e" stroke-width="1.6"><title>Ruta crítica: ${esc(e.act)}</title></rect>`;
     });
     if(_pcGanttRutaCritica !== false) svgRows += deps;
@@ -14048,9 +14159,12 @@ function pcRenderGantt(rows, endDateMap, groupRanges) {
   const inner = `${defs}${weekendSvg}${headerSvg}${svgRows}`;
   gantt.innerHTML = `<div style="display:flex;width:max-content">
       <div style="position:sticky;left:-8px;margin-left:-8px;padding-left:8px;z-index:2;flex:none;background:var(--card,#fff);box-shadow:4px 0 6px -4px rgba(0,0,0,.25)">
-        <svg width="${LABEL}" height="${svgH}" viewBox="0 0 ${LABEL} ${svgH}" xmlns="http://www.w3.org/2000/svg" style="background:rgba(0,0,0,.03);display:block">${inner}<rect x="${LABEL-30}" y="0" width="30" height="${HEAD}" fill="#f6f6f6"/></svg></div>
+        <svg width="${LABEL}" height="${svgH}" viewBox="0 0 ${LABEL} ${svgH}" xmlns="http://www.w3.org/2000/svg" style="background:rgba(0,0,0,.03);display:block">${inner}${GRID?'':`<rect x="${LABEL-30}" y="0" width="30" height="${HEAD}" fill="#f6f6f6"/>`}</svg></div>
       <svg width="${svgW-LABEL}" height="${svgH}" viewBox="${LABEL} 0 ${svgW-LABEL} ${svgH}" xmlns="http://www.w3.org/2000/svg" style="background:rgba(0,0,0,.03);display:block">${inner}</svg>
     </div>`;
+  try{ pcGanttDecorar(); }catch(e){ console.warn('vista project', e); }
+  try{ pcGanttConectarClics(); }catch(e){}
+  if(_alineado){ try{ pcAlinearGantt(); }catch(e){} }
 
   // Se guarda para poder generar el PDF con el mismo diagrama, sin recalcular
   pcLastGanttSVG = svgMarkup.replace(/rgba\(0,0,0,\.03\)/,'#f7f7f7');
@@ -21840,3 +21954,178 @@ function catTrasOC(c){
   (tipos.size ? [...tipos] : ['electrico','mecanico','servicios','consumibles']).forEach(t=>{ try{ loadCatalogo(t); }catch(e){} });
 }
 const _catNorm = v => String(v||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+
+// ════════════════════════════════════════════════════════
+//  rev176 — Timing: vista tipo Microsoft Project + editor lateral
+// ════════════════════════════════════════════════════════
+var _pcVistaTiming = (function(){ try{ return localStorage.getItem('pc_vista_timing') || 'tabla'; }catch(e){ return 'tabla'; } })();
+function pcVistaTiming(v){
+  _pcVistaTiming = v; try{ localStorage.setItem('pc_vista_timing', v); }catch(e){}
+  const sc = document.getElementById('pc-timing-scroll'), ico = document.getElementById('pc-timing-cfg-ico');
+  if(sc) sc.style.display = v==='project' ? 'none' : '';
+  if(ico) ico.textContent = v==='project' ? '▸' : '▾';
+  // rev177: «Tabla | Gantt» lado a lado
+  const sp = (typeof pcSplitAsegurar === 'function') ? pcSplitAsegurar() : null, gw = document.getElementById('pc-gantt-wrap');
+  if(sp){
+    if(v === 'lado'){ sp.style.cssText = 'display:flex;gap:10px;align-items:flex-start'; sc.style.cssText = 'overflow-x:auto;flex:0 0 58%;min-width:0'; if(gw){ gw.style.marginTop = '0'; gw.style.flex = '1 1 42%'; gw.style.minWidth = '0'; } }
+    else { sp.style.cssText = ''; sc.style.cssText = 'overflow-x:auto' + (v==='project' ? ';display:none' : ''); if(gw){ gw.style.marginTop = '20px'; gw.style.flex = ''; gw.style.minWidth = ''; } const g = document.getElementById('pc-gantt'); if(g) g.style.marginTop = '0'; }
+  }
+  ['tabla','lado','project'].forEach(x=>{ const b = document.getElementById('pc-vista-'+x); if(b){ b.style.background = x===v ? 'var(--red)' : 'transparent'; b.style.color = x===v ? '#fff' : ''; } });
+  if(v!=='project') pcCerrarPanelAct();
+  try{ pcUpdateTimingCalcs(); }catch(e){}
+}
+// Columnas tipo Project dentro de la columna fija del Gantt + clic para editar
+function pcGanttDecorar(){
+  if(_pcVistaTiming !== 'project') return;
+  const g = document.getElementById('pc-gantt'); if(!g) return;
+  const svgs = g.querySelectorAll('svg'); if(!svgs.length) return;
+  const izq = svgs[0];
+  const rows = [...document.getElementById('pc-timing-body').rows];
+  const res = _pcResolverTiming(rows);
+  const byName = {}; rows.forEach(tr=>{ if(tr.dataset.tipo!=='grupo'){ byName[(_pcF(tr,'actividad')||'').trim().toUpperCase()] = tr; } });
+  const fmt = d => d ? d.toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '—';
+  const W = parseFloat(izq.getAttribute('width'));
+  const x0 = W - 214;
+  // encabezados
+  const ns = 'http://www.w3.org/2000/svg';
+  const txt = (x, y, t, o={}) => { const e = document.createElementNS(ns,'text'); e.setAttribute('x',x); e.setAttribute('y',y); e.setAttribute('font-size',o.fs||'9.5'); e.setAttribute('font-family','Arial'); e.setAttribute('fill',o.fill||'#444'); if(o.anchor) e.setAttribute('text-anchor',o.anchor); if(o.bold) e.setAttribute('font-weight','700'); e.textContent = t; izq.appendChild(e); return e; };
+  const bg = document.createElementNS(ns,'rect'); bg.setAttribute('x', x0-4); bg.setAttribute('y', 0); bg.setAttribute('width', 218); bg.setAttribute('height', izq.getAttribute('height')); bg.setAttribute('fill','rgba(0,0,0,.025)'); izq.insertBefore(bg, izq.firstChild);
+  txt(x0+24, 16, 'Duración', {anchor:'middle', bold:true, fill:'#666'}); txt(x0+96, 16, 'Inicio', {anchor:'middle', bold:true, fill:'#666'}); txt(x0+170, 16, 'Fin', {anchor:'middle', bold:true, fill:'#666'});
+  // filas: localizar los textos de las actividades por su <title>
+  izq.querySelectorAll('text').forEach(t=>{
+    const ti = t.querySelector('title'); if(!ti) return;
+    const nombre = (ti.textContent||'').trim().toUpperCase(); const tr = byName[nombre];
+    const y = t.getAttribute('y');
+    if(tr){
+      const r = res.porFila.get(tr) || {};
+      const dur = r.diasCalc!=null ? r.diasCalc : (parseInt(_pcF(tr,'dias_estimados'))||0);
+      txt(x0+24, y, (r.fCond ? dur + ' d' : '—'), {anchor:'middle'});
+      txt(x0+96, y, fmt(r.fCond), {anchor:'middle', fill: r.modo==='manual' ? '#444' : '#1d4ed8'});
+      txt(x0+170, y, fmt(r.fObj), {anchor:'middle', fill: r.modo==='fin_posterior'||r.modo==='entre' ? '#1d4ed8' : '#444'});
+      t.style.cursor = 'pointer'; t.addEventListener('click', ()=>pcAbrirPanelAct(tr));
+      if((r.desf||0)!==0) txt(x0-6, y, (r.desf>0?'+':'')+r.desf+'d', {anchor:'end', fs:'8.5', fill: r.desf>0 ? '#c8102e' : '#15803d'});
+    }
+  });
+  // barras clicables en la vista derecha
+  if(svgs[1]) svgs[1].querySelectorAll('rect').forEach(rc=>{ const ti = rc.querySelector('title'); if(!ti) return;
+    const nombre = (ti.textContent||'').split('·')[0].trim().toUpperCase(); const tr = byName[nombre]; if(tr){ rc.style.cursor='pointer'; rc.addEventListener('click', ()=>pcAbrirPanelAct(tr)); } });
+}
+let _pcPanelTr = null;
+function pcAbrirPanelAct(tr){
+  _pcPanelTr = tr; const p = document.getElementById('pc-act-panel'); if(!p || !tr) return;
+  const f = k => tr.querySelector(`[data-field="${k}"]`);
+  const v = k => esc(_pcF(tr,k)||'');
+  const modo = _pcF(tr,'modo') || 'manual';
+  const r = (_pcResolverTiming([...document.getElementById('pc-timing-body').rows]).porFila.get(tr)) || {};
+  const fmt = d => d ? d.toLocaleDateString('es-MX',{weekday:'short',day:'2-digit',month:'short',year:'numeric'}) : '—';
+  const ro = !pcTabPuede('timing','create');
+  const inp = (k, t='text', extra='') => `<input ${ro?'disabled':''} data-pf="${k}" type="${t}" value="${v(k)}" ${extra} oninput="pcPanelSet('${k}', this)" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid var(--border);border-radius:6px;background:var(--inp)">`;
+  const usa = {previa: modo==='inicio_previa'||modo==='entre', posterior: modo==='fin_posterior'||modo==='entre', fechas: modo==='manual', dias: modo!=='entre'};
+  p.innerHTML = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><b style="font-size:13px;flex:1">✏ ${v('actividad')||'(sin nombre)'}</b><button onclick="pcCerrarPanelAct()" style="border:none;background:none;cursor:pointer;font-size:16px">✕</button></div>
+    <div style="font-size:11px;padding:6px 8px;border-radius:6px;background:rgba(29,78,216,.07);margin-bottom:8px">📅 <b>${fmt(r.fCond)}</b> → <b>${fmt(r.fObj)}</b>${r.fCond?` · ${r.diasCalc!=null?r.diasCalc:(parseInt(_pcF(tr,'dias_estimados'))||0)} d hábiles`:''}${r.conflicto?`<div style="color:var(--red)">⚠ ${esc(r.conflicto)}</div>`:''}${!r.fCond&&r.falta?`<div style="color:var(--amber)">${esc(r.falta)}</div>`:''}</div>
+    <label style="font-size:10.5px;color:var(--muted2)">Actividad</label>${inp('actividad')}
+    <label style="font-size:10.5px;color:var(--muted2)">Grupo</label>${inp('grupo','text','list="pc-timing-groups-list"')}
+    <label style="font-size:10.5px;color:var(--muted2)">Condición de fechas</label>
+    <select ${ro?'disabled':''} onchange="pcPanelSet('modo', this)" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid var(--border);border-radius:6px">${PC_T_MODOS.map(([k,t])=>`<option value="${k}" ${k===modo?'selected':''}>${t}</option>`).join('')}</select>
+    ${usa.previa?`<label style="font-size:10.5px;color:var(--muted2)">Actividad previa (inicia al terminar ésta)</label>${inp('actividad_previa','text','list="pc-timing-activities-list"')}`:''}
+    ${usa.posterior?`<label style="font-size:10.5px;color:var(--muted2)">Actividad posterior (termina antes de que inicie ésta)</label>${inp('actividad_posterior','text','list="pc-timing-activities-list"')}`:''}
+    ${usa.fechas?`<div style="display:flex;gap:6px"><div style="flex:1"><label style="font-size:10.5px;color:var(--muted2)">Fecha inicial</label>${inp('fecha_inicial','date')}</div><div style="flex:1"><label style="font-size:10.5px;color:var(--muted2)">Fecha fin (opcional)</label>${inp('fecha_fin','date')}</div></div>`:''}
+    <div style="display:flex;gap:6px;align-items:flex-end">
+      ${usa.dias?`<div style="flex:1"><label style="font-size:10.5px;color:var(--muted2)">Días hábiles</label>${inp('dias_estimados','number','min="0"')}</div>`:''}
+      <div style="flex:1.3"><label style="font-size:10.5px;color:var(--muted2)">Desfase (− adelanto / + atraso)</label>
+        <div style="display:flex;gap:4px"><button ${ro?'disabled':''} onclick="pcPanelDesfase(-1)" class="btn-reload" style="padding:4px 10px">−</button>${inp('desfase','number','step="1" style="text-align:center;width:100%;padding:6px 4px;font-size:12px;border:1px solid var(--border);border-radius:6px"')}<button ${ro?'disabled':''} onclick="pcPanelDesfase(1)" class="btn-reload" style="padding:4px 10px">+</button></div></div></div>
+    <label style="font-size:10.5px;color:var(--muted2)">Recursos</label>${inp('recurso')}
+    <div style="display:flex;gap:6px;align-items:flex-end"><div style="flex:1"><label style="font-size:10.5px;color:var(--muted2)">Fecha real de finalización</label>${inp('fecha_real_finalizacion','date')}</div>
+      <label style="font-size:12px;display:flex;gap:4px;align-items:center;padding-bottom:6px"><input ${ro?'disabled':''} type="checkbox" ${_pcF(tr,'cumplido')?'checked':''} onchange="pcPanelSet('cumplido', this)"> Cumplido</label></div>
+    <div style="font-size:10.5px;color:var(--muted);margin-top:8px">Los cambios se reflejan al momento en el Gantt. Recuerda <b>Guardar</b> la configuración.</div>`;
+  p.style.display = '';
+}
+function pcCerrarPanelAct(){ const p = document.getElementById('pc-act-panel'); if(p) p.style.display='none'; _pcPanelTr = null; }
+function pcPanelSet(k, el){
+  const tr = _pcPanelTr; if(!tr) return;
+  const t = tr.querySelector(`[data-field="${k}"]`); if(!t) return;
+  if(t.type === 'checkbox') t.checked = el.checked; else t.value = el.value;
+  if(k==='grupo'){ try{ pcOnGroupFieldChange(t); }catch(e){} }
+  if(k==='modo'){ pcTimingModoUI(tr); }
+  pcUpdateTimingCalcs();
+  if(k==='modo') pcAbrirPanelAct(tr);
+  else { const r = _pcResolverTiming([...document.getElementById('pc-timing-body').rows]).porFila.get(tr) || {};
+    const box = document.querySelector('#pc-act-panel div[style*="rgba(29,78,216"]');
+    if(box){ const fmt = d => d ? d.toLocaleDateString('es-MX',{weekday:'short',day:'2-digit',month:'short',year:'numeric'}) : '—';
+      box.innerHTML = `📅 <b>${fmt(r.fCond)}</b> → <b>${fmt(r.fObj)}</b>${r.fCond?` · ${r.diasCalc!=null?r.diasCalc:(parseInt(_pcF(tr,'dias_estimados'))||0)} d hábiles`:''}${r.conflicto?`<div style="color:var(--red)">⚠ ${esc(r.conflicto)}</div>`:''}${!r.fCond&&r.falta?`<div style="color:var(--amber)">${esc(r.falta)}</div>`:''}`; } }
+}
+function pcPanelDesfase(d){ const i = document.querySelector('#pc-act-panel [data-pf="desfase"]'); if(!i) return; i.value = (parseInt(i.value)||0) + d; pcPanelSet('desfase', i); }
+
+// ════════════════════════════════════════════════════════
+//  rev177 — Timing: vista «Tabla | Gantt» alineada y modal de actividad
+// ════════════════════════════════════════════════════════
+function pcSplitAsegurar(){
+  let sp = document.getElementById('pc-timing-split');
+  const sc = document.getElementById('pc-timing-scroll'), gw = document.getElementById('pc-gantt-wrap');
+  if(!sc || !gw) return null;
+  if(!sp){ sp = document.createElement('div'); sp.id = 'pc-timing-split'; sc.parentElement.insertBefore(sp, sc); sp.appendChild(sc); sp.appendChild(gw); }
+  return sp;
+}
+function pcAlinearGantt(){
+  const tb = document.getElementById('pc-timing-body'), th = tb && tb.parentElement.querySelector('thead');
+  const g = document.getElementById('pc-gantt'), sc = document.getElementById('pc-timing-scroll');
+  if(!th || !g || !sc) return;
+  g.style.marginTop = '0px'; sc.style.marginTop = '0px';
+  const sv = g.querySelector('svg'); if(!sv) return;
+  const d = th.getBoundingClientRect().top - sv.getBoundingClientRect().top;
+  if(d > 0) g.style.marginTop = d + 'px'; else sc.style.marginTop = (-d) + 'px';
+}
+// Clic en el nombre o en la barra de una actividad del Gantt → modal de configuración (todas las vistas)
+function pcGanttConectarClics(){
+  const g = document.getElementById('pc-gantt'); if(!g) return;
+  const rows = [...document.getElementById('pc-timing-body').rows];
+  const byName = {}; rows.forEach(tr=>{ if(tr.dataset.tipo!=='grupo') byName[(_pcF(tr,'actividad')||'').trim().toUpperCase()] = tr; });
+  g.querySelectorAll('text, rect').forEach(el=>{
+    const ti = el.querySelector('title'); if(!ti) return;
+    const nombre = (ti.textContent||'').replace(/^Hito:\s*/,'').replace(/^Ruta crítica:\s*/,'').split('·')[0].trim().toUpperCase();
+    const tr = byName[nombre]; if(!tr || el.dataset.clic) return;
+    el.dataset.clic = '1'; el.style.cursor = 'pointer'; el.addEventListener('click', ()=>pcAbrirPanelAct(tr));
+  });
+  // también las barras sin título: por posición vertical en la vista alineada
+}
+// El panel de la actividad se muestra como MODAL centrado
+function pcModalActAsegurar(){
+  let ov = document.getElementById('pc-act-ov');
+  const p = document.getElementById('pc-act-panel');
+  if(!ov && p){
+    ov = document.createElement('div'); ov.id = 'pc-act-ov';
+    ov.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:149';
+    ov.addEventListener('click', e=>{ if(e.target === ov) pcCerrarPanelAct(); });
+    document.body.appendChild(ov);
+    p.style.cssText = 'display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:440px;max-width:calc(100vw - 24px);max-height:calc(100vh - 40px);overflow:auto;z-index:150;background:var(--card,#fff);border:1px solid var(--border);border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,.3);padding:16px';
+  }
+  return ov;
+}
+const _pcAbrirPanelAct_orig = pcAbrirPanelAct;
+pcAbrirPanelAct = function(tr){
+  const ov = pcModalActAsegurar(); _pcAbrirPanelAct_orig(tr);
+  if(ov) ov.style.display = '';
+  const p = document.getElementById('pc-act-panel');
+  if(p && !p.querySelector('.pc-act-pie')){
+    const ro = !pcTabPuede('timing','create');
+    p.insertAdjacentHTML('beforeend', `<div class="pc-act-pie" style="display:flex;gap:8px;margin-top:12px;border-top:1px solid var(--border);padding-top:10px">
+      ${ro?'':'<button class="btn-reload" style="color:var(--red)" onclick="pcEliminarActModal()">Eliminar actividad</button>'}
+      <button class="btn btn-p" style="margin-left:auto;padding:6px 18px" onclick="pcCerrarPanelAct()">Listo</button></div>`);
+  }
+  setTimeout(()=>{ const n = p && p.querySelector('[data-pf="actividad"]'); if(n && !n.value) n.focus(); }, 50);
+};
+const _pcCerrarPanelAct_orig = pcCerrarPanelAct;
+pcCerrarPanelAct = function(){ _pcCerrarPanelAct_orig(); const ov = document.getElementById('pc-act-ov'); if(ov) ov.style.display = 'none'; };
+function pcEliminarActModal(){
+  if(!_pcPanelTr || !confirm('¿Eliminar esta actividad del Timing?')) return;
+  const tr = _pcPanelTr; pcCerrarPanelAct(); tr.remove(); pcUpdateTimingCalcs();
+}
+// «+ Actividad»: agrega la fila (encadenada a la última actividad) y abre el modal para configurarla
+function pcNuevaActividad(){
+  const rows = [...document.getElementById('pc-timing-body').rows].filter(r=>r.dataset.tipo!=='grupo');
+  const ult = rows.length ? _pcF(rows[rows.length-1],'actividad') : '';
+  pcAddTimingRow(ult ? {modo:'inicio_previa', actividad_previa: ult, dias_estimados: 5} : {modo:'manual', dias_estimados: 5});
+  const tb = document.getElementById('pc-timing-body'); const tr = tb.rows[tb.rows.length-1];
+  pcUpdateTimingCalcs(); pcAbrirPanelAct(tr);
+}
+window.addEventListener('resize', ()=>{ if(_pcVistaTiming==='lado'){ clearTimeout(window._pcAlT); window._pcAlT = setTimeout(()=>{ try{ pcUpdateTimingCalcs(); }catch(e){} }, 250); } });   // rev177
