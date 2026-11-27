@@ -2859,7 +2859,9 @@ tbody tr.q-aw{background:rgba(111,207,151,.09)!important}
       <select id="kpi-anio" onchange="kpiCargarResultados()" style="font-size:12px;padding:5px 8px"></select>
       <select id="kpi-filtro" onchange="kpiRender()" style="font-size:12px;padding:5px 8px;max-width:260px"><option value="">Todas las personas</option></select>
       <button class="btn-reload" onclick="kpiCargar()">Recargar</button>
-      <button class="btn-reload" onclick="rgAbrir()" style="margin-left:auto;border-color:var(--red);color:var(--red);font-weight:700">📊 Reporte gerencial</button>
+      <button class="btn-reload" onclick="kpiPdf('generales')" style="margin-left:auto" title="KPIs globales y por área en un PDF">⬇ PDF KPIs generales</button>
+      <button class="btn-reload" onclick="kpiPdf('todos')" title="Todos los KPIs (incluye los asignados a personas), respetando el filtro">⬇ PDF todos</button>
+      <button class="btn-reload" onclick="rgAbrir()" style="border-color:var(--red);color:var(--red);font-weight:700">📊 Reporte gerencial</button>
       <button class="btn-new" id="kpi-btn-nuevo" onclick="kpiAbrir()" style="width:auto;padding:8px 16px">+ Asignar KPI</button>
     </div>
     <div id="kpi-body" style="padding:20px 24px"></div>

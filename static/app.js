@@ -22187,3 +22187,10 @@ async function pcExportarProyecto(formato){
   a.download = `Timing ${String(nombre).replace(/[^\w\- ]/g,'')}.${formato==='xml'?'xml':'ppj'}`; document.body.appendChild(a); a.click(); a.remove();
   toast(formato==='xml' ? 'XML de MS Project descargado (ábrelo en Project 2007 o posterior)' : 'Proyecto .ppj descargado (ábrelo en ProyectoPy)', 'ok');
 }
+
+// rev180: KPIs → PDF
+function kpiPdf(alcance){
+  const anio = document.getElementById('kpi-anio')?.value || new Date().getFullYear();
+  const tid = alcance==='todos' ? (document.getElementById('kpi-filtro')?.value||'') : '';
+  window.open(`/api/kpis/pdf?anio=${encodeURIComponent(anio)}&alcance=${alcance}${tid&&tid!=='__global__'?'&tid='+encodeURIComponent(tid):''}`, '_blank');
+}

@@ -26096,6 +26096,103 @@ def api_timing_exportar():
     data = json.dumps(p.to_dict(), ensure_ascii=False, indent=1).encode("utf-8")
     return Response(data, mimetype="application/json", headers={"Content-Disposition": f'attachment; filename="{nombre}.ppj"'})
 
+# ══ rev180: Management ▸ KPIs → reporte PDF (HTML listo para imprimir / guardar como PDF) ══
+def _kpi_fmt(v, u):
+    if v is None: return "—"
+    try: n = float(v)
+    except (TypeError, ValueError): return str(v)
+    if u == "%": return f"{n:,.1f} %"
+    if u == "$": return f"${n:,.0f}"
+    if u == "$/h": return f"${n:,.2f}/h"
+    if u == "días": return f"{n:,.1f} días"
+    return f"{n:,.1f}".rstrip("0").rstrip(".") if abs(n - round(n)) > 1e-9 else f"{n:,.0f}"
+
+@app.route("/api/kpis/pdf", methods=["GET"])
+def api_kpis_pdf():
+    if not _can_kpis("view"): return jsonify({"error": "Sin permiso"}), 403
+    e = _html.escape
+    anio = int(request.args.get("anio") or datetime.date.today().year)
+    alcance = request.args.get("alcance") or "generales"          # generales = globales y por área · todos = también por persona
+    asign = [a for a in _load_catalog("kpi_asignaciones") if a.get("activo", True)]
+    if alcance == "generales": asign = [a for a in asign if a.get("alcance") in ("global", "area")]
+    elif request.args.get("tid"): asign = [a for a in asign if a.get("tid") == request.args["tid"] or a.get("alcance") == "global"]
+    res = api_kpis_resultados(asign, anio) or []
+    COL = {"verde": "#16a34a", "ambar": "#f59e0b", "rojo": "#c8102e"}
+    PER = {"mensual": "Mensual", "trimestral": "Trimestral", "semanal": "Semanal", "proyecto": "Por proyecto"}
+    MES = ["E", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"]
+    def meta_txt(a, K):
+        if a.get("meta") is None: return "meta por definir"
+        if K.get("sentido") == "reduccion": return f"meta: bajar {a['meta']} % vs mes anterior"
+        return f"meta {'≤' if K.get('sentido') == 'menor' else '≥'} {_kpi_fmt(a['meta'], K.get('unidad'))}"
+    def barras(x, K, a):
+        ps = [p for p in (x.get("periodos") or []) if K.get("periodo") != "proyecto"]
+        if not ps: return ""
+        W, H = 300, 60; n = len(ps); bw = max(2.0, (W - 4) / n - 2)
+        mx = max([abs(p.get("valor") or 0) for p in ps] + [abs(a.get("meta") or 0), 1])
+        out = [f'<svg width="{W}" height="{H + 14}" viewBox="0 0 {W} {H + 14}" xmlns="http://www.w3.org/2000/svg">']
+        for i, p in enumerate(ps):
+            v = p.get("valor"); h = 0 if v is None else max(2, abs(v) / mx * H)
+            c = "#cbd5e1" if p.get("en_curso") else COL.get(p.get("estado"), "#cbd5e1")
+            x0 = 2 + i * ((W - 4) / n)
+            out.append(f'<rect x="{x0:.1f}" y="{H - h:.1f}" width="{bw:.1f}" height="{h:.1f}" rx="1.5" fill="{c}"><title>{e(str(p.get("p")))}: {e(_kpi_fmt(v, K.get("unidad")))}</title></rect>')
+            if n <= 20:
+                lbl = MES[int(str(p.get("p"))[5:7]) - 1] if K.get("periodo") == "mensual" and len(str(p.get("p"))) >= 7 else str(p.get("p"))[-3:]
+                out.append(f'<text x="{x0 + bw / 2:.1f}" y="{H + 11}" font-size="8" fill="#666" text-anchor="middle" font-family="Arial">{e(lbl)}</text>')
+        if a.get("meta") is not None and K.get("sentido") != "reduccion":
+            ym = H - min(H, abs(a["meta"]) / mx * H)
+            out.append(f'<line x1="0" y1="{ym:.1f}" x2="{W}" y2="{ym:.1f}" stroke="#c8102e" stroke-dasharray="4,3" stroke-width="1"/>')
+        out.append("</svg>"); return "".join(out)
+    grupos = {}
+    for x in res: grupos.setdefault(x["asignacion"].get("nombre") or "KPIs generales (empresa)", []).append(x)
+    tot = len(res); ver = sum(1 for x in res if x.get("estado") == "verde"); amb = sum(1 for x in res if x.get("estado") == "ambar"); rojo = sum(1 for x in res if x.get("estado") == "rojo")
+    secciones = []
+    for nombre, xs in grupos.items():
+        tarjetas = []
+        for x in xs:
+            a, K = x["asignacion"], x["kpi"]; c = COL.get(x.get("estado"), "#94a3b8"); u = K.get("unidad")
+            extra = []
+            if x.get("ultimo") and K.get("periodo") != "proyecto": extra.append(f'último ({e(str(x["ultimo"].get("p")))}): <b>{e(_kpi_fmt(x["ultimo"].get("valor"), u))}</b>')
+            if x.get("pie"): extra.append(f'{x["pie"].get("aceptadas")} de {x["pie"].get("emitidas")} emitidas')
+            if (x.get("wip") or {}).get("n"): extra.append(f'WIP ({x["wip"]["n"]}): {e(_kpi_fmt(x["wip"].get("promedio"), u))}')
+            cumpl = "sin meta" if a.get("meta") is None else (f'cumplió {x.get("cumplidos")} de {x.get("evaluados")}' if x.get("evaluados") else "sin datos aún")
+            desg = ""
+            if x.get("desglose"):
+                desg = '<table class="mini"><tr><th>Área</th><th class="r">Último</th><th class="r">Promedio</th></tr>' + "".join(
+                    f'<tr><td>{e(str(d.get("area")))}</td><td class="r">{e(_kpi_fmt(d.get("ultimo"), u))}</td><td class="r">{e(_kpi_fmt(d.get("promedio"), u))}</td></tr>' for d in x["desglose"]) + "</table>"
+            proy = ""
+            if K.get("periodo") == "proyecto" and x.get("periodos"):
+                proy = '<table class="mini"><tr><th>Job</th><th class="r">Valor</th><th>Detalle</th></tr>' + "".join(
+                    f'<tr><td class="mono">{e(str(p.get("p")))}{" (WIP)" if p.get("en_curso") else ""}</td><td class="r" style="color:{COL.get(p.get("estado"), "#333")}">{e(_kpi_fmt(p.get("valor"), u))}</td><td>{e(str(p.get("extra") or ""))[:80]}</td></tr>' for p in x["periodos"][:25]) + "</table>"
+            tarjetas.append(f"""<div class="card" style="border-left-color:{c}">
+              <div class="kn">{e(K.get("nombre") or "")}</div><div class="ke">{e(K.get("nombre_es") or "")}</div>
+              <div class="km">{PER.get(K.get("periodo"), "")} · {e(meta_txt(a, K))}{' · ' + e(a.get('area')) if a.get('alcance') == 'area' and a.get('area') else ''}</div>
+              <div class="kv"><span style="color:{c}">{e(_kpi_fmt(x.get("promedio"), u))}</span><span class="kc">{cumpl}</span></div>
+              <div class="kx">{' · '.join(extra)}</div>
+              {barras(x, K, a)}{desg}{proy}
+              {f'<div class="kx">{e(x.get("nota"))}</div>' if x.get("nota") else ''}</div>""")
+        v_ = sum(1 for x in xs if x.get("estado") == "verde"); r_ = sum(1 for x in xs if x.get("estado") == "rojo")
+        secciones.append(f'<section><h2>{e(nombre)} <span>{len(xs)} KPI{"s" if len(xs) != 1 else ""} · <b style="color:#16a34a">{v_} en meta</b>{f" · <b style=color:#c8102e>{r_} fuera de meta</b>" if r_ else ""}</span></h2><div class="grid">{"".join(tarjetas)}</div></section>')
+    df = _datos_fiscales()
+    html = f"""<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>KPIs {anio}</title><style>
+    @page{{size:letter;margin:11mm}} body{{font-family:Arial,Helvetica,sans-serif;color:#1a1a2e;margin:0;padding:16px 22px;font-size:11px}}
+    header{{display:flex;align-items:center;gap:14px;border-bottom:3px solid #c8102e;padding-bottom:8px;margin-bottom:10px}} header img{{height:30px}} h1{{margin:0;font-size:19px}}
+    .sub{{color:#666;font-size:10px}} .res{{display:flex;gap:8px;margin:8px 0 14px}} .res div{{border:1px solid #e3e3e3;border-radius:6px;padding:5px 12px}} .res b{{font-size:16px}}
+    h2{{font-size:14px;margin:12px 0 6px;border-bottom:1px solid #ddd;padding-bottom:3px}} h2 span{{font-size:10px;font-weight:400;color:#666;margin-left:8px}}
+    .grid{{display:grid;grid-template-columns:1fr 1fr;gap:10px}} .card{{border:1px solid #e3e3e3;border-left:4px solid #94a3b8;border-radius:8px;padding:9px 11px;page-break-inside:avoid}}
+    .kn{{font-weight:700;font-size:12px}} .ke{{font-size:9.5px;color:#888}} .km{{font-size:9.5px;color:#666;margin-top:2px}}
+    .kv{{display:flex;align-items:baseline;gap:8px;margin:5px 0 2px}} .kv span:first-child{{font-size:22px;font-weight:800}} .kc{{margin-left:auto;font-size:9.5px;color:#666}}
+    .kx{{font-size:9.5px;color:#555;margin-bottom:4px}} table.mini{{width:100%;border-collapse:collapse;font-size:9.5px;margin-top:5px}} table.mini th{{text-align:left;color:#666;border-bottom:1px solid #ddd;padding:2px 3px}}
+    table.mini td{{border-bottom:1px solid #f0f0f0;padding:2px 3px}} .r{{text-align:right}} .mono{{font-family:monospace}} .noprint{{margin-bottom:8px}}
+    section{{page-break-inside:auto}} @media print{{.noprint{{display:none}} body{{padding:4px}}}}</style></head><body>
+    <div class="noprint"><button onclick="window.print()" style="padding:7px 14px;background:#c8102e;color:#fff;border:none;border-radius:6px;cursor:pointer">🖨 Imprimir / Guardar como PDF</button></div>
+    <header><img src="/static/persico_logo.webp" onerror="this.style.display='none'"><div><h1>Indicadores clave (KPIs) {anio}</h1>
+      <div class="sub">{e(df.get("razon_social") or "")} · {"KPIs generales (empresa y áreas)" if alcance == "generales" else "Todos los KPIs"} · al {datetime.date.today():%d/%m/%Y} · generado por {e(session.get("user", ""))}</div></div></header>
+    <div class="res"><div><b>{tot}</b> KPIs</div><div style="border-left:4px solid #16a34a"><b style="color:#16a34a">{ver}</b> en meta</div><div style="border-left:4px solid #f59e0b"><b style="color:#f59e0b">{amb}</b> en tolerancia</div><div style="border-left:4px solid #c8102e"><b style="color:#c8102e">{rojo}</b> fuera de meta</div></div>
+    {"".join(secciones) or '<p>No hay KPIs para el reporte.</p>'}
+    <div class="sub" style="margin-top:12px">Barras: valor por periodo (verde en meta, ámbar en tolerancia, rojo fuera de meta, gris en curso) · línea punteada roja = meta.</div>
+    </body></html>"""
+    return Response(html, mimetype="text/html")
+
 if __name__ == "__main__":
     print("=" * 60)
     print("  Persico Mex — Suite Unificada")
