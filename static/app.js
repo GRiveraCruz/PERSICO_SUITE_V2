@@ -8878,7 +8878,7 @@ async function reqRenderTab(){
   try{
     const [d, cg] = await Promise.all([
       fetch(`/api/requisiciones/${encodeURIComponent(reqCurrentJob)}?tipo=${reqCurrentTipo}`).then(r=>r.json()),
-      reqCurrentTipo==='manufactura' ? Promise.resolve({cargas:[]}) : fetch(`/api/requisiciones/${encodeURIComponent(reqCurrentJob)}/cargas?tipo=${reqCurrentTipo}`).then(r=>r.json()).catch(()=>({cargas:[]})),
+      fetch(`/api/requisiciones/${encodeURIComponent(reqCurrentJob)}/cargas?tipo=${reqCurrentTipo}`).then(r=>r.json()).catch(()=>({cargas:[]})),   // rev179: también Manufactura
     ]);
     if(d.error){ toast(d.error,'er'); tb.innerHTML=`<tr><td colspan="7"><div class="es">${esc(d.error)}</div></td></tr>`; return; }
     reqItems = d.items || [];
@@ -8886,7 +8886,7 @@ async function reqRenderTab(){
     const clave = reqCurrentJob+'|'+reqCurrentTipo;
     if(_reqCambios.clave !== clave) Object.assign(_reqCambios, {clave, version:null, filtro:'todos'});
     reqCargas = cg.cargas || [];
-    const porRevisar = reqCurrentTipo==='manufactura' ? 0 : reqItems.filter(i=>i.revision && typeof i.revision==='object').length;
+    const porRevisar = reqItems.filter(i=>i.revision && typeof i.revision==='object').length;
     document.getElementById('req-tab-count').textContent = `${REQ_TIPO_LABELS[reqCurrentTipo]} — ${reqItems.length} renglón(es)${porRevisar?` · ⚠ ${porRevisar} por revisar`:''}`;
     reqRenderTable();
   }catch(e){ toast('Error al cargar el BOM: '+e,'er'); }
@@ -9264,20 +9264,33 @@ function reqRenderManuf(){
   const inp = (it, campo, w, tipo='text', extra='') => { const v = reqManufValor(it, campo), mod = _manufCambios[it.id] && campo in _manufCambios[it.id];
     return `<input type="${tipo}" data-id="${esc(it.id)}" data-campo="${campo}" value="${esc(String(v))}" oninput="reqManufStage(this)" onchange="reqManufStage(this)" class="${mod?'manuf-mod':''}" ${extra}
       style="width:${w};font-size:11px;padding:3px 5px;border:1px solid var(--border);border-radius:4px;background:transparent${tipo==='number'?';text-align:center':''}">`; };
-  tb.innerHTML = reqItems.map((it, idx)=>{
+  // rev179: versiones del BOM de Manufactura (igual que los BOM de compra)
+  const cargaSelM = reqCargaSel(), FM = _reqCambios.filtro;
+  const visiblesM = reqItems.filter(it=>{ if(FM==='todos') return true; const ch = reqCambiosItem(it, cargaSelM); return FM==='cambios' ? ch.length>0 : ch.some(c=>c.accion===FM); });
+  if(!visiblesM.length){ tb.innerHTML = '<tr><td colspan="18"><div class="es">Ningún renglón con ese tipo de cambio en esta carga.</div></td></tr>'; reqManufBarra(); return; }
+  tb.innerHTML = visiblesM.map((it)=>{ const idx = reqItems.indexOf(it);
     const [fg,bg] = REQ_MANUF_COLOR[it.status] || ['var(--text)','transparent'];
+    const chM = reqCambiosItem(it, cargaSelM);
+    const chipsM = chM.map(c=>{ const m=REQ_CAMBIO[c.accion]||{t:c.accion,fg:'var(--text)',bg:'#eee'}; return `<span title="${esc((cargaSelM?'v'+cargaSelM.version+' · ':'')+_reqFmtCambio(c))}" style="display:inline-block;font-family:'DM Sans',sans-serif;font-size:9.5px;font-weight:700;padding:1px 7px;border-radius:9px;background:${m.bg};color:${m.fg};margin:2px 3px 0 0">${m.t}${c.campo?' · '+(REQ_CAMPO[c.campo]||c.campo):''}</span>`; }).join('')
+      + (it.ausente_desde && !chM.some(c=>c.accion==='ausente') ? `<span title="No viene en el BOM desde la carga v${it.ausente_desde}" style="display:inline-block;font-family:'DM Sans',sans-serif;font-size:9.5px;font-weight:700;padding:1px 7px;border-radius:9px;background:#fee2e2;color:#b91c1c;margin:2px 3px 0 0">Ya no viene (v${it.ausente_desde})</span>` : '');
+    const tinteM = chM.length ? (REQ_CAMBIO[chM[0].accion]||{}).bg : (it.ausente_desde ? '#fee2e2' : '');
+    const revBox = it.revision && typeof it.revision==='object' ? `<div style="margin-top:4px;padding:4px 6px;border:1px solid var(--amber);border-radius:6px;background:rgba(245,158,11,.08);font-size:10px;color:var(--amber);white-space:normal;text-align:left;min-width:140px">
+        ⚠ La nueva carga pide <b>${it.revision.cantidad_nueva}</b> (actual ${it.revision.cantidad_actual})
+        <div style="margin-top:3px"><button onclick="reqRevision('${esc(it.id)}','aceptar')" class="btn-reload" style="font-size:10px;padding:2px 6px">Aceptar</button>
+        <button onclick="reqRevision('${esc(it.id)}','descartar')" class="btn-reload" style="font-size:10px;padding:2px 6px">Descartar</button></div></div>` : '';
     const revs = it.revisiones||[], ult = revs[revs.length-1];
     const hist = revs.slice(0,-1).reverse().map(r=>`<a href="/api/requisiciones/planos/${r.archivo_id}" target="_blank" title="${esc(r.filename)} · ${esc(String(r.fecha||'').slice(0,10))} · ${esc(r.usuario||'')}" style="font-size:10px;color:var(--muted);margin-left:4px">${esc(r.revision)}</a>`).join('');
     const stps = it.stp||[], stp = stps[stps.length-1];
     const op = !!it.orden_produccion, bloqFab = reqCubierto(it)||op;
     const st = reqManufValor(it,'status'), fab = reqManufValor(it,'fabricacion');
     const modSel = c => (_manufCambios[it.id] && c in _manufCambios[it.id]) ? 'manuf-mod' : '';
-    return `<tr style="box-shadow:inset 4px 0 0 ${fg}">
+    return `<tr style="box-shadow:inset 4px 0 0 ${fg};${tinteM?`background:linear-gradient(90deg, ${tinteM} 0, transparent 60%)`:''}">
       <td style="text-align:center;color:var(--muted);font-family:'DM Mono',monospace">${idx+1}</td>
       <td>${inp(it,'responsable','90px')}</td>
       <td>${inp(it,'fecha_liberacion','118px','date')}</td>
       <td>${inp(it,'vendor','100px')}</td>
       <td style="font-family:'DM Mono',monospace;white-space:nowrap">${ult?`<a href="/api/requisiciones/planos/${ult.archivo_id}" target="_blank" title="Abrir plano (rev ${esc(ult.revision)})" style="color:var(--gold);text-decoration:none">📄 ${esc(it.part_number)}</a>`:`<span style="color:var(--gold)">${esc(it.part_number)}</span>`}
+        ${chipsM?`<div style="white-space:normal;max-width:220px">${chipsM}</div>`:''}
         <div style="font-family:'DM Sans',sans-serif;font-size:9.5px;margin-top:2px">${it.origen?`<span style="font-weight:700;color:${MANUF_ORIGEN_COLOR[it.origen]||'var(--muted)'}">${esc(it.origen)}</span>`:'<span style="color:var(--amber)" title="El DETAIL# no cumple el formato estándar">formato ?</span>'}${it.espejo?' · <span style="color:#6d28d9">mirror</span>':''}${it.peso?` · ${esc(it.peso)}`:''}</div></td>
       <td style="text-align:center"><b>${esc(it.rev_plano||'—')}</b>${hist?`<div>${hist}</div>`:''}</td>
       <td>${inp(it,'description','150px')}</td>
@@ -9285,7 +9298,7 @@ function reqRenderManuf(){
       <td>${inp(it,'acabado','110px')}</td>
       <td>${inp(it,'grupo','90px')}</td>
       <td style="text-align:center">${inp(it,'qty_normal','52px','number', `min="0" step="1" ${op?'disabled title="En orden de producción"':''}`)}</td>
-      <td style="text-align:center">${inp(it,'qty_mirror','52px','number', `min="0" step="1" ${op?'disabled title="En orden de producción"':''}`)}</td>
+      <td style="text-align:center">${inp(it,'qty_mirror','52px','number', `min="0" step="1" ${op?'disabled title="En orden de producción"':''}`)}${revBox}</td>
       <td><select data-id="${esc(it.id)}" data-campo="fabricacion" onchange="reqManufStage(this)" class="${modSel('fabricacion')}" ${bloqFab?'disabled':''} style="font-size:11px;padding:4px 6px">
         <option value="" ${!fab?'selected':''}>—</option>${REQ_FABRICACION.map(f=>`<option ${fab===f?'selected':''}>${f}</option>`).join('')}</select></td>
       <td><select data-id="${esc(it.id)}" data-campo="status" onchange="reqManufStage(this)" class="${modSel('status')}" ${reqCubierto(it)?`disabled title="Comprada al 100%: para cambiarla elimina o cancela la orden"`:(op?`disabled title="Lo controla la orden ${esc(it.orden_produccion)}"`:'')} style="font-size:11px;font-weight:600;padding:4px 6px;border:1px solid ${fg};border-radius:4px;background:${bg};color:${fg}">
@@ -9341,7 +9354,7 @@ const REQ_CAMBIO = {
   ausente:    {t:'Ya no viene',      fg:'#b91c1c', bg:'#fee2e2'},
   reaparece:  {t:'Reaparece',        fg:'#6d28d9', bg:'#ede9fe'},
 };
-const REQ_CAMPO = {quantity:'Cantidad', brand:'Marca', description:'Descripción'};
+const REQ_CAMPO = {quantity:'Cantidad', brand:'Marca', description:'Descripción', material:'Material', acabado:'Acabado', rev_plano:'REV'};
 function reqCargaSel(){ return reqCargas.find(c=>c.version===_reqCambios.version) || reqCargas[0] || null; }
 // Cambios de un renglón en la versión seleccionada → lista de acciones
 function reqCambiosItem(it, carga){
@@ -9356,7 +9369,10 @@ function reqCambiosItem(it, carga){
 const _reqFmtCambio = c => c.campo ? `${REQ_CAMPO[c.campo]||c.campo}: ${c.de===''||c.de==null?'(vacío)':c.de} → ${c.a}` : (c.accion==='nuevo' ? `Cantidad ${c.cantidad}` : c.accion==='ausente' ? `No viene en esta carga (estaba con ${c.cantidad} · ${c.status})` : c.accion==='reaparece' ? `Volvió a aparecer (no venía desde v${c.ausente_desde})` : '');
 
 function reqCambiosPanelHTML(){
-  if(reqCurrentTipo==='manufactura') return reqManufToolbarHTML();   // rev78
+  if(reqCurrentTipo==='manufactura') return reqManufToolbarHTML() + reqCambiosPanelCompras();   // rev78 / rev179: + versiones
+  return reqCambiosPanelCompras();
+}
+function reqCambiosPanelCompras(){
   if(!reqCargas.length) return `<div style="font-size:11px;color:var(--muted);margin:0 0 8px">El historial de cambios empieza con la siguiente carga del BOM.</div>`;
   const c = reqCargaSel(), r = c.resumen||{}, F = _reqCambios.filtro;
   const chip = (k, n) => { const m = REQ_CAMBIO[k]; return `<button type="button" onclick="_reqCambios.filtro='${F===k?'todos':k}';reqRenderTable()" style="border:1px solid ${F===k?m.fg:'transparent'};background:${m.bg};color:${m.fg};font-size:11px;font-weight:700;padding:4px 10px;border-radius:12px;cursor:pointer;${n?'':'opacity:.45'}" ${n?'':'disabled'}>${m.t} <span style="font-family:'DM Mono',monospace">${n||0}</span></button>`; };
@@ -9378,7 +9394,7 @@ function reqCambiosPanelHTML(){
         return `<tr style="border-top:1px solid var(--border)"><td style="padding:3px 6px;white-space:nowrap"><span style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:9px;background:${m.bg};color:${m.fg}">${m.t}</span></td>
           <td style="padding:3px 6px;font-family:'DM Mono',monospace;color:var(--gold);white-space:nowrap">${esc(x.part_number||'')}</td>
           <td style="padding:3px 6px;color:var(--muted2)">${esc(x.description||'')}</td><td style="padding:3px 6px">${esc(_reqFmtCambio(x))}</td></tr>`;}).join('')}</table></details>`:''}
-    <div style="font-size:10px;color:var(--muted);margin-top:6px">Las diferencias de marca o descripción no se aplican; solo se informan. Los renglones que ya no vienen no se borran ni se cancelan: decide qué hacer con ellos.</div>
+    <div style="font-size:10px;color:var(--muted);margin-top:6px">${reqCurrentTipo==='manufactura'?'Las diferencias de descripción, material, acabado o REV':'Las diferencias de marca o descripción'} no se aplican; solo se informan. Los renglones que ya no vienen no se borran ni se cancelan: decide qué hacer con ellos.</div>
   </div>`;
 }
 
@@ -11898,7 +11914,7 @@ function pcRenderJobs(jobDetails, savedRows) {
             <th style="text-align:right;padding:4px 8px;width:130px;background:#dcfce7;color:#15803d" title="Horas consumidas × tarifa de cada trabajador (Hourly Rate), igual que el Job Report">Costo real</th></tr></thead>
           <tbody>${PC_MO.map(([k,n,perfil])=>{ const c = saved['mo_costo_'+k] ?? pcCostosPerfil[perfil] ?? ''; return `<tr style="border-top:1px solid var(--border)">
             <td style="padding:4px 6px">${n} <span style="font-size:10px;color:var(--muted)">· ${perfil}</span></td>
-            <td style="padding:3px 6px"><input class="pc-blue-field" ${pcOcultarInsumos()?'readonly tabindex="-1" title="Solo lectura (permiso Ver)"':''} data-field="mo_horas_${k}" type="number" min="0" step="0.5" value="${saved['mo_horas_'+k] ?? ''}" placeholder="0" oninput="pcCalc(${idx})" style="${estInp}${pcOcultarInsumos()?';background:transparent;border-color:transparent;cursor:default;font-weight:600':''}"></td>
+            <td style="padding:3px 6px"><input class="pc-blue-field" ${!pcTabPuede('presupuesto','full')?'readonly tabindex="-1" title="Solo lectura (las horas las edita Control total)"':''} data-field="mo_horas_${k}" type="number" min="0" step="0.5" value="${saved['mo_horas_'+k] ?? ''}" placeholder="0" oninput="pcCalc(${idx})" style="${estInp}${pcOcultarInsumos()?';background:transparent;border-color:transparent;cursor:default;font-weight:600':''}"></td>
             <td style="padding:3px 6px;${pcOcultarInsumos()?'display:none':''}"><input class="pc-blue-field" data-field="mo_costo_${k}" type="number" min="0" step="0.01" value="${c}" placeholder="${pcCostosPerfil[perfil]==null?'sin dato':'0.00'}" oninput="pcCalc(${idx})" style="${estInp}" title="Promedio vigente: ${pcCostosPerfil[perfil]!=null?'$'+pcCostosPerfil[perfil]:'sin dato'}"></td>
             <td id="pc-mo-${k}-${idx}" style="text-align:right;padding:4px 6px;font-family:'DM Mono',monospace">—</td>
             <td id="pc-hc-${k}-${idx}" data-hc="${(pcHorasCons[j.job_number]?.lineas||{})[k]||0}" style="text-align:right;padding:4px 8px;background:rgba(220,252,231,.55);font-family:'DM Mono',monospace;font-weight:700">—</td>
@@ -11942,13 +11958,18 @@ function pcApplyProjconfigFieldPerms() {
   document.querySelectorAll('.pc-full-only').forEach(el => {
     el.style.display = (level === 'full') ? '' : 'none';
   });
-  // Azul: fechas y Target de Ahorro — editable desde "Crear", solo lectura en "Ver"
+  // rev179: VER → solo lectura de fechas, horas y presupuestos (y milestones de pago)
+  //         CREAR → edita fechas y milestones; presupuestos y horas en solo lectura
+  //         CONTROL TOTAL → todo
+  const soloLectura = el => { el.setAttribute('readonly',''); if(el.tagName==='SELECT' || el.type==='checkbox') el.disabled = true; el.style.pointerEvents='none'; el.style.opacity='.65'; el.title = el.title || 'Solo lectura con tu permiso'; };
+  const esPresupuesto = f => /^(costo_|ahorro_|mo_horas_|mo_costo_|est_)/.test(f||'') || ['ahorro_pct','markup_pct'].includes(f);
   if(level === 'view') {
-    document.querySelectorAll('.pc-blue-field').forEach(el => {
-      el.setAttribute('readonly','');
-      el.style.pointerEvents='none';
-      el.style.opacity='.65';
-    });
+    document.querySelectorAll('.pc-blue-field').forEach(soloLectura);
+    document.querySelectorAll('[id^="pc-tp-tb-"] input, [id^="pc-tp-tb-"] select').forEach(soloLectura);
+    document.querySelectorAll('.pc-tp-edit, [id^="pc-tp-tb-"] button').forEach(b=>b.style.display='none');
+  } else if(level === 'create') {
+    document.querySelectorAll('.pc-blue-field').forEach(el=>{ if(esPresupuesto(el.dataset.field)) soloLectura(el); });
+    document.querySelectorAll('button[onclick^="pcActualizarCostos"]').forEach(b=>b.style.display='none');
   }
 }
 

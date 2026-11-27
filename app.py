@@ -14616,7 +14616,7 @@ def api_requisiciones_upload():
                                     "ausente_desde": d.get("ausente_desde")})
                     d.pop("ausente_desde", None)
                 # diferencias de marca/descripción contra lo guardado (no se sobrescribe: solo se informa)
-                for campo in ("brand", "description"):
+                for campo in (("description", "material", "acabado", "rev_plano") if tipo == "manufactura" else ("brand", "description")):   # rev179
                     nv, av = str(nuevo.get(campo) or "").strip(), str(d.get(campo) or "").strip()
                     ya = next((x for x in reversed(d.get("cambios_carga") or []) if x.get("campo") == campo and not x.get("aplicado")), None)
                     if nv and av and nv.upper() != av.upper() and not (ya and str(ya.get("a")).upper() == nv.upper()):
@@ -14668,6 +14668,7 @@ def api_requisiciones_upload():
                         res["iguales"] += 1
                         row.data = d; _orm_flag_modified(row, "data"); continue
                     d["revision"] = {"cantidad_nueva": nueva, "cantidad_actual": actual, "fecha": ahora, "usuario": user, "version": version}
+                    if tipo == "manufactura": d["revision"].update(qty_normal=nuevo.get("qty_normal"), qty_mirror=nuevo.get("qty_mirror"))   # rev179
                     res["revision"].append({"part_number": d.get("part_number"), "actual": actual, "nueva": nueva, "status": d.get("status")})
                     marca(d, "quantity", actual, nueva, aplicado=False)
                     cambios.append({"accion": "revision", "part_number": d.get("part_number"), "description": d.get("description", ""),
@@ -14799,6 +14800,11 @@ def _req_actualizar_renglon(row, data):
                 "de": row.data.get("quantity"), "a": rev["cantidad_nueva"], "fecha": datetime.datetime.now().isoformat(),
                 "usuario": session.get("user", ""), "origen": "revisión aceptada"})
             row.data["quantity"] = rev["cantidad_nueva"]
+            if (row.tipo or row.data.get("tipo")) == "manufactura":           # rev179: normal + mirror = nueva cantidad
+                if rev.get("qty_normal") is not None:
+                    row.data["qty_normal"] = float(rev.get("qty_normal") or 0); row.data["qty_mirror"] = float(rev.get("qty_mirror") or 0)
+                else:
+                    qm = float(row.data.get("qty_mirror") or 0); row.data["qty_normal"] = max(0.0, float(rev["cantidad_nueva"]) - qm)
             _req_aplicar_estatus(row.data, row)
         row.data.pop("revision", None)
     for campo in REQ_CAMPOS_TEXTO:
@@ -17659,6 +17665,11 @@ def projcfg_save(records):
 # Ahorro y los Estimados por Área; estos campos (Markup y sus derivados) se
 # preservan del valor ya guardado si el usuario no tiene permiso full, sin
 # importar lo que envíe el cliente.
+def _pc_campo_presupuesto(f):
+    """rev179: campos de presupuesto y horas del Job (solo Control total en Presupuesto)."""
+    f = str(f or "")
+    return f.startswith(("costo_", "ahorro_", "mo_horas_", "mo_costo_", "est_")) or f in ("ahorro_pct", "target_ahorro", "presupuesto_disponible") or f in PROJCONFIG_FULL_ONLY_JOB_FIELDS
+
 PROJCONFIG_FULL_ONLY_JOB_FIELDS = {
     "markup_pct", "monto_markup", "presupuesto_operativo",
     "margen_pct", "presupuesto_a",
@@ -17696,6 +17707,16 @@ def api_create_projconfig():
             if existing: ptsv = existing.get("ptsv", ptsv).upper()     # conservar el nombre ya guardado
 
             jobs_in = data.get("jobs", [])
+            # rev179: Presupuesto por nivel — VER: nada; CREAR: fechas y milestones de pago; CONTROL TOTAL: todo.
+            # Con CREAR, los presupuestos y las horas se conservan como estaban guardados.
+            if not pc_tab_can("delete", "presupuesto") and not is_admin():
+                old_jobs2 = {str(j.get("job_number") or "").upper(): j for j in (existing or {}).get("jobs", [])}
+                for j in jobs_in:
+                    old = old_jobs2.get(str(j.get("job_number") or "").upper()) or {}
+                    for f in list(set(j) | set(old)):
+                        if _pc_campo_presupuesto(f):
+                            if f in old: j[f] = old[f]
+                            else: j.pop(f, None)
             if not pc_tab_can("delete", "presupuesto") and existing:
                 old_jobs = {j.get("job_number"): j for j in existing.get("jobs", [])}
                 for j in jobs_in:
