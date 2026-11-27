@@ -25918,6 +25918,163 @@ try:
     _thr_cache.Thread(target=_gpo_reparar_al_iniciar, daemon=True).start()
 except Exception: pass
 
+# ══════════════════════════════════════════════════════════════════
+#  rev178 — Timing ⇄ ProyectoPy (.ppj) y Microsoft Project (XML)
+#  Motor CPM de ProyectoPy incluido en ./proyectopy (scheduler.py, msp_xml.py).
+#  · Importar: .ppj de ProyectoPy o .xml de MS Project → renglones del Timing (no se guarda hasta «Guardar»).
+#  · Exportar: Timing → .ppj (se abre en ProyectoPy) o .xml (se abre en MS Project 2007+).
+# ══════════════════════════════════════════════════════════════════
+def _ppj_a_timing(project, modo="dependencias"):
+    """modo='dependencias': una predecesora FS → «Inicio ← fin de la previa» (con su desfase); lo demás, fecha fija.
+       modo='fijas': todas las actividades con sus fechas exactas (inicio y fin manuales)."""
+    from datetime import date, timedelta
+    project.schedule()
+    tareas = project.tasks
+    nombres, usados = {}, {}
+    for t in tareas:                                           # nombres únicos (el Timing se liga por nombre)
+        base = (t.name or "Tarea").strip() or "Tarea"; n = usados.get(base.upper(), 0) + 1; usados[base.upper()] = n
+        nombres[t.uid] = base if n == 1 else f"{base} ({n})"
+    filas, avisos, pila = [], [], []
+    for t in tareas:
+        while pila and pila[-1][0] >= t.level: pila.pop()
+        grupo = pila[-1][1] if pila else ""
+        if t.summary:
+            filas.append({"tipo": "grupo", "actividad": nombres[t.uid]})
+            pila.append((t.level, nombres[t.uid])); continue
+        fila = {"tipo": "actividad", "actividad": nombres[t.uid], "grupo": grupo, "dias_estimados": int(t.duration),
+                "recurso": t.resources or "", "cumplido": int(t.percent or 0) >= 100, "desfase": 0,
+                "notas_importacion": "; ".join(f"{project.get(l.uid).name if project.get(l.uid) else l.uid} {l.type}{('+' if l.lag > 0 else '') + str(l.lag) + 'd' if l.lag else ''}" for l in t.links)}
+        fs = [l for l in t.links if l.type == "FS" and project.get(l.uid) and not project.get(l.uid).summary]
+        if modo == "dependencias" and fs and len(fs) == len(t.links) and not t.constraint:
+            # la predecesora que «manda» (la que termina más tarde con su desfase)
+            def _fin(l):
+                pt = project.get(l.uid); return (pt.finish or date.min, l.lag)
+            l = max(fs, key=_fin)
+            fila.update(modo="inicio_previa", actividad_previa=nombres[l.uid], desfase=int(l.lag))
+            if len(fs) > 1: avisos.append(f"«{nombres[t.uid]}» tenía {len(fs)} predecesoras: se conservó la que define su inicio ({nombres[l.uid]}).")
+        else:
+            fila.update(modo="manual", fecha_inicial=t.start.isoformat() if t.start else "")
+            if modo == "fijas" and t.start and t.finish and t.duration > 0: fila["fecha_fin"] = t.finish.isoformat()
+            if t.links and modo == "dependencias":
+                tipos = {x.type for x in t.links}
+                if tipos - {"FS"} or len(t.links) != len(fs) or t.constraint:
+                    avisos.append(f"«{nombres[t.uid]}» usa vínculos {', '.join(sorted(tipos))}{' o restricción de fecha' if t.constraint else ''}: se importó con su fecha calculada ({t.start}).")
+        filas.append(fila)
+    return {"timing": filas, "avisos": avisos, "proyecto": project.name, "inicio": project.start.isoformat() if project.start else None,
+            "fin": project.finish.isoformat() if getattr(project, "finish", None) else None, "errores": list(project.errors or [])}
+
+def _timing_a_ppj(timing, nombre="Timing"):
+    """Timing del ERP → Project de ProyectoPy (grupos = tareas de resumen; previas = vínculos FC con su desfase;
+    actividades manuales o en retrospectiva → restricción «No comenzar antes del» con su fecha resuelta)."""
+    from datetime import date, timedelta
+    from proyectopy.scheduler import Project, Task, Link, mexico_holidays
+    def fd(v):
+        try: return date.fromisoformat(str(v or "")[:10])
+        except ValueError: return None
+    acts = [t for t in (timing or []) if t.get("tipo") != "grupo" and (t.get("actividad") or "").strip()]
+    grupos = [t.get("actividad") for t in (timing or []) if t.get("tipo") == "grupo" and (t.get("actividad") or "").strip()]
+    nk = lambda v: (v or "").strip().upper()
+    p = Project(); p.name = nombre
+    inicios = [fd(t.get("inicio_calc")) or fd(t.get("fecha_inicial")) for t in acts]
+    inicios = [x for x in inicios if x]
+    p.start = min(inicios) if inicios else date.today()
+    anios = {p.start.year + k for k in range(0, 3)}
+    p.holidays = [{"date": d.isoformat(), "name": n} for y in sorted(anios) for d, n in mexico_holidays(y)]
+    orden = []                                                 # resumen + sus actividades, después las sueltas
+    vistos = set()
+    for g in grupos:
+        orden.append(("g", g))
+        for t in acts:
+            if nk(t.get("grupo")) == nk(g) and id(t) not in vistos: orden.append(("a", t)); vistos.add(id(t))
+    for t in acts:
+        if id(t) not in vistos: orden.append(("a", t)); vistos.add(id(t))
+    uid_de = {}
+    for tipo, x in orden:
+        task = Task(uid=p.next_uid); p.next_uid += 1
+        if tipo == "g":
+            task.name, task.level, task.duration = x, 0, 1
+        else:
+            task.name = x["actividad"].strip(); task.level = 1 if x.get("grupo") and any(nk(g) == nk(x["grupo"]) for g in grupos) else 0
+            ini, fin = fd(x.get("inicio_calc")), fd(x.get("fin_calc"))
+            try: dias = int(float(x.get("dias_estimados") or 0))
+            except (TypeError, ValueError): dias = 0
+            if ini and fin and (x.get("modo") in ("entre",) or (x.get("modo") == "manual" and x.get("fecha_fin"))):
+                n, d = 0, ini
+                while d <= fin:
+                    if d.weekday() < 5: n += 1
+                    d += timedelta(days=1)
+                dias = n
+            task.duration = max(0, dias); task.percent = 100 if x.get("cumplido") else 0; task.resources = x.get("recurso") or ""
+            task._erp = x
+            uid_de[nk(task.name)] = task.uid
+        p.tasks.append(task)
+    for task in p.tasks:
+        x = getattr(task, "_erp", None)
+        if not x: continue
+        modo = x.get("modo") or ("inicio_previa" if x.get("actividad_previa") and not x.get("fecha_inicial") else "manual")
+        try: desf = int(x.get("desfase") or 0)
+        except (TypeError, ValueError): desf = 0
+        if modo in ("inicio_previa", "entre") and nk(x.get("actividad_previa")) in uid_de:
+            task.links = [Link(uid_de[nk(x["actividad_previa"])], "FS", desf)]
+        else:
+            ini = fd(x.get("inicio_calc")) or fd(x.get("fecha_inicial"))
+            if ini and ini > p.start: task.constraint = ini.isoformat()
+        if modo in ("fin_posterior", "entre") and nk(x.get("actividad_posterior")) in uid_de:
+            post = p.get(uid_de[nk(x["actividad_posterior"])])
+            if post and not any(l.uid == task.uid for l in post.links): post.links.append(Link(task.uid, "FS", 0))
+    for task in p.tasks:
+        if hasattr(task, "_erp"): delattr(task, "_erp")
+    p.normalize_levels()
+    return p
+
+@app.route("/api/projconfig/timing/importar", methods=["POST"])
+def api_timing_importar():
+    if not (can("create", "projconfig-timing") or can("create", "projconfig") or is_admin()): return jsonify({"error": "Sin permiso"}), 403
+    from proyectopy.scheduler import Project
+    from proyectopy import msp_xml
+    f = request.files.get("file")
+    if not f: return jsonify({"error": "Adjunta el archivo (.ppj de ProyectoPy o .xml de MS Project)"}), 400
+    nombre = (f.filename or "").lower(); raw = f.read()
+    if len(raw) > 15 * 1024 * 1024: return jsonify({"error": "El archivo no debe pasar de 15 MB"}), 400
+    try:
+        if nombre.endswith(".ppj") or raw[:1] == b"{":
+            project = Project.from_dict(json.loads(raw.decode("utf-8-sig")))
+        elif nombre.endswith(".xml") or b"<Project" in raw[:2000]:
+            import tempfile
+            with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as tmp: tmp.write(raw); ruta = tmp.name
+            try: project = msp_xml.import_mspdi(ruta)
+            finally:
+                try: _os.remove(ruta)
+                except OSError: pass
+        elif nombre.endswith(".mpp"):
+            return jsonify({"error": "Los archivos .mpp son binarios de MS Project: guárdalo como «Formato XML (*.xml)» y sube ese archivo"}), 400
+        else:
+            return jsonify({"error": "Formato no reconocido: usa .ppj (ProyectoPy) o .xml (MS Project)"}), 400
+    except Exception as e:
+        return jsonify({"error": f"No se pudo leer el archivo: {e}"}), 400
+    modo = "fijas" if request.form.get("modo") == "fijas" else "dependencias"
+    return jsonify(_ppj_a_timing(project, modo))
+
+@app.route("/api/projconfig/timing/exportar", methods=["POST"])
+def api_timing_exportar():
+    if not (can("view", "projconfig-timing") or can("view", "projconfig") or is_admin()): return jsonify({"error": "Sin permiso"}), 403
+    b = request.json or {}
+    nombre = re.sub(r"[^\w\- ]", "", str(b.get("nombre") or "Timing")).strip() or "Timing"
+    p = _timing_a_ppj(b.get("timing") or [], nombre)
+    if (b.get("formato") or "ppj") == "xml":
+        from proyectopy import msp_xml
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as tmp: ruta = tmp.name
+        try:
+            p.schedule(); msp_xml.export_mspdi(p, ruta)
+            data = open(ruta, "rb").read()
+        finally:
+            try: _os.remove(ruta)
+            except OSError: pass
+        return Response(data, mimetype="application/xml", headers={"Content-Disposition": f'attachment; filename="{nombre}.xml"'})
+    data = json.dumps(p.to_dict(), ensure_ascii=False, indent=1).encode("utf-8")
+    return Response(data, mimetype="application/json", headers={"Content-Disposition": f'attachment; filename="{nombre}.ppj"'})
+
 if __name__ == "__main__":
     print("=" * 60)
     print("  Persico Mex — Suite Unificada")

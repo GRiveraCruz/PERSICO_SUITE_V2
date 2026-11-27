@@ -22129,3 +22129,40 @@ function pcNuevaActividad(){
   pcUpdateTimingCalcs(); pcAbrirPanelAct(tr);
 }
 window.addEventListener('resize', ()=>{ if(_pcVistaTiming==='lado'){ clearTimeout(window._pcAlT); window._pcAlT = setTimeout(()=>{ try{ pcUpdateTimingCalcs(); }catch(e){} }, 250); } });   // rev177
+
+// ════════════════════════════════════════════════════════
+//  rev178 — Timing ⇄ ProyectoPy (.ppj) / MS Project (.xml)
+// ════════════════════════════════════════════════════════
+function pcImportarProyectoAbrir(){
+  if(typeof pcTabPuede==='function' && !pcTabPuede('timing','create')){ toast('Sin permiso para editar el Timing','er'); return; }
+  document.getElementById('pci-file').value = ''; document.getElementById('pci-res').innerHTML = '';
+  document.getElementById('mo-pc-importar').classList.add('on');
+}
+async function pcImportarProyecto(){
+  const f = document.getElementById('pci-file').files[0]; if(!f){ toast('Elige el archivo','er'); return; }
+  const accion = document.getElementById('pci-accion').value;
+  const tb = document.getElementById('pc-timing-body');
+  if(accion==='reemplazar' && tb.rows.length && !confirm('Se reemplazará el Timing actual por el del archivo (no se guarda hasta presionar «Guardar configuración»). ¿Continuar?')) return;
+  const fd = new FormData(); fd.append('file', f); fd.append('modo', document.getElementById('pci-modo').value);
+  const out = document.getElementById('pci-res'); out.textContent = 'Leyendo el archivo…';
+  const d = await fetch('/api/projconfig/timing/importar', {method:'POST', body: fd}).then(r=>r.json()).catch(()=>({error:'Sin respuesta del servidor'}));
+  if(d.error){ out.innerHTML = `<span style="color:var(--red)">${esc(d.error)}</span>`; return; }
+  if(accion==='reemplazar'){ tb.innerHTML = ''; try{ _pcCollapsedGroups.clear(); }catch(e){} }
+  (d.timing||[]).forEach(r=> r.tipo==='grupo' ? pcAddGroupRow(r) : pcAddTimingRow(r));
+  pcUpdateGroupsList(); pcUpdateTimingCalcs();
+  const n = (d.timing||[]).filter(r=>r.tipo!=='grupo').length, g = (d.timing||[]).filter(r=>r.tipo==='grupo').length;
+  closeMo('mo-pc-importar');
+  const av = (d.avisos||[]).concat((d.errores||[]).map(e=>'⚠ '+e));
+  toast(`Importado «${d.proyecto||f.name}»: ${n} actividades y ${g} grupos. Revisa y presiona «Guardar configuración».`, 'ok', 9000);
+  if(av.length) alert(`Importación de «${d.proyecto||f.name}» (${d.inicio||''} → ${d.fin||''}):\n\n• ` + av.slice(0,25).join('\n• ') + (av.length>25?`\n… y ${av.length-25} más`:'') +
+    '\n\nNota: el Timing usa el calendario de días hábiles del ERP (sin sábados, domingos ni festivos de ley); si el archivo usaba otro calendario, algunas fechas dependientes pueden moverse. Para conservarlas exactas, importa con «Fechas fijas».');
+}
+async function pcExportarProyecto(formato){
+  const timing = pcGetTimingData(); if(!timing.length){ toast('El Timing está vacío','er'); return; }
+  const nombre = (typeof pcCurrentPTSV!=='undefined' && pcCurrentPTSV) || 'Timing';
+  const r = await fetch('/api/projconfig/timing/exportar', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({timing, formato, nombre: `Timing ${nombre}`})});
+  if(!r.ok){ let m=''; try{ m=(await r.json()).error; }catch(e){} toast(m||'No se pudo exportar','er'); return; }
+  const blob = await r.blob(); const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `Timing ${String(nombre).replace(/[^\w\- ]/g,'')}.${formato==='xml'?'xml':'ppj'}`; document.body.appendChild(a); a.click(); a.remove();
+  toast(formato==='xml' ? 'XML de MS Project descargado (ábrelo en Project 2007 o posterior)' : 'Proyecto .ppj descargado (ábrelo en ProyectoPy)', 'ok');
+}
